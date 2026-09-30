@@ -16,15 +16,19 @@ def check(root: Path) -> None:
         generated = json.loads(data)["definitions"]
         for key in selected:
             if key in generated:
-                assert key not in definitions or definitions[key] == generated[key]
+                if key in definitions and definitions[key] != generated[key]:
+                    raise SystemExit(f"Protocol snapshot: conflicting generated definition {key} in {name}.json")
                 definitions[key] = generated[key]
-    assert selected == definitions
+    if selected != definitions:
+        raise SystemExit("Protocol snapshot: policies.json differs from generated definitions")
     source = (root / "lib" / "workflow" / "policy_schema.ml").read_text()
     match = re.search(r"\{schema\|(.*?)\|schema\}", source, re.S)
-    assert match and json.loads(match.group(1)) == {"definitions": definitions}
+    if not match or json.loads(match.group(1)) != {"definitions": definitions}:
+        raise SystemExit("Protocol snapshot: policy_schema.ml differs from generated definitions")
     manifest = json.loads((directory / "manifest.json").read_text())
     for name, expected in manifest["sha256"].items():
-        assert hashlib.sha256((directory / name).read_bytes()).hexdigest() == expected
+        if hashlib.sha256((directory / name).read_bytes()).hexdigest() != expected:
+            raise SystemExit(f"Protocol snapshot: hash mismatch for {name}; regenerate the snapshot")
     print("Protocol snapshot: generated definitions and hashes match")
 
 

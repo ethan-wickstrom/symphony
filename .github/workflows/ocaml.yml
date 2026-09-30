@@ -35,7 +35,12 @@ jobs:
       - run: opam exec -- dune runtest
       - run: opam exec -- dune exec tools/check_source.exe -- .
       - run: opam exec -- dune exec tools/check_source.exe -- --self-test
-      - run: python3 tools/check_protocol.py .
-      - run: python3 test/cli_check.py _build/default/bin/main.exe
+      - run: |
+          python3 tools/check_protocol.py .
+          PYTHONOPTIMIZE=1 python3 tools/check_protocol.py .
+      - run: |
+          python3 test/cli_check.py _build/default/bin/main.exe
+          PYTHONOPTIMIZE=1 python3 test/cli_check.py _build/default/bin/main.exe
+      - run: python3 test/verification_check.py .
       - name: Seeded parser campaign
         run: opam exec -- dune exec fuzz/boundaries.exe -- --repeat 10000 --seed 20260930

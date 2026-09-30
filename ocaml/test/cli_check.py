@@ -8,6 +8,11 @@ import subprocess
 import tempfile
 
 
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise SystemExit(f"CLI integration: {message}")
+
+
 def run(binary: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="symphony-cli-") as directory:
         root = Path(directory)
@@ -31,7 +36,7 @@ def run(binary: Path) -> None:
                 [str(binary), *args], cwd=root, env=env,
                 text=True, capture_output=True, timeout=10,
             )
-            assert credential not in result.stdout + result.stderr
+            require(credential not in result.stdout + result.stderr, "fixture credential leaked")
             return result
 
         fixture.write_text(json.dumps({
@@ -42,48 +47,57 @@ def run(binary: Path) -> None:
         write("{{ issue.identifier }} {{ issue.title }} {{ issue.labels }} "
               "{{ issue.blocked_by[0].identifier }} {% if attempt %}retry {{ attempt }}{% endif %}")
         valid = invoke("doctor", str(workflow))
-        assert valid.returncode == 0, valid.stderr
-        assert str(source / "workspaces") in valid.stdout
+        require(valid.returncode == 0, "doctor rejected valid workflow")
+        require(str(source / "workspaces") in valid.stdout, "doctor lost workflow-relative root")
         default = root / "WORKFLOW.md"
         default.write_text(workflow.read_text())
         implicit = invoke("doctor")
-        assert implicit.returncode == 0 and str(root / "workspaces") in implicit.stdout
+        require(implicit.returncode == 0 and str(root / "workspaces") in implicit.stdout,
+                "doctor did not resolve default workflow")
         prompt = invoke("dry-run", str(workflow), "--issue", str(fixture))
-        assert prompt.returncode == 0, prompt.stderr
-        assert 'TEST-1 {{ missing }} ["a"] TEST-0' in prompt.stdout
-        assert "retry" not in prompt.stdout
+        require(prompt.returncode == 0, "dry-run rejected valid issue fixture")
+        require('TEST-1 {{ missing }} ["a"] TEST-0' in prompt.stdout,
+                "dry-run lost normalized issue values")
+        require("retry" not in prompt.stdout, "dry-run invented an initial retry attempt")
         retry = invoke("dry-run", str(workflow), "--issue", str(fixture), "--attempt", "2")
-        assert retry.returncode == 0 and "retry 2" in retry.stdout
+        require(retry.returncode == 0 and "retry 2" in retry.stdout, "dry-run lost retry attempt")
 
         bad_attempt = invoke("dry-run", str(workflow), "--issue", str(fixture), "--attempt", "0")
-        assert bad_attempt.returncode != 0 and not bad_attempt.stdout
-        assert "--attempt" in bad_attempt.stderr and "positive" in bad_attempt.stderr
-        assert ";" in bad_attempt.stderr
+        require(bad_attempt.returncode != 0 and not bad_attempt.stdout, "dry-run accepted attempt zero")
+        require("--attempt" in bad_attempt.stderr and "positive" in bad_attempt.stderr,
+                "attempt diagnostic omitted option or remedy")
+        require(";" in bad_attempt.stderr, "attempt diagnostic omitted remedy separator")
         write("ok", config.replace("kind: linear", "kind: $LINEAR_API_KEY"))
         hidden = invoke("doctor", str(workflow))
-        assert hidden.returncode != 0 and "tracker.kind" in hidden.stderr
+        require(hidden.returncode != 0 and "tracker.kind" in hidden.stderr,
+                "doctor accepted secret tracker kind or omitted its key")
         write("ok", config.replace("project_slug: fixture", "endpoint: https://host:bad/graphql\n    project_slug: fixture"))
         endpoint = invoke("doctor", str(workflow))
-        assert endpoint.returncode != 0 and "tracker.provider.endpoint" in endpoint.stderr
+        require(endpoint.returncode != 0 and "tracker.provider.endpoint" in endpoint.stderr,
+                "doctor accepted malformed endpoint or omitted its key")
 
         write("{{ issue.missing }}")
         missing = invoke("dry-run", str(workflow), "--issue", str(fixture))
-        assert missing.returncode != 0 and not missing.stdout
-        assert str(workflow) in missing.stderr and "missing" in missing.stderr
+        require(missing.returncode != 0 and not missing.stdout, "dry-run accepted missing template field")
+        require(str(workflow) in missing.stderr and "missing" in missing.stderr,
+                "missing-field diagnostic omitted workflow or key")
         write("ok", config + "polling:\n  interval_ms: 0\n")
         bad = invoke("doctor", str(workflow))
-        assert bad.returncode != 0 and not bad.stdout
-        assert "polling.interval_ms" in bad.stderr and str(workflow) in bad.stderr
+        require(bad.returncode != 0 and not bad.stdout, "doctor accepted zero polling interval")
+        require("polling.interval_ms" in bad.stderr and str(workflow) in bad.stderr,
+                "polling diagnostic omitted workflow or key")
         workflow.write_text("---\n- not-a-map\n---\nok\n")
-        assert invoke("doctor", str(workflow)).returncode != 0
+        require(invoke("doctor", str(workflow)).returncode != 0, "doctor accepted non-map front matter")
         workflow.write_text("---\ntracker: {}\ntracker: " + credential + "\n---\nok\n")
-        assert invoke("doctor", str(workflow)).returncode != 0
+        require(invoke("doctor", str(workflow)).returncode != 0, "doctor accepted duplicate YAML key")
         workflow.unlink()
         absent = invoke("doctor", str(workflow))
-        assert absent.returncode != 0 and str(workflow) in absent.stderr
+        require(absent.returncode != 0 and str(workflow) in absent.stderr,
+                "doctor accepted missing workflow or omitted its path")
         workflow.write_text("x" * (1_048_576 + 1))
         oversized = invoke("doctor", str(workflow))
-        assert oversized.returncode != 0 and "limit" in oversized.stderr
+        require(oversized.returncode != 0 and "limit" in oversized.stderr,
+                "doctor accepted oversized workflow or omitted limit diagnostic")
 
     print("CLI integration: 14 scenarios passed")
 
