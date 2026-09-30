@@ -49,10 +49,13 @@ defmodule Mix.Tasks.PrBody.CheckTest do
   - [x] Ran targeted checks.
   """
 
+  @badge_begin "<!-- devin-review-badge-begin -->"
+  @badge_end "<!-- devin-review-badge-end -->"
+
   @review_badge """
-  <!-- devin-review-badge-begin -->
+  #{@badge_begin}
   [Review complete](https://example.com/review)
-  <!-- devin-review-badge-end -->
+  #{@badge_end}
   """
 
   setup do
@@ -333,10 +336,16 @@ defmodule Mix.Tasks.PrBody.CheckTest do
     end)
   end
 
-  test "rejects placeholders inside the badge and altered badge markers" do
+  test "rejects placeholders and invalid badge regions" do
     invalid_badges = [
       String.replace(@review_badge, "[Review complete]", "<!-- Summary bullet -->\n[Review complete]"),
-      String.replace(@review_badge, "devin-review-badge-begin", "devin-review-badge-begin-extra")
+      String.replace(@review_badge, "devin-review-badge-begin", "devin-review-badge-begin-extra"),
+      @badge_begin,
+      @badge_end,
+      @badge_end <> "\n" <> @badge_begin,
+      @review_badge <> @review_badge,
+      @badge_begin <> @review_badge,
+      @review_badge <> @badge_end
     ]
 
     in_temp_repo(fn ->

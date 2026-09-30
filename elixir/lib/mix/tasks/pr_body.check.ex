@@ -126,8 +126,15 @@ defmodule Mix.Tasks.PrBody.Check do
   end
 
   defp check_no_placeholders(errors, body) do
-    # Review automation adds these exact markers; other comments remain invalid.
-    body = String.replace(body, @review_badge_markers, "")
+    # Only one complete badge region is exempt; other comments remain invalid.
+    body =
+      case Enum.map(@review_badge_markers, &:binary.matches(body, &1)) do
+        [[{begin_idx, _}], [{end_idx, _}]] when begin_idx < end_idx ->
+          String.replace(body, @review_badge_markers, "")
+
+        _ ->
+          body
+      end
 
     if String.contains?(body, "<!--") do
       errors ++ ["PR description still contains template placeholder comments (<!-- ... -->)."]
