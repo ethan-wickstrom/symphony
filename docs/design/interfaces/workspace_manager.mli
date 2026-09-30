@@ -20,6 +20,10 @@ module type PURE = sig
   val identifier : reference -> Issue_identifier.t
   val scope : reference -> Tracker_scope.t
   val environment : reference -> Environment.child
+  val key : reference -> Workspace_key.t
+  val settings : reference -> Workspace_settings.t
+  (** Read the frozen inputs; drivers never reread current configuration.
+      key(reference s e scope id) agrees with Workspace_key.of_identifier id. *)
   type cleanup = { request_id : Request_id.t; workspace : reference }
 end
 
@@ -27,9 +31,17 @@ module type DRIVER = sig
   module Contract : PURE with type Issue.t = Issue.t
   type t
   type lease
-  val with_lease : t -> Contract.reference -> (lease -> ('a, error) result) ->
+  type origin = Created | Reused
+  val with_lease : t -> Contract.reference -> (origin -> lease -> 'a) ->
     ('a, error) result
-  (** Caller scope owns the bracket. Serialize under the ownership lock; atomically
+  (** Acquire/create exactly once. Only Created permits after_create or preparation
+      rollback. The callback may return its own result type; the driver does not
+      change that result or swallow cancellation/defects. *)
+  val with_existing : t -> Contract.reference -> (lease option -> 'a) ->
+    ('a, error) result
+  (** Lookup under the same ownership lock; absence is None and never creates a
+      directory. In a stable filesystem, repeated absent lookup leaves it unchanged.
+      Caller scope owns both brackets. Serialize under the ownership lock; atomically
       acquire the directory without following a symlink. Metadata binds original
       identifier/scope. Lock, mkdir, metadata and open are not one OS transaction.
       Release on normal, error and cancellation paths. Released handles reject use:
@@ -39,9 +51,11 @@ module type DRIVER = sig
   val hook : t -> lease -> Workspace_settings.hook -> (unit, error) result
   (** Trusted bash -lc script; bounded output/time; reference's immutable environment. *)
 
-  val remove : t -> Contract.cleanup -> (unit, error) result
-  (** Absent directory succeeds. Verify ownership/containment before removal.
-      Successful repetition is idempotent. Failed IO need not be idempotent. *)
+  val remove : t -> lease -> (unit, error) result
+  (** Delete only through the lease that ran before_remove; do not unlock/reacquire.
+      Revalidate identity/containment. Successful removal makes subsequent existing
+      lookup absent. Stale leases fail without touching a replacement directory.
+      The lock file survives removal, preventing lock-inode ABA. *)
 
 end
 
@@ -55,6 +69,9 @@ module type S = sig
       propagates after cleanup. No launcher may use an escaped/released Path.t. *)
 
   val cleanup : t -> Contract.cleanup -> (unit, error) result
+  (** Non-creating lookup, before_remove and deletion share one lease. Repeated
+      cleanup is idempotent in a stable filesystem; a delayed stale command must
+      also be fenced by the owner before any effect, not merely at its reply. *)
 end
 
 module Make (Driver : DRIVER) :

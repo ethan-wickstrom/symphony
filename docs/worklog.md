@@ -40,10 +40,13 @@ Deliver the operator API, doctor/dry-run, module laws and a 1,000-session benchm
 
 ## Current focus
 
-Slice 1 is published as PR #1 on `ethan/ocaml-workflow`. Hosted Linux/macOS builds,
-models, CLI/source/format gates, seeded fuzzing and Elixir passed at `c7cc6ff`.
-The second review fixes pass locally, including a fresh 130,000-case campaign;
-the final head must pass hosted checks and merge before slice 2.
+Slice 1 merged as PR #1 at `f56a66c906925f050edd055d09226d29c8e2ed91`.
+Final head `b35370e` passed hosted Linux/macOS builds, models, CLI/source/format
+gates, seeded fuzzing and Elixir. Every review thread is resolved; the final
+Codex review found no major issues. Slice 2 starts on `ethan/ocaml-workspaces`.
+Checked keys are implemented and independently reviewed. Live directory ownership,
+hooks and workspace inspection remain pending. The Eio group-custody source patch
+is under host testing and is not yet installed into the application switch.
 
 ## Verified locally
 
@@ -85,9 +88,32 @@ opam build sandbox after bwrap failed, so this is no build-isolation claim.
 
 ## Next action
 
-Hosted CI and merge precede slice 2. Its scope is collision-resistant workspace
-keys, checked filesystem containment, scoped ownership/locks and hooks with
-independent filesystem/process models. No user decision is pending.
+Refine slice 2 signatures before implementation: created/reused acquisition,
+non-creating cleanup lookup, deletion under the acquired lease, and observed
+process exit. Preserve Workspace/Agent/Transport path and reference equalities.
+Keys, ownership and hooks use independent filesystem/process models.
+
+Installed Eio immediately reaps process leaders. A raw group signal after an
+exit-status check races with identifier reuse; it cannot implement the promised
+safe group lifetime. Evaluate a minimal scoped Eio group capability that observes
+exit without reaping until group cleanup. No user decision is pending.
+
+## Slice 2 evidence
+
+- Key construction follows its interface and independent byte-list policy model.
+  Thirteen separately generated Python SHA-256 whole-output vectors match.
+- The combined check passes: 77 tests, 21,500 model/law cases, 19 CLI scenarios
+  normally/optimized, 102 paired source files, 34 source and 16 corruption controls.
+- Crowbar seed `20260930`: 14 × 10,000 = 140,000 invocations pass, including
+  exact changed/unchanged key length boundaries. Formatting and locked install pass.
+- Refined 56 component/support sketches plus assembly witness type-check on 5.5.
+  Temporary copies normalize pre-existing blueprint doc attachment; live source
+  interfaces pass the normal fatal-warning/format gate without that normalization.
+- The old process API's early-leader-exit/remaining-descendant failure was reproduced
+  on macOS before patching. A zombie-only group exposes a Darwin EPERM edge case;
+  replacement behavior and Linux portability remain under verification.
+
+These are key and interface results, not workspace containment or hook conformance.
 
 ## Steering and superseded instructions
 

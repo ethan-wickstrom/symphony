@@ -1,7 +1,7 @@
 # Testing design
 
-Status: proposed design, not test results. No OCaml implementation, model agreement,
-fuzz campaign, simulation run, benchmark, or static artifact has passed yet.
+Status: test plans for all slices. Slice 1 evidence is recorded in
+[the worklog](../worklog.md); later slice plans are not passing results.
 The accepted policies are [P01–P08 and D01–D13](../decisions.md).
 The requirement baseline is [SPEC.md](../../SPEC.md), Sections 17 and 18;
 the protocol target is [Codex 0.159.2](../protocol-audit.md).

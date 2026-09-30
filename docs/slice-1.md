@@ -53,8 +53,8 @@ Local target: macOS arm64, OCaml 5.5.0, Dune 3.24.0, ocamlformat 0.28.1. Indepen
 review observed failing regressions before path/coercion/policy/diagnostic fixes.
 Core example/property tests, actual CLI/file IO, source gates, protocol snapshots,
 formatting and the seeded Crowbar campaign are recorded in the final worklog.
-Hosted Linux/macOS checks and seeded fuzzing passed at `c7cc6ff`; final review
-fixes require a fresh green head before merge.
+Hosted Linux/macOS checks and seeded fuzzing passed at final head `b35370e`.
+Every review thread is resolved; PR #1 merged at `f56a66c`.
 
 `just check` passes: 70 tests (48 examples, 22 properties; 16,500 generated
 cases), 19 actual CLI scenarios, 96 source/interface files, 34 source-gate controls,
