@@ -1,0 +1,10 @@
+{
+  "id": "local-example-id",
+  "identifier": "EXAMPLE-1",
+  "title": "Check workflow rendering",
+  "description": null,
+  "state": "Todo",
+  "labels": ["Symphony"],
+  "blocked_by": [],
+  "native_ref": null
+}

@@ -1,0 +1,20 @@
+build:
+    opam exec --switch . -- dune build @all
+
+test: build
+    opam exec --switch . -- dune runtest
+    python3 test/cli_check.py _build/default/bin/main.exe
+
+format:
+    opam exec --switch . -- dune fmt
+
+check-format:
+    opam exec --switch . -- dune build @fmt
+
+check: test check-format
+    opam exec --switch . -- dune exec tools/check_source.exe -- .
+    opam exec --switch . -- dune exec tools/check_source.exe -- --self-test
+    python3 tools/check_protocol.py .
+
+fuzz: build
+    opam exec --switch . -- dune exec fuzz/boundaries.exe -- --repeat 10000 --seed 20260930

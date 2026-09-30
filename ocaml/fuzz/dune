@@ -1,0 +1,4 @@
+(executable
+ (name boundaries)
+ (modules boundaries)
+ (libraries symphony_workflow crowbar))
