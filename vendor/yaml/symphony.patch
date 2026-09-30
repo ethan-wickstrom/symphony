@@ -1,0 +1,160 @@
+--- a/ffi/bindings/yaml_bindings.ml
++++ b/ffi/bindings/yaml_bindings.ml
+@@ -46,6 +46,9 @@
+   let parser_parse =
+     foreign "yaml_parser_parse"
+       C.(ptr T.Parser.t @-> ptr T.Event.t @-> returning int)
++
++  let event_delete =
++    foreign "yaml_event_delete" C.(ptr T.Event.t @-> returning void)
+ 
+   let emitter_init =
+     foreign "yaml_emitter_initialize" C.(ptr T.Emitter.t @-> returning int)
+--- a/types/bindings/yaml_bindings_types.ml
++++ b/types/bindings/yaml_bindings_types.ml
+@@ -344,7 +344,7 @@
+       let t : t typ = F.(structure "event_scalar_s")
+       let anchor = F.(field t "anchor" string_opt)
+       let tag = F.(field t "tag" string_opt)
+-      let value = F.(field t "value" string)
++      let value = F.(field t "value" (ptr char))
+       let length = F.(field t "length" size_t)
+       let plain_implicit = F.(field t "plain_implicit" int)
+       let quoted_implicit = F.(field t "quoted_implicit" int)
+--- a/types/bindings/yaml_bindings_types.mli
++++ b/types/bindings/yaml_bindings_types.mli
+@@ -199,7 +199,7 @@
+       val t : t typ
+       val anchor : (t, string option) field
+       val tag : (t, string option) field
+-      val value : (t, string) field
++      val value : (t, char Ctypes.ptr) field
+       val length : (t, Unsigned.size_t) field
+       val plain_implicit : (t, int) field
+       val quoted_implicit : (t, int) field
+--- a/lib/stream.ml
++++ b/lib/stream.ml
+@@ -79,14 +79,13 @@
+   let acc = [ hd ] in
+   List.map tag_directive_of_ffi acc
+ 
++exception Unsupported_version of int * int
++
+ let version_of_directive ~major ~minor =
+   match (major, minor) with
+   | 1, 1 -> `V1_1
+   | 1, 2 -> `V1_2
+-  | _ ->
+-      raise
+-        (Invalid_argument
+-           (Printf.sprintf "Unsupported Yaml version %d.%d" major minor))
++  | _ -> raise (Unsupported_version (major, minor))
+ 
+ let directive_of_version = function `V1_1 -> (1, 1) | `V1_2 -> (1, 2)
+ 
+@@ -167,7 +166,9 @@
+           let s = getf data Data.scalar in
+           let anchor = getf s Scalar.anchor in
+           let tag = getf s Scalar.tag in
+-          let value = getf s Scalar.value in
++          let value_ptr = getf s Scalar.value in
++          let length = getf s Scalar.length |> Unsigned.Size_t.to_int in
++          let value = string_from_ptr value_ptr ~length in
+           let plain_implicit = getf s Scalar.plain_implicit <> 0 in
+           let quoted_implicit = getf s Scalar.quoted_implicit <> 0 in
+           let style = getf s Scalar.style |> scalar_style_of_ffi in
+@@ -215,25 +216,45 @@
+   let patch = Ctypes.(!@patch) in
+   (major, minor, patch)
+ 
++type parser_state = Open | Closed
++
+ type parser = {
+   p : T.Parser.t Ctypes.structure Ctypes.ptr;
+   event : T.Event.t Ctypes.structure Ctypes.ptr;
+   buf : char Ctypes_static.carray;
++  mutable state : parser_state;
+ }
++
++(* OCaml capabilities are not linear; the hidden state makes disposal idempotent. *)
++let close parser =
++  match parser.state with
++  | Closed -> ()
++  | Open ->
++      parser.state <- Closed;
++      B.parser_delete parser.p
+ 
+ let parser str =
+   let p = Ctypes.(allocate_n T.Parser.t ~count:1) in
+   let event = Ctypes.(allocate_n T.Event.t ~count:1) in
++  let buf = Ctypes.CArray.of_string str in
+   let r = B.parser_init p in
+-  let buf = Ctypes.CArray.of_string str in
+   let buf_ptr = Ctypes.CArray.start buf in
+   let len = String.length str |> Unsigned.Size_t.of_int in
+   B.parser_set_input_string p buf_ptr len;
+   match r with
+-  | 1 -> Ok { buf; p; event }
++  | 1 ->
++      let parser = { buf; p; event; state = Open } in
++      Gc.finalise close parser;
++      Ok parser
+   | n -> Error (`Msg ("error initialising parser: " ^ string_of_int n))
+ 
+-let do_parse { p; event } =
++let with_parser str fn =
++  match parser str with
++  | Error error -> Error error
++  | Ok parser ->
++      Ok (Fun.protect ~finally:(fun () -> close parser) (fun () -> fn parser))
++
++let parse_open { p; event; _ } =
+   let open Ctypes in
+   let r = B.parser_parse p event in
+   let describe_problem () =
+@@ -249,7 +270,15 @@
+         ^ Unsigned.Size_t.to_string po
+   in
+   match r with
+-  | 1 -> Event.of_ffi !@event |> Result.ok
++  | 1 ->
++      Fun.protect
++        ~finally:(fun () -> B.event_delete event)
++        (fun () ->
++          try Event.of_ffi !@event |> Result.ok
++          with Unsupported_version (major, minor) ->
++            Error
++              (`Msg
++                (Printf.sprintf "unsupported YAML version %d.%d" major minor)))
+   | n ->
+       Error
+         (`Msg
+@@ -257,6 +286,11 @@
+           ^ describe_problem ()
+           ^ " returned: "
+           ^ string_of_int n))
++
++let do_parse parser =
++  match parser.state with
++  | Open -> parse_open parser
++  | Closed -> Error (`Msg "YAML parser is closed")
+ 
+ type emitter = {
+   e : T.Emitter.t Ctypes.structure Ctypes.ptr;
+--- a/lib/yaml.mli
++++ b/lib/yaml.mli
+@@ -262,6 +262,14 @@
+   val parser : string -> (parser, [> `Msg of string ]) result
+   (** [parser ()] will allocate a fresh parser state. *)
+ 
++  val close : parser -> unit
++  (** Release native parser state. Idempotent; subsequent [do_parse] returns Error.
++      Unscoped legacy parsers also have a finalizer; prefer [with_parser]. *)
++
++  val with_parser : string -> (parser -> 'a) -> 'a res
++  (** Scope native parser resources around a callback, including callback exceptions.
++      Initialization failures return Error; callback exceptions propagate after close. *)
++
+   val do_parse : parser -> (Event.t * Event.pos) res
+   (** [do_parse parser] will generate the next parsing event from an initialised
+       parser. *)
