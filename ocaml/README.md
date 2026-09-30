@@ -1,0 +1,57 @@
+# Symphony in OCaml
+
+Slice 1 implements checked workflow loading, configuration, strict prompt rendering
+and last-good reload. `doctor` and `dry-run` work locally. Scheduling and agent launch
+arrive in later slices; this executable does not dispatch issues yet.
+
+## Build
+
+Install opam, a C compiler, pkg-config and GMP development files. From this directory:
+
+```sh
+opam switch create . ocaml-base-compiler.5.5.0 --no-install --yes
+opam pin add yaml.3.2.0 ../vendor/yaml --no-action --yes
+opam pin add crowbar.0.2.2 ../vendor/crowbar --no-action --yes
+opam install . --deps-only --locked --with-test --with-dev-setup --yes
+opam exec --switch . -- dune build @all
+```
+
+Both pins are mandatory: YAML releases native parser/events and preserves embedded
+NUL bytes; Crowbar fixes a random-input refill hang in the development fuzzer.
+[YAML provenance](../vendor/yaml/PATCHES.md),
+[Crowbar provenance](../vendor/crowbar/PATCHES.md). The lock records exact
+transitive versions and excludes machine-specific local URLs. Pin these sources
+before installing. macOS builds a native binary; fully static Linux musl
+artifact verification remains a release gate.
+
+## Inspect a workflow
+
+For the bundled offline examples, use a fixture credential:
+
+```sh
+LINEAR_API_KEY=fixture _build/default/bin/main.exe doctor examples/WORKFLOW.md
+LINEAR_API_KEY=fixture _build/default/bin/main.exe dry-run examples/WORKFLOW.md --issue examples/issue.json
+```
+
+For a real configuration, supply the Linear credential through the explicit
+`$LINEAR_API_KEY` reference and set the project slug/state lists in the workflow.
+`dry-run` reads normalized issue JSON from a local file; `--attempt 2` renders a
+retry. Fixtures require an explicit `dispatchable` boolean. Nullable `assignee_id`
+is preserved for templates; unusable optional metadata becomes null.
+Relative workspace paths anchor to the selected workflow directory.
+The command and hook strings remain verbatim trusted configuration.
+
+## Check
+
+`just check` runs builds, examples/model properties, CLI integration, formatting,
+source gates and protocol snapshot checks. `just fuzz` runs the seeded Crowbar
+campaign. Without `just`, use the commands in [justfile](justfile).
+
+The source gate parses OCaml ASTs, checks interface pairs and rejects prohibited
+APIs/object syntax. It is not a proof of exception-freedom or resource safety.
+Third-party dependencies are outside its scope. All enabled compiler warnings are
+fatal; warning 42 alone is disabled because it asks for pre-4.01 compatibility.
+
+The [design](../docs/design/README.md), [decisions](../docs/decisions.md),
+[validation](../docs/slice-1.md) and [conformance map](../CONFORMANCE.md) distinguish
+working behavior from future release requirements.

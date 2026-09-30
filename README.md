@@ -34,6 +34,12 @@ help with the setup:
 > Set up Symphony for my repository based on
 > https://github.com/openai/symphony/blob/main/elixir/README.md
 
+### OCaml implementation
+
+[ocaml/README.md](ocaml/README.md) covers the OCaml 5 build and offline
+`doctor`/`dry-run` commands. Workflow loading, configuration and strict templates
+are implemented; issue dispatch and agent execution are planned in later slices.
+
 ---
 
 ## License

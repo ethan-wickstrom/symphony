@@ -49,6 +49,15 @@ defmodule Mix.Tasks.PrBody.CheckTest do
   - [x] Ran targeted checks.
   """
 
+  @badge_begin "<!-- devin-review-badge-begin -->"
+  @badge_end "<!-- devin-review-badge-end -->"
+
+  @review_badge """
+  #{@badge_begin}
+  [Review complete](https://example.com/review)
+  #{@badge_end}
+  """
+
   setup do
     Mix.Task.reenable("pr_body.check")
     :ok
@@ -313,6 +322,47 @@ defmodule Mix.Tasks.PrBody.CheckTest do
         end)
 
       assert output =~ "PR body format OK"
+    end)
+  end
+
+  test "passes with the Devin review badge" do
+    in_temp_repo(fn ->
+      write_template!(@template)
+      File.write!("body.md", @valid_body <> @review_badge)
+
+      output = capture_io(fn -> Check.run(["lint", "--file", "body.md"]) end)
+
+      assert output =~ "PR body format OK"
+    end)
+  end
+
+  test "rejects placeholders and invalid badge regions" do
+    invalid_badges = [
+      String.replace(@review_badge, "[Review complete]", "<!-- Summary bullet -->\n[Review complete]"),
+      String.replace(@review_badge, "devin-review-badge-begin", "devin-review-badge-begin-extra"),
+      @badge_begin,
+      @badge_end,
+      @badge_end <> "\n" <> @badge_begin,
+      @review_badge <> @review_badge,
+      @badge_begin <> @review_badge,
+      @review_badge <> @badge_end
+    ]
+
+    in_temp_repo(fn ->
+      write_template!(@template)
+
+      Enum.each(invalid_badges, fn badge ->
+        File.write!("body.md", @valid_body <> badge)
+
+        error_output =
+          capture_io(:stderr, fn ->
+            assert_raise Mix.Error, ~r/PR body format invalid/, fn ->
+              Check.run(["lint", "--file", "body.md"])
+            end
+          end)
+
+        assert error_output =~ "PR description still contains template placeholder comments"
+      end)
     end)
   end
 

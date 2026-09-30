@@ -1,0 +1,17 @@
+(test
+ (name slice_one)
+ (modules
+  slice_one
+  config_model
+  config_test
+  workflow_parser_test
+  template_test
+  domain_test
+  registry_test)
+ (libraries
+  symphony_workflow
+  symphony_io
+  alcotest
+  qcheck-core
+  qcheck-core.runner
+  eio_main))

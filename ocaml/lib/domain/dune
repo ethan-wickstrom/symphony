@@ -1,0 +1,4 @@
+(library
+ (name symphony_domain)
+ (wrapped false)
+ (libraries yojson zarith ptime uucp))

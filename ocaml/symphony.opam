@@ -1,0 +1,33 @@
+opam-version: "2.0"
+name: "symphony"
+version: "0.1.0"
+synopsis: "A reference Symphony implementation with checked boundaries"
+maintainer: "Ethan Wickstrom"
+authors: ["Ethan Wickstrom"]
+license: "Apache-2.0"
+homepage: "https://github.com/openai/symphony"
+bug-reports: "https://github.com/openai/symphony/issues"
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+depends: [
+  "ocaml" {= "5.5.0"}
+  "dune" {= "3.24.0"}
+  "eio" {= "1.6"}
+  "eio_main" {= "1.6"}
+  "yaml" {= "3.2.0"}
+  "jingoo" {= "1.5.4"}
+  "re" {= "1.14.0"}
+  "uri" {= "4.4.0"}
+  "angstrom" {= "0.16.1"}
+  "yojson" {= "3.0.0"}
+  "ptime" {= "1.2.0"}
+  "zarith" {= "1.14"}
+  "uucp" {= "17.0.0"}
+  "cmdliner" {= "2.1.1"}
+  "alcotest" {with-test}
+  "qcheck-core" {with-test}
+  "crowbar" {with-test}
+  "ocamlformat" {= "0.28.1" & with-dev-setup}
+]

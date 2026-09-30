@@ -1,0 +1,4 @@
+(library
+ (name symphony_workflow)
+ (wrapped false)
+ (libraries symphony_domain yaml jingoo re uri angstrom eio))

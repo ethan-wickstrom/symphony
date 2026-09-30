@@ -1,0 +1,10 @@
+{
+  "version": "codex-cli 0.159.2",
+  "generator": "codex app-server generate-json-schema --out <dir>",
+  "profile": "stable (no --experimental)",
+  "sha256": {
+    "ThreadStartParams.json": "e9c6d3cc18d049bfbc0249add3808fb8e5a27e1a0b5a423767aafbc3859a9428",
+    "TurnStartParams.json": "2dfcf68705896fadc344ccfeb2e9fe5a6bcbbb8b9a90cf449ce232b636daf05a",
+    "policies.json": "2f45d7b9bf7cecafac94ebc88d83951c25aef2ae58e64ee1b26ee647dacfd0f9"
+  }
+}

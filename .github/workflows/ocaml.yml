@@ -1,0 +1,46 @@
+name: OCaml boundaries
+
+on:
+  push:
+    paths: ["ocaml/**", "vendor/**", "docs/**", "CONFORMANCE.md", ".github/workflows/ocaml.yml"]
+  pull_request:
+    paths: ["ocaml/**", "vendor/**", "docs/**", "CONFORMANCE.md", ".github/workflows/ocaml.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  boundaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ocaml
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.5.0"
+          opam-pin: false
+      - name: Pin audited boundaries and install locked dependencies
+        run: |
+          opam pin add yaml.3.2.0 ../vendor/yaml --no-action --yes
+          opam pin add crowbar.0.2.2 ../vendor/crowbar --no-action --yes
+          opam install . --deps-only --locked --with-test --with-dev-setup --yes
+      - run: opam exec -- dune build @all @fmt
+      - run: opam exec -- dune runtest
+      - run: opam exec -- dune exec tools/check_source.exe -- .
+      - run: opam exec -- dune exec tools/check_source.exe -- --self-test
+      - run: |
+          python3 tools/check_protocol.py .
+          PYTHONOPTIMIZE=1 python3 tools/check_protocol.py .
+      - run: |
+          python3 test/cli_check.py _build/default/bin/main.exe
+          PYTHONOPTIMIZE=1 python3 test/cli_check.py _build/default/bin/main.exe
+      - run: python3 test/verification_check.py .
+      - name: Seeded parser campaign
+        run: opam exec -- dune exec fuzz/boundaries.exe -- --repeat 10000 --seed 20260930
