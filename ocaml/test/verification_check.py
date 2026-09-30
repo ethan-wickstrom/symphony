@@ -50,12 +50,38 @@ def run(root: Path) -> None:
         schema = changed_hash / SNAPSHOT / "ThreadStartParams.json"
         schema.write_bytes(schema.read_bytes() + b"\n")
 
+        missing_hash = snapshot("missing-hash")
+        manifest = missing_hash / SNAPSHOT / "manifest.json"
+        hashes = json.loads(manifest.read_text())
+        del hashes["sha256"]["ThreadStartParams.json"]
+        manifest.write_text(json.dumps(hashes))
+        schema = manifest.with_name("ThreadStartParams.json")
+        schema.write_bytes(schema.read_bytes() + b"\n")
+
+        extra_hash = snapshot("extra-hash")
+        manifest = extra_hash / SNAPSHOT / "manifest.json"
+        extra = manifest.with_name("unexpected.json")
+        extra.write_text("{}")
+        hashes = json.loads(manifest.read_text())
+        hashes["sha256"][extra.name] = hashlib.sha256(extra.read_bytes()).hexdigest()
+        manifest.write_text(json.dumps(hashes))
+
         controls = [
             ("wrong CLI", root / "test" / "cli_check.py", wrong, "workflow-relative root"),
             ("credential leak", root / "test" / "cli_check.py", leak, "fixture credential leaked"),
             ("schema mismatch", root / "tools" / "check_protocol.py", semantic, "policies.json differs"),
             ("hash mismatch", root / "tools" / "check_protocol.py", changed_hash, "hash mismatch"),
+            ("missing digest", root / "tools" / "check_protocol.py", missing_hash, "sha256 keys"),
+            ("extra digest", root / "tools" / "check_protocol.py", extra_hash, "sha256 keys"),
         ]
+        for name, value in [("non-hex digest", "z" * 64), ("non-text digest", None)]:
+            invalid = snapshot(name)
+            manifest = invalid / SNAPSHOT / "manifest.json"
+            hashes = json.loads(manifest.read_text())
+            hashes["sha256"]["policies.json"] = value
+            manifest.write_text(json.dumps(hashes))
+            controls.append((name, root / "tools" / "check_protocol.py", invalid, "invalid SHA-256"))
+        failures = []
         for mode in ["0", "1"]:
             for name, script, fixture, diagnostic in controls:
                 result = subprocess.run(
@@ -64,11 +90,13 @@ def run(root: Path) -> None:
                     text=True, capture_output=True, timeout=30,
                 )
                 if result.returncode == 0:
-                    raise SystemExit(f"Verification control: {name} passed with PYTHONOPTIMIZE={mode}")
-                if diagnostic not in result.stderr:
-                    raise SystemExit(f"Verification control: {name} failed for the wrong reason with PYTHONOPTIMIZE={mode}")
+                    failures.append(f"{name} passed with PYTHONOPTIMIZE={mode}")
+                elif diagnostic not in result.stderr:
+                    failures.append(f"{name} failed for the wrong reason with PYTHONOPTIMIZE={mode}")
+        if failures:
+            raise SystemExit("Verification control: " + "; ".join(failures))
 
-    print("Verification controls: 8 corrupted fixtures rejected")
+    print(f"Verification controls: {len(controls) * 2} corrupted fixtures rejected")
 
 
 if __name__ == "__main__":
