@@ -17,6 +17,11 @@ defmodule Mix.Tasks.PrBody.Check do
     "../.github/pull_request_template.md"
   ]
 
+  @review_badge_markers [
+    "<!-- devin-review-badge-begin -->",
+    "<!-- devin-review-badge-end -->"
+  ]
+
   @impl Mix.Task
   def run(args) do
     {opts, _argv, invalid} = OptionParser.parse(args, strict: [file: :string, help: :boolean], aliases: [h: :help])
@@ -121,6 +126,9 @@ defmodule Mix.Tasks.PrBody.Check do
   end
 
   defp check_no_placeholders(errors, body) do
+    # Review automation adds these exact markers; other comments remain invalid.
+    body = String.replace(body, @review_badge_markers, "")
+
     if String.contains?(body, "<!--") do
       errors ++ ["PR description still contains template placeholder comments (<!-- ... -->)."]
     else
