@@ -6,7 +6,8 @@ let file =
   let base = checked (Absolute_path.parse "/tmp/symphony-template-tests") in
   checked (Workflow_path.resolve ~base "WORKFLOW.md")
 
-let issue ?(title = "Repair the parser") ?description ?native_ref () =
+let issue ?(title = "Repair the parser") ?description ?assignee_id ?native_ref
+    () =
   checked
     (Issue.parse
        {
@@ -18,6 +19,7 @@ let issue ?(title = "Repair the parser") ?description ?native_ref () =
          state = "Todo";
          branch_name = None;
          url = None;
+         assignee_id;
          labels = [ "bug"; "team" ];
          blocked_by = [];
          created_at = None;
@@ -224,8 +226,10 @@ let normalized_fields () =
       "state";
       "branch_name";
       "url";
+      "assignee_id";
       "labels";
       "blocked_by";
+      "dispatchable";
       "created_at";
       "updated_at";
       "native_ref";
@@ -236,9 +240,29 @@ let normalized_fields () =
       (List.map (fun field -> "{{ issue." ^ field ^ " }}") fields)
   in
   check source
-    "issue-1|SYM-1|Repair the parser||2|Todo|||[\"bug\",\"team\"]|[]|||";
+    "issue-1|SYM-1|Repair the parser||2|Todo||||[\"bug\",\"team\"]|[]|true|||";
   check "{{ {'a':[1,null,true], 'b':'text'} }}"
     "{\"a\":[1,null,true],\"b\":\"text\"}"
+
+let fixture_assignee value expected =
+  let source =
+    Printf.sprintf
+      {|{"id":"fixture-id","identifier":"SYM-ASSIGNEE","title":"Repair assignment rendering","state":"Todo","dispatchable":true,"assignee_id":%s}|}
+      value
+  in
+  let task = checked (Prompt_fixture.parse source) in
+  Alcotest.check Alcotest.string "normalized fixture assignee" expected
+    (rendered task "{{ issue.assignee_id }}")
+
+let nullable_assignee () =
+  List.iter
+    (fun value -> fixture_assignee value "")
+    [ "null"; "true"; "17"; "[]"; "{}"; {|"bad\u0000id"|} ];
+  List.iter
+    (fun assignee_id ->
+      Alcotest.check Alcotest.string "unusable assignee becomes known null" ""
+        (rendered (issue ~assignee_id ()) "{{ issue.assignee_id }}"))
+    [ "bad\000id"; "bad\255" ]
 
 let budgets () =
   parse_error (String.make ((256 * 1024) + 1) 'x');
@@ -552,6 +576,10 @@ let tests =
       private_marker;
     Alcotest.test_case "all normalized fields and JSON collections" `Quick
       normalized_fields;
+    Alcotest.test_case "assigned fixture exposes assignee metadata" `Quick
+      (fun () -> fixture_assignee {|"opaque-assignee"|} "opaque-assignee");
+    Alcotest.test_case "unassigned fixture exposes known null" `Quick
+      nullable_assignee;
     Alcotest.test_case "source depth fuel output bounds" `Quick budgets;
     Alcotest.test_case "empty template remains empty" `Quick (fun () ->
         check "" "");

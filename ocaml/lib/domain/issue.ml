@@ -15,6 +15,7 @@ type input = {
   state : string;
   branch_name : string option;
   url : string option;
+  assignee_id : string option;
   labels : string list;
   blocked_by : blocker list;
   created_at : string option;
@@ -32,6 +33,7 @@ type t = {
   state : string;
   branch_name : string option;
   url : string option;
+  assignee_id : string option;
   labels : string list;
   blocked_by : blocker list;
   created_at : Utc.t option;
@@ -83,6 +85,7 @@ let render (t : t) =
         binding "state" (str t.state);
         binding "branch_name" (optional str t.branch_name);
         binding "url" (optional str t.url);
+        binding "assignee_id" (optional str t.assignee_id);
         binding "labels" (make (Json.Array labels));
         binding "blocked_by" (make (Json.Array blockers));
         binding "created_at"
@@ -148,6 +151,7 @@ let parse (i : input) =
       priority;
       branch_name = optional i.branch_name;
       url = optional i.url;
+      assignee_id = optional i.assignee_id;
       labels;
       blocked_by;
       created_at = timestamp i.created_at;

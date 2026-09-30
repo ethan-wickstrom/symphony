@@ -36,7 +36,9 @@ LINEAR_API_KEY=fixture _build/default/bin/main.exe dry-run examples/WORKFLOW.md 
 For a real configuration, supply the Linear credential through the explicit
 `$LINEAR_API_KEY` reference and set the project slug/state lists in the workflow.
 `dry-run` reads normalized issue JSON from a local file; `--attempt 2` renders a
-retry. Relative workspace paths anchor to the selected workflow directory.
+retry. Fixtures require an explicit `dispatchable` boolean. Nullable `assignee_id`
+is preserved for templates; unusable optional metadata becomes null.
+Relative workspace paths anchor to the selected workflow directory.
 The command and hook strings remain verbatim trusted configuration.
 
 ## Check

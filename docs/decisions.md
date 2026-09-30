@@ -385,7 +385,12 @@ slice 1/3 models before implementation; no undocumented magic constants.
   before expensive conversion; token/runtime monoid laws do not saturate at machine size.
 - `doctor` validates offline; `dry-run` renders a checked local issue fixture. These
   commands expose useful slice 1 behavior without pretending to run a live service.
+- Offline fixtures require explicit boolean `dispatchable`; the fixture parser
+  cannot infer tracker eligibility. The normalized projection includes all §4.1.1
+  fields, including nullable `assignee_id`, with no tracker-specific accessor.
 
 Native dependency pins are part of the source build, not optional local fixes. Their
 URLs are excluded from the portable lock; setup and CI pin checked-in sources before
-locked installation. No global opam switch or existing Elixir code is modified.
+locked installation. No global opam switch is modified. The Elixir PR-description
+validator accepts the review bot's complete badge region; all other HTML comments
+and incomplete/repeated markers remain invalid.

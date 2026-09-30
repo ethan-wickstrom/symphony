@@ -55,7 +55,7 @@ let framed config prompt = "---\n" ^ config ^ "---\n" ^ prompt
 let initial_source = framed tracker_yaml "Do the work."
 
 let fixture_json =
-  {|{"id":"fixture-id","identifier":"SYMPHONY-1","title":"Fixture title","state":"Todo","labels":[" READY ","ready"],"native_ref":{"opaque":true}}|}
+  {|{"id":"fixture-id","identifier":"SYMPHONY-1","title":"Fixture title","state":"Todo","dispatchable":true,"assignee_id":"fixture-assignee","labels":[" READY ","ready"],"native_ref":{"opaque":true}}|}
 
 let workflow_error = function
   | Workflow_loader.Missing_file error | Workflow_loader.Read_error error ->
@@ -202,6 +202,8 @@ let template_input =
     [
       "";
       "{{ issue.title }}";
+      "{{ issue.assignee_id }}";
+      "{{ issue.dispatchable }}";
       "{{ attempt }}";
       "{{ issue.description | default('none') }}";
       "{% if issue.priority %}{{ issue.priority }}{% else %}none{% endif %}";
@@ -250,7 +252,7 @@ let native_fixture =
     (fun text decimal flag ->
       let source =
         Printf.sprintf
-          "{\"id\":\"native-fixture\",\"identifier\":\"NATIVE-1\",\"title\":%s,\"state\":\"Todo\",\"native_ref\":{\"n\":%s,\"nil\":null,\"flag\":%b,\"items\":[%s,%s,{\"nested\":[null,%b]}]}}"
+          "{\"id\":\"native-fixture\",\"identifier\":\"NATIVE-1\",\"title\":%s,\"state\":\"Todo\",\"dispatchable\":true,\"assignee_id\":null,\"native_ref\":{\"n\":%s,\"nil\":null,\"flag\":%b,\"items\":[%s,%s,{\"nested\":[null,%b]}]}}"
           (quoted ("Title " ^ text))
           decimal flag (quoted text) decimal flag
       in
@@ -443,6 +445,34 @@ let yaml_boundary source =
     (Config_value.parse source)
 
 let fixture_laws parsed =
+  let fields =
+    match Json.view (Issue.to_json parsed) with
+    | Json.Object fields -> fields
+    | Json.Null | Json.Bool _ | Json.Number _ | Json.String _ | Json.Array _ ->
+        Crowbar.fail "normalized issue must be an object"
+  in
+  let expected_fields =
+    [
+      "id";
+      "identifier";
+      "title";
+      "description";
+      "priority";
+      "state";
+      "branch_name";
+      "url";
+      "assignee_id";
+      "labels";
+      "blocked_by";
+      "dispatchable";
+      "created_at";
+      "updated_at";
+      "native_ref";
+    ]
+  in
+  Crowbar.check_eq
+    (List.sort String.compare expected_fields)
+    (List.sort String.compare (List.map fst fields));
   let encoded = Json.encode (Issue.to_json parsed) in
   let again = checked (Prompt_fixture.parse encoded) in
   Crowbar.check_eq ~pp:Crowbar.pp_string encoded
@@ -476,6 +506,7 @@ let issue_boundary title metadata =
       priority = Some metadata;
       branch_name = Some metadata;
       url = Some metadata;
+      assignee_id = Some metadata;
       labels = [ title; metadata; title ];
       blocked_by = [];
       created_at = Some metadata;
@@ -484,7 +515,22 @@ let issue_boundary title metadata =
       native_ref = None;
     }
   in
-  iter_ok fixture_laws (Issue.parse input)
+  iter_ok
+    (fun issue ->
+      fixture_laws issue;
+      let expected =
+        if Text.valid_utf8 metadata && not (String.contains metadata '\000')
+        then Json.String metadata
+        else Json.Null
+      in
+      match Json.view (Issue.to_json issue) with
+      | Json.Object fields -> (
+          match List.assoc_opt "assignee_id" fields with
+          | Some value -> Crowbar.check_eq expected (Json.view value)
+          | None -> Crowbar.fail "normalized assignee missing")
+      | Json.Null | Json.Bool _ | Json.Number _ | Json.String _ | Json.Array _
+        -> Crowbar.fail "normalized issue must be an object")
+    (Issue.parse input)
 
 let template_result = function
   | Ok text -> ("ok", text)
@@ -567,6 +613,7 @@ let template_boundary source title attempt =
           priority = Some "1";
           branch_name = None;
           url = None;
+          assignee_id = None;
           labels = [ "ready"; title ];
           blocked_by = [];
           created_at = None;
@@ -725,6 +772,7 @@ let () =
           priority = None;
           branch_name = None;
           url = None;
+          assignee_id = None;
           labels = [];
           blocked_by = [];
           created_at = None;

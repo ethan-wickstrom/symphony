@@ -47,8 +47,9 @@ Seeded whole-service Eio simulation, orchestrator model agreement, static releas
 1,000-session benchmarks, HTTP API and portable harness remain pending their slices.
 Crowbar random campaigns are distinct from instrumented AFL coverage.
 
-Local slice 1: 66 example/property tests, 15,500 model/law cases, 14 CLI scenarios,
+Local slice 1: 70 example/property tests, 16,500 model/law cases, 19 CLI scenarios,
 34 source-gate controls, and 130,000 Crowbar invocations at seed `20260930` pass.
-Build, formatting, interface pairing and protocol snapshot checks pass.
+Build, formatting, interface pairing and protocol snapshot checks pass, normally
+and optimized, with 16 corrupted-fixture controls.
 
 Real integration results will be reported independently as passed, failed, or skipped.

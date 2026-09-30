@@ -53,11 +53,13 @@ Local target: macOS arm64, OCaml 5.5.0, Dune 3.24.0, ocamlformat 0.28.1. Indepen
 review observed failing regressions before path/coercion/policy/diagnostic fixes.
 Core example/property tests, actual CLI/file IO, source gates, protocol snapshots,
 formatting and the seeded Crowbar campaign are recorded in the final worklog.
-The GitHub workflow defines Linux/macOS checks; hosted runs have not been executed.
+Hosted Linux/macOS checks and seeded fuzzing passed at `c7cc6ff`; final review
+fixes require a fresh green head before merge.
 
-`just check` passes: 66 tests (45 examples, 21 properties; 15,500 generated
-cases), 14 actual CLI scenarios, 96 source/interface files, 34 source-gate controls,
-formatting and generated policy snapshot checks. Crowbar seed `20260930` passes
+`just check` passes: 70 tests (48 examples, 22 properties; 16,500 generated
+cases), 19 actual CLI scenarios, 96 source/interface files, 34 source-gate controls,
+formatting and generated policy snapshot checks. CLI/schema checks run normally
+and optimized; 16 corrupted-fixture controls verify rejection. Crowbar seed `20260930` passes
 13 groups × 10,000 invocations after all production fixes. Locked installation with both dependency pins
 reports no changes. The campaign's random generator required a reproduced
 [Crowbar fix](../vendor/crowbar/PATCHES.md); no parser exception is swallowed.
@@ -90,3 +92,8 @@ a raw-syntax guard against the repairs Uri otherwise permits. Errors name the
 provider key without printing endpoint/credential values. Tracker-kind errors
 also omit substituted values. Explicit CLI attempt errors name `--attempt` and
 the correction. Independent regressions verify these boundaries.
+
+The normalized issue projection exposes every §4.1.1 field, including nullable
+`assignee_id`. Offline fixtures require explicit boolean `dispatchable`, since
+eligibility cannot be inferred without a tracker. Invalid optional text becomes
+null; required text remains checked by the issue parser.

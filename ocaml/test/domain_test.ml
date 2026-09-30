@@ -66,15 +66,89 @@ let bounded_composition () =
         (Result.is_error (Json.of_view (Json.String outside))))
     [ ('x', 1); ('"', 2); ('\\', 2); ('\n', 2); ('\000', 6); ('\127', 6) ]
 
+let explicit_dispatchable () =
+  let base =
+    {|"id":"fixture-id","identifier":"SYM-1","title":"Checked fixture","state":"Todo"|}
+  in
+  List.iter
+    (fun suffix ->
+      let source = "{" ^ base ^ suffix ^ "}" in
+      Alcotest.(check bool)
+        "invalid eligibility cannot default to dispatchable" true
+        (Result.is_error (Prompt_fixture.parse source)))
+    [
+      "";
+      ",\"dispatchable\":null";
+      ",\"dispatchable\":1";
+      ",\"dispatchable\":\"true\"";
+      ",\"dispatchable\":[]";
+      ",\"dispatchable\":{}";
+    ];
+  List.iter
+    (fun (value, expected) ->
+      match
+        Prompt_fixture.parse ("{" ^ base ^ ",\"dispatchable\":" ^ value ^ "}")
+      with
+      | Error message -> Alcotest.fail message
+      | Ok issue ->
+          Alcotest.(check bool)
+            "explicit eligibility preserved" expected
+            (Issue.routing issue = Issue.Dispatchable))
+    [ ("true", true); ("false", false) ]
+
 let tests =
   [
     Alcotest.test_case "exact arithmetic and JSON boundaries" `Quick examples;
     Alcotest.test_case "JSON composition rejects before encoding" `Quick
       bounded_composition;
+    Alcotest.test_case "fixture requires explicit boolean eligibility" `Quick
+      explicit_dispatchable;
   ]
 
 let properties =
   [
+    QCheck2.Test.make
+      ~name:"normalized assignee agrees with nullable metadata model"
+      ~count:1000
+      QCheck2.Gen.(
+        option
+          (string_size ~gen:(map Char.chr (int_range 0 127)) (int_range 0 64)))
+      (fun assignee ->
+        let value =
+          match assignee with
+          | None -> `Null
+          | Some value -> `String value
+        in
+        let fixture =
+          Yojson.Safe.to_string
+            (`Assoc
+               [
+                 ("id", `String "model-id");
+                 ("identifier", `String "MODEL-1");
+                 ("title", `String "Model assignment");
+                 ("state", `String "Todo");
+                 ("dispatchable", `Bool true);
+                 ("assignee_id", value);
+               ])
+        in
+        let expected =
+          match assignee with
+          | Some text when not (String.contains text '\000') -> Json.String text
+          | Some _ | None -> Json.Null
+        in
+        match Prompt_fixture.parse fixture with
+        | Error _ -> false
+        | Ok issue -> (
+            match Json.view (Issue.to_json issue) with
+            | Json.Object fields -> (
+                match List.assoc_opt "assignee_id" fields with
+                | None -> false
+                | Some value -> Json.view value = expected)
+            | Json.Null
+            | Json.Bool _
+            | Json.Number _
+            | Json.String _
+            | Json.Array _ -> false));
     QCheck2.Test.make ~name:"JSON numeric equality agrees with rational model"
       ~count:1000
       QCheck2.Gen.(

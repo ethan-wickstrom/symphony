@@ -41,16 +41,16 @@ Deliver the operator API, doctor/dry-run, module laws and a 1,000-session benchm
 ## Current focus
 
 Slice 1 is published as PR #1 on `ethan/ocaml-workflow`. Hosted Linux/macOS builds,
-models, CLI/source/format gates and seeded fuzzing passed at `23a54be`. Hosted Elixir
-also passed. Review fixes and the bot-badge description-validator regression pass
-locally, including a fresh 130,000-case campaign; a fresh green head must merge.
+models, CLI/source/format gates, seeded fuzzing and Elixir passed at `c7cc6ff`.
+The second review fixes pass locally, including a fresh 130,000-case campaign;
+the final head must pass hosted checks and merge before slice 2.
 
 ## Verified locally
 
 - macOS arm64; OCaml 5.5.0, Dune 3.24.0, ocamlformat 0.28.1.
 - `just check` passed: build, fatal enabled warnings, formatting and all checks below.
-- 66 Alcotest cases: 45 examples and 21 properties, 15,500 generated model/law cases.
-- 14 CLI scenarios: workflow paths/default/anchoring, strict rendering/attempts,
+- 70 Alcotest cases: 48 examples and 22 properties, 16,500 generated model/law cases.
+- 19 CLI scenarios: workflow paths/default/anchoring, strict rendering/attempts,
   literal issue text, metadata, actionable errors, redaction and bounded file reads.
 - Generated policy snapshot/digest check passed.
 - Compiler-AST source gate checked 96 application source/interface files;
@@ -66,16 +66,21 @@ locally, including a fresh 130,000-case campaign; a fresh green head must merge.
 - ast-grep has no OCaml grammar; the compiler parses/type-checks OCaml source.
 - PR review reproduced Python optimization bypasses in both verification scripts
   and a delimiter-prefix parsing failure before fixes. Real CLI/schema checks now
-  run normally and optimized; eight broken fixtures verify the gates still reject.
+  run normally and optimized; 16 broken fixtures verify the gates still reject,
+  including missing/extra manifest entries and malformed digests.
   Signed radix strings remain strings under YAML 1.2 Core, with explicit cases.
-- The live PR badge validates after a narrow marker exception. The Elixir gauntlet
+- Assigned/unassigned metadata roundtrips and renders through the actual CLI.
+  All 15 normalized issue fields are covered; missing/malformed fixture eligibility
+  fails instead of inventing dispatchability. Both defects failed before correction.
+- The live PR badge validates only with one ordered complete marker pair; orphan,
+  reversed and repeated markers fail. The Elixir gauntlet
   passed with Elixir 1.19.5/OTP 28: 301 tests, six skipped, 100% coverage and no
   lint/type errors. An unchanged retry-timing test failed once, then passed on rerun.
 
 Sampled laws are evidence, not machine-checked proofs. Native YAML scope tests do
 not prove native leak freedom. AFL coverage, static linkage, live tracker/agent
 integration, simulation and benchmarks remain unverified. Hosted
-Linux/macOS checks now pass at `23a54be`; the Ubuntu setup action disabled its own
+Linux/macOS checks passed at `c7cc6ff`; the Ubuntu setup action disabled its own
 opam build sandbox after bwrap failed, so this is no build-isolation claim.
 
 ## Next action

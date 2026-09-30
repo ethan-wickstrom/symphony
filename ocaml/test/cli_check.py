@@ -39,11 +39,13 @@ def run(binary: Path) -> None:
             require(credential not in result.stdout + result.stderr, "fixture credential leaked")
             return result
 
-        fixture.write_text(json.dumps({
+        issue = {
             "id": "opaque-local-id", "identifier": "TEST-1",
             "title": "{{ missing }}", "state": "Todo", "labels": ["A"],
+            "assignee_id": "opaque-assignee", "dispatchable": True,
             "blocked_by": [{"id": "blocker-id", "identifier": "TEST-0", "state": "Done"}],
-        }))
+        }
+        fixture.write_text(json.dumps(issue))
         write("{{ issue.identifier }} {{ issue.title }} {{ issue.labels }} "
               "{{ issue.blocked_by[0].identifier }} {% if attempt %}retry {{ attempt }}{% endif %}")
         valid = invoke("doctor", str(workflow))
@@ -61,6 +63,35 @@ def run(binary: Path) -> None:
         require("retry" not in prompt.stdout, "dry-run invented an initial retry attempt")
         retry = invoke("dry-run", str(workflow), "--issue", str(fixture), "--attempt", "2")
         require(retry.returncode == 0 and "retry 2" in retry.stdout, "dry-run lost retry attempt")
+
+        write("{{ issue.assignee_id }}|{{ issue.dispatchable }}")
+        assigned = invoke("dry-run", str(workflow), "--issue", str(fixture))
+        require(assigned.returncode == 0 and assigned.stdout.strip() == "opaque-assignee|true",
+                "dry-run lost assignee or explicit eligibility")
+        issue["assignee_id"] = None
+        fixture.write_text(json.dumps(issue))
+        unassigned = invoke("dry-run", str(workflow), "--issue", str(fixture))
+        require(unassigned.returncode == 0 and unassigned.stdout.strip() == "|true",
+                "dry-run treated null assignee as missing")
+        issue["dispatchable"] = False
+        fixture.write_text(json.dumps(issue))
+        ineligible = invoke("dry-run", str(workflow), "--issue", str(fixture))
+        require(ineligible.returncode == 0 and ineligible.stdout.strip() == "|false",
+                "dry-run discarded false eligibility")
+        del issue["dispatchable"]
+        fixture.write_text(json.dumps(issue))
+        absent_eligibility = invoke("dry-run", str(workflow), "--issue", str(fixture))
+        require(absent_eligibility.returncode != 0 and not absent_eligibility.stdout
+                and "dispatchable" in absent_eligibility.stderr,
+                "dry-run accepted missing eligibility")
+        issue["dispatchable"] = "true"
+        fixture.write_text(json.dumps(issue))
+        bad_eligibility = invoke("dry-run", str(workflow), "--issue", str(fixture))
+        require(bad_eligibility.returncode != 0 and not bad_eligibility.stdout
+                and "dispatchable" in bad_eligibility.stderr,
+                "dry-run accepted malformed eligibility")
+        issue["dispatchable"] = True
+        fixture.write_text(json.dumps(issue))
 
         bad_attempt = invoke("dry-run", str(workflow), "--issue", str(fixture), "--attempt", "0")
         require(bad_attempt.returncode != 0 and not bad_attempt.stdout, "dry-run accepted attempt zero")
@@ -99,7 +130,7 @@ def run(binary: Path) -> None:
         require(oversized.returncode != 0 and "limit" in oversized.stderr,
                 "doctor accepted oversized workflow or omitted limit diagnostic")
 
-    print("CLI integration: 14 scenarios passed")
+    print("CLI integration: 19 scenarios passed")
 
 
 if __name__ == "__main__":

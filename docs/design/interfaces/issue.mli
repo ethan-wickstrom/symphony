@@ -15,6 +15,7 @@ type input = {
   state : string;
   branch_name : string option;
   url : string option;
+  assignee_id : string option;
   labels : string list;
   blocked_by : blocker list;
   created_at : string option;
@@ -39,7 +40,9 @@ val priority : t -> int option
 val created_at : t -> Utc.t option
 val routing : t -> routing
 val to_json : t -> Json.t
-(** All §4.1.1 fields are present, including null/empty metadata. No credentials. *)
+(** All §4.1.1 fields are present, including null/empty metadata and assignee_id.
+    Valid optional strings are preserved; absent/unusable ones project to null.
+    No credentials. *)
 
 module type S = sig
   type nonrec t = t

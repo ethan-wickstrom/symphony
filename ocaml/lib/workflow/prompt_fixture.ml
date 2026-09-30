@@ -57,10 +57,18 @@ let parse text =
         | Json.Object _ -> [])
     | None -> []
   in
-  let dispatchable =
+  let* dispatchable =
     match List.assoc_opt "dispatchable" fields with
-    | Some j when Json.view j = Json.Bool false -> Issue.Unroutable
-    | Some _ | None -> Issue.Dispatchable
+    | Some j -> (
+        match Json.view j with
+        | Json.Bool true -> Ok Issue.Dispatchable
+        | Json.Bool false -> Ok Issue.Unroutable
+        | Json.Null
+        | Json.Number _
+        | Json.String _
+        | Json.Array _
+        | Json.Object _ -> Error "dispatchable must be an explicit boolean")
+    | None -> Error "missing issue field dispatchable; provide true or false"
   in
   let native_ref = List.assoc_opt "native_ref" fields in
   let blocker j =
@@ -111,6 +119,7 @@ let parse text =
       priority;
       branch_name = optional "branch_name";
       url = optional "url";
+      assignee_id = optional "assignee_id";
       labels;
       blocked_by;
       created_at = optional "created_at";
