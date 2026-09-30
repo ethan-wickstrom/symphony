@@ -25,6 +25,7 @@ depends: [
   "ptime" {= "1.2.0"}
   "zarith" {= "1.14"}
   "uucp" {= "17.0.0"}
+  "digestif" {= "1.3.1"}
   "cmdliner" {= "2.1.1"}
   "alcotest" {with-test}
   "qcheck-core" {with-test}

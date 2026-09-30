@@ -685,6 +685,32 @@ let workflow_boundary source next missing =
         (Config.resolve registry ~env ~document))
     (Workflow_document.parse ~file source)
 
+let workspace_keys text =
+  let allowed =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
+  in
+  let max_key_bytes = 255 in
+  let suffix_bytes = 33 in
+  iter_ok
+    (fun identifier ->
+      let raw = Issue_identifier.text identifier in
+      let unchanged = String.for_all (String.contains allowed) raw in
+      let size = String.length raw + if unchanged then 0 else suffix_bytes in
+      let expected = raw <> "." && raw <> ".." && size <= max_key_bytes in
+      let derived = Workspace_key.of_identifier identifier in
+      Crowbar.check_eq expected (Result.is_ok derived);
+      iter_ok
+        (fun key ->
+          let encoded = Workspace_key.text key in
+          Crowbar.check_eq size (String.length encoded);
+          Crowbar.check (String.for_all (String.contains allowed) encoded);
+          if unchanged then Crowbar.check_eq raw encoded;
+          let reparsed = checked (Issue_identifier.parse encoded) in
+          let replay = checked (Workspace_key.of_identifier reparsed) in
+          Crowbar.check_eq 0 (Workspace_key.compare key replay))
+        derived)
+    (Issue_identifier.parse text)
+
 let collections text count =
   let values = List.init count (fun i -> text ^ string_of_int i) in
   (match Nonempty_list.of_list values with
@@ -719,6 +745,21 @@ let () =
   Crowbar.add_test ~name:"checked identity equivalence and comparator"
     (choose_text [ "id"; "SYMPHONY-1"; " "; "\000" ] @> raw @> no_inputs)
     ids;
+  Crowbar.add_test ~name:"workspace key image, bounds and canonicalization"
+    (choose_text
+       [
+         "A/B";
+         "A B";
+         "é";
+         ".";
+         "..";
+         String.make 255 'a';
+         String.make 256 'a';
+         String.make 221 'a' ^ "/";
+         String.make 222 'a' ^ "/";
+       ]
+    @> no_inputs)
+    workspace_keys;
   Crowbar.add_test ~name:"exact count, positive count and duration algebras"
     (choose_text [ "0"; "1"; "42"; "999999999999999999999999999999"; "-1" ]
     @> choose_text [ "0"; "1"; "5" ]

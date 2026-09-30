@@ -263,7 +263,7 @@ Approved direct runtime package families:
 | `yojson` | Existing JSON parser/encoder. Lexeme-preserving checked wrapper for exact numbers, duplicate keys, UTF-8, size/depth and standard JSON. Locked 3.0.0. |
 | `ptime` | Parsed RFC 3339/UTC values and range-checked wall projection; no ambient clock inside domain code. Locked 1.2.0. |
 | `zarith` | Exact natural token/runtime totals, preserving monoid laws beyond machine integer range. Locked 1.14; its GMP static archive must pass Linux artifact checks. Avoid saturation or hand-written big integers. |
-| `digestif` | SHA-256 workspace suffix/ownership digest, not Stdlib MD5. Candidate 1.3.1; already required by the selected certificate/TLS stack. |
+| `digestif` | SHA-256 workspace suffix/ownership digest, not Stdlib MD5. Slice 2 pins 1.3.1; eqaf 0.10 is its transitive equality helper. The selected certificate/TLS stack also requires it. |
 | `uucp` | Unicode lowercase/property tables for states/labels. Locked 17.0.0; already required by Jingoo. Normalization cases are tested. |
 | `cohttp-eio`, `uri` | One existing HTTP client/server stack for Linear and the operator listener. Uri 4.4.0 is needed now to validate HTTPS endpoints; cohttp-eio 6.3.0 remains planned. No hand-written HTTP or GraphQL framework. |
 | `angstrom` | Direct use of Uri's existing parser dependency for full-input URI/IPv6 parsing. A small raw-syntax guard rejects the malformed input that Uri canonicalizes. Locked 0.16.1; no HTTP implementation. |

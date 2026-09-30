@@ -12,7 +12,7 @@ let () =
   let properties =
     Workflow_parser_test.properties @ Template_test.properties
     @ Tests.properties ~registry @ Domain_test.properties
-    @ Registry_test.properties
+    @ Registry_test.properties @ Workspace_key_test.properties
   in
   let property_cases =
     List.mapi
@@ -28,5 +28,6 @@ let () =
       ("configuration", Tests.tests ~registry);
       ("domain", Domain_test.tests);
       ("registry", Registry_test.tests);
+      ("workspace keys", Workspace_key_test.tests);
       ("properties", property_cases);
     ]

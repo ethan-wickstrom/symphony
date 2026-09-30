@@ -1,6 +1,7 @@
 # OCaml conformance
 
-Status: slice 1 is implemented and locally tested. The full service is pending.
+Status: slice 1 is merged. Slice 2 keys are tested; live workspaces/hooks and the
+full service are pending.
 The upstream Elixir implementation is reference material, not evidence for this port.
 Requirements refer to SPEC.md at `be10a1b79df723d6d7612b5651c8522704dafb2e`.
 Current protocol fixture: Codex 0.159.2. Stable core and experimental tool
@@ -17,7 +18,7 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | Dynamic workflow reload/re-apply | 1, 4 | `Config_layer.Make.apply`; `config_model.ml`, `config_test.ml` reload histories | Pure laws passed; watch/owner application pending |
 | Single-authority polling orchestrator | 4 | — | Pending |
 | State-list and ID-refresh tracker reads | 3 | — | Pending |
-| Sanitized collision-resistant workspaces | 2 | — | Pending |
+| Sanitized collision-resistant workspaces | 2 | `workspace_key.ml`; `workspace_key_model.ml`, `workspace_key_test.ml` policy model/hash vectors/laws; Crowbar key image/bounds | Key boundary passed; ownership/containment pending |
 | Four workspace lifecycle hooks | 2 | — | Pending |
 | Configurable hook timeouts | 1, 2 | `workspace_settings.ml`; `config_test.ml` default/invalid/explicit timeout cases | Config passed; subprocess behavior pending |
 | App-server subprocess transport/framing | 5 | — | Pending |
@@ -51,5 +52,8 @@ Local slice 1: 70 example/property tests, 16,500 model/law cases, 19 CLI scenari
 34 source-gate controls, and 130,000 Crowbar invocations at seed `20260930` pass.
 Build, formatting, interface pairing and protocol snapshot checks pass, normally
 and optimized, with 16 corrupted-fixture controls.
+
+With slice 2 keys: 77 tests, 21,500 model cases, 102 paired source files and 140,000
+Crowbar invocations pass. These add no live workspace-safety evidence yet.
 
 Real integration results will be reported independently as passed, failed, or skipped.
