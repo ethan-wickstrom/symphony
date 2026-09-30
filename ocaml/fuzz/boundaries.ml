@@ -171,6 +171,10 @@ let workflow_input =
           "---\n[x]\n---\nbody";
           "---\nx: 1";
           "---\nx: 1\nx: 2\n---\nbody";
+          "---instructions";
+          "--- instructions\nbody";
+          "----\nbody";
+          "---  \r\n{}\r\n---\r\nbody";
           framed ("x: " ^ depth_source ^ "\n") "body";
         ];
     ]

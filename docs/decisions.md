@@ -66,13 +66,22 @@ P03's accepted generated-schema-valid turn policy is:
 }
 ```
 
-The writable root is filled from the checked workspace capability for every turn request,
-including continuations; thread defaults must not silently broaden the selected turn policy.
+The default policy's writable root is filled from the checked workspace capability for
+every turn request, including continuations. Explicit operator overrides retain their
+schema-valid mode and roots, which may grant broader access. Thread defaults must not
+silently broaden the selected turn policy.
 This wire shape does not prove OS enforcement, broad-read restriction, or immunity to
 filesystem mutation. Target-host tests must verify actual behavior. Package downloads
 require an explicit network-enabled workflow policy or a trusted preparation hook.
 
 ## Other choices the spec leaves open
+
+§5.2 says "starts with `---`" without naming a delimiter line. Require an
+unindented line whose trimmed contents are exactly `---` at both boundaries;
+`---instructions` remains a prompt. This follows Markdown front-matter intent
+and avoids treating ordinary prompt prefixes as YAML. Suggested wording:
+"If the first line is an unindented `---` delimiter, parse until the next such
+delimiter line as YAML front matter. Trailing whitespace and CRLF are allowed."
 
 These are not additional literal implementation-defined occurrences.
 

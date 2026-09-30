@@ -13,6 +13,8 @@ val thread_policy : t -> Json.t
 
 module Bind (Path : Workspace_path.S) : sig
   val turn_policy : t -> Path.t -> Json.t
-  (** Bind the current checked workspace on every turn, including continuations. *)
+  (** The default policy binds the current checked workspace on every turn,
+      including continuations. Explicit operator policies are returned unchanged;
+      their modes and writable roots may grant broader access. *)
 
 end

@@ -1,7 +1,8 @@
 # Verification plan
 
-Status: interface/design proposal. These are acceptance plans, not completed tests.
-P01–P08 and D01–D13 are accepted; implementation still awaits signature approval.
+Status: approved acceptance plans. Completed evidence is recorded in
+[the worklog](../worklog.md) and [conformance map](../../CONFORMANCE.md).
+P01–P08, D01–D13 and the component signatures are accepted.
 The first adapter is Linear. Development and deployment target macOS; the static
 release target is Linux with musl.
 

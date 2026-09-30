@@ -91,8 +91,14 @@ let scalars () =
       ("ON", M_string "ON");
       ("42", M_number "42");
       ("-12", M_number "-12");
+      ("+12", M_number "+12");
       ("0o17", M_number "0o17");
       ("0xFF", M_number "0xFF");
+      (* YAML 1.2 Core permits signs for decimal integers only. *)
+      ("+0x11", M_string "+0x11");
+      ("-0x11", M_string "-0x11");
+      ("+0o17", M_string "+0o17");
+      ("-0o17", M_string "-0o17");
       ("1.5e+20", M_number "1.5e+20");
       (".5", M_number ".5");
       ( "99999999999999999999999999999999",
@@ -182,6 +188,15 @@ let workflow_split () =
     (Workflow_document.prompt plain);
   Alcotest.check model_test "no front matter gives empty map" (M_map [])
     (model (Workflow_document.config plain));
+  List.iter
+    (fun source ->
+      let prompt = document source in
+      Alcotest.check Alcotest.string "delimiter prefix stays prompt"
+        (String.trim source)
+        (Workflow_document.prompt prompt);
+      Alcotest.check model_test "prefix gives empty map" (M_map [])
+        (model (Workflow_document.config prompt)))
+    [ "---instructions"; "--- instructions\nbody"; "----\nbody" ];
   let framed =
     document "---\r\ntracker:\r\n  kind: linear\r\n---  \r\n  Do the work. \r\n"
   in
@@ -190,6 +205,9 @@ let workflow_split () =
     (model (Workflow_document.config framed));
   Alcotest.check Alcotest.string "framed prompt trimmed" "Do the work."
     (Workflow_document.prompt framed);
+  Alcotest.check Alcotest.string "opening delimiter allows trailing space"
+    "body"
+    (Workflow_document.prompt (document "---  \r\n{}\r\n---\r\nbody"));
   Alcotest.check Alcotest.string "source identity" "/srv/symphony/WORKFLOW.md"
     (Workflow_path.display (Workflow_document.file framed));
   let literal =

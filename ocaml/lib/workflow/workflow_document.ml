@@ -15,7 +15,7 @@ let diagnostic file message remedy =
          { file = Workflow_path.display file; key = None; line = None })
     ~message ~remedy
 
-let closing_line line =
+let delimiter_line line =
   String.starts_with ~prefix:delimiter line && String.trim line = delimiter
 
 let split source =
@@ -23,18 +23,18 @@ let split source =
     Ok (empty_mapping, source)
   else
     match String.split_on_char '\n' source with
-    | [] -> Error "missing workflow front-matter opening delimiter"
-    | opening :: lines ->
+    | opening :: lines when delimiter_line opening ->
         let rec close acc = function
           | [] -> Error "unterminated workflow front matter"
           | line :: remaining ->
-              if closing_line line then
+              if delimiter_line line then
                 Ok
                   ( String.concat "\n" (List.rev acc) ^ "\n",
                     String.concat "\n" remaining )
               else close (line :: acc) remaining
         in
         close [ opening ] lines
+    | [] | _ :: _ -> Ok (empty_mapping, source)
 
 let parse ~file source =
   if String.length source > max_input_bytes then

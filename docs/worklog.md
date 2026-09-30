@@ -40,9 +40,10 @@ Deliver the operator API, doctor/dry-run, module laws and a 1,000-session benchm
 
 ## Current focus
 
-Slice 1 is complete locally and recorded on `ethan/ocaml-workflow`. Build, models,
-CLI, source/format gates, locked installation and the seeded fuzz campaign pass. Crowbar's
-random-refill defect has a reproduced, tested development-only dependency patch.
+Slice 1 is published as PR #1 on `ethan/ocaml-workflow`. Hosted Linux/macOS builds,
+models, CLI/source/format gates and seeded fuzzing passed at `23a54be`. Hosted Elixir
+also passed. Review fixes and the bot-badge description-validator regression pass
+locally, including a fresh 130,000-case campaign; a fresh green head must merge.
 
 ## Verified locally
 
@@ -63,10 +64,19 @@ random-refill defect has a reproduced, tested development-only dependency patch.
   leakage in tracker-kind errors, missing attempt diagnostics and oversized JSON
   composition allocation. Each had a failing regression before its fix.
 - ast-grep has no OCaml grammar; the compiler parses/type-checks OCaml source.
+- PR review reproduced Python optimization bypasses in both verification scripts
+  and a delimiter-prefix parsing failure before fixes. Real CLI/schema checks now
+  run normally and optimized; eight broken fixtures verify the gates still reject.
+  Signed radix strings remain strings under YAML 1.2 Core, with explicit cases.
+- The live PR badge validates after a narrow marker exception. The Elixir gauntlet
+  passed with Elixir 1.19.5/OTP 28: 301 tests, six skipped, 100% coverage and no
+  lint/type errors. An unchanged retry-timing test failed once, then passed on rerun.
 
 Sampled laws are evidence, not machine-checked proofs. Native YAML scope tests do
-not prove native leak freedom. Hosted Linux/macOS CI, AFL coverage, static linkage,
-live tracker/agent integration, simulation and benchmarks remain unverified.
+not prove native leak freedom. AFL coverage, static linkage, live tracker/agent
+integration, simulation and benchmarks remain unverified. Hosted
+Linux/macOS checks now pass at `23a54be`; the Ubuntu setup action disabled its own
+opam build sandbox after bwrap failed, so this is no build-isolation claim.
 
 ## Next action
 
