@@ -256,7 +256,7 @@ Approved direct runtime package families:
 
 | Package | Purpose / why a smaller substitute is insufficient |
 | --- | --- |
-| `eio`, `eio_main` | Structured direct-style concurrency plus native backend selection. `eio.mock` ships in `eio`; no Lwt/Async scheduler or separate mock package. Audited Eio 1.6. |
+| `eio`, `eio_posix` | Structured direct-style concurrency with one POSIX backend on both hosts. Pin both 1.6 sources: worker-admission errors resume the caller; process identity survives exit observation until cleanup/reap. `eio.mock` ships in `eio`; no second scheduler or mock package. See `vendor/eio/PATCHES.md` for the narrow delta and host evidence. |
 | `yaml` | Existing parser with positioned event/scalar access and vendored static libyaml archive. Audited 3.2.0; wrap events to preserve kinds/precision and validate complete input, duplicates and bounded aliases. |
 | `jingoo` | Existing template parser/interpreter, behind one bounded strict Jinja wrapper. Audited 1.5.4. No full Liquid claim; see the template choice below. |
 | `re` | Direct import of Jingoo's existing dependency for literal replacement at the template boundary. Use `Re.str` only; no user regular expressions or regex core logic. Pinned 1.14.0. |

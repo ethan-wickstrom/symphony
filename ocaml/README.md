@@ -12,14 +12,19 @@ Install opam, a C compiler, pkg-config and GMP development files. From this dire
 opam switch create . ocaml-base-compiler.5.5.0 --no-install --yes
 opam pin add yaml.3.2.0 ../vendor/yaml --no-action --yes
 opam pin add crowbar.0.2.2 ../vendor/crowbar --no-action --yes
+opam pin add eio.1.6 ../vendor/eio --no-action --yes
+opam pin add eio_posix.1.6 ../vendor/eio --no-action --yes
 opam install . --deps-only --locked --with-test --with-dev-setup --yes
 opam exec --switch . -- dune build @all
 ```
 
-Both pins are mandatory: YAML releases native parser/events and preserves embedded
-NUL bytes; Crowbar fixes a random-input refill hang in the development fuzzer.
+All four pins are mandatory: YAML releases native parser/events and preserves
+embedded NUL bytes; Crowbar fixes a random-input refill hang. Eio resumes callers
+when worker acquisition fails; Eio POSIX retains child identity through cleanup.
+The executable uses the POSIX backend on both target platforms.
 [YAML provenance](../vendor/yaml/PATCHES.md),
-[Crowbar provenance](../vendor/crowbar/PATCHES.md). The lock records exact
+[Crowbar provenance](../vendor/crowbar/PATCHES.md),
+[Eio provenance](../vendor/eio/PATCHES.md). The lock records exact
 transitive versions and excludes machine-specific local URLs. Pin these sources
 before installing. macOS builds a native binary; fully static Linux musl
 artifact verification remains a release gate.

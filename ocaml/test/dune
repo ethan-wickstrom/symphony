@@ -23,4 +23,4 @@
   alcotest
   qcheck-core
   qcheck-core.runner
-  eio_main))
+  eio_posix))
