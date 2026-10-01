@@ -19,10 +19,14 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
     assert output =~ "mix workspace.before_remove"
   end
 
-  test "fails on invalid options" do
-    assert_raise Mix.Error, ~r/Invalid option/, fn ->
-      BeforeRemove.run(["--wat"])
-    end
+  test "rejects invalid options and repository overrides" do
+    with_path([], fn ->
+      for args <- [["--wat"], ["--repo", "openai/symphony"]] do
+        assert_raise Mix.Error, ~r/Invalid option/, fn ->
+          BeforeRemove.run(args)
+        end
+      end
+    end)
   end
 
   test "no-ops when branch is unavailable" do
@@ -92,10 +96,10 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
         log = File.read!(log_path)
 
         assert log =~
-                 "pr list --repo openai/symphony --head feature/workpad --state open --json number --jq .[].number"
+                 "pr list --repo ethan-wickstrom/symphony --head feature/workpad --state open --json number --jq .[].number"
 
-        assert log =~ "pr close 101 --repo openai/symphony"
-        assert log =~ "pr close 102 --repo openai/symphony"
+        assert log =~ "pr close 101 --repo ethan-wickstrom/symphony"
+        assert log =~ "pr close 102 --repo ethan-wickstrom/symphony"
       end
     )
   end
@@ -115,9 +119,9 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
       log = File.read!(log_path)
 
       assert log =~ "auth status"
-      assert log =~ "pr list --repo openai/symphony --head feature/workpad --state open --json number --jq .[].number"
-      assert log =~ "pr close 101 --repo openai/symphony"
-      assert log =~ "pr close 102 --repo openai/symphony"
+      assert log =~ "pr list --repo ethan-wickstrom/symphony --head feature/workpad --state open --json number --jq .[].number"
+      assert log =~ "pr close 101 --repo ethan-wickstrom/symphony"
+      assert log =~ "pr close 102 --repo ethan-wickstrom/symphony"
 
       {second_output, error_output} =
         capture_task_output(fn ->
@@ -161,8 +165,8 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
         assert error_output =~ "Failed to close PR #102 for branch feature/no-output: exit 17"
         refute error_output =~ "output="
         log = File.read!(log_path)
-        assert log =~ "pr list --repo openai/symphony --head feature/no-output --state open --json number --jq .[].number"
-        assert log =~ "pr close 102 --repo openai/symphony"
+        assert log =~ "pr list --repo ethan-wickstrom/symphony --head feature/no-output --state open --json number --jq .[].number"
+        assert log =~ "pr close 102 --repo ethan-wickstrom/symphony"
       end
     )
   end
@@ -195,7 +199,7 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
         assert log =~ "auth status"
 
         assert log =~
-                 "pr list --repo openai/symphony --head feature/list-fails --state open --json number --jq .[].number"
+                 "pr list --repo ethan-wickstrom/symphony --head feature/list-fails --state open --json number --jq .[].number"
 
         refute log =~ "pr close"
       end

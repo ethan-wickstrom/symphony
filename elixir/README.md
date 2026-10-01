@@ -65,7 +65,7 @@ mise exec -- elixir --version
 ## Run
 
 ```bash
-git clone https://github.com/openai/symphony
+git clone https://github.com/ethan-wickstrom/symphony
 cd symphony/elixir
 mise trust
 mise install
@@ -92,7 +92,7 @@ artifacts without creating a release.
 
 The `burrito-nightly` workflow builds each push to `main`, with no scheduled rebuilds.
 After all four platform smoke tests pass, it updates the rolling
-[`nightly` prerelease](https://github.com/openai/symphony/releases/tag/nightly),
+[`nightly` prerelease](https://github.com/ethan-wickstrom/symphony/releases/tag/nightly),
 including binaries and checksums. Nightly binaries use a `-nightly` version suffix;
 the release notes identify the source commit. Stable releases remain unchanged.
 

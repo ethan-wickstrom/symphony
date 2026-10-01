@@ -16,6 +16,7 @@ Deliver the operator API, doctor/dry-run, module laws and a 1,000-session benchm
 - Every application `.ml` has an `.mli`; fatal enabled warnings, no objects/Lwt/Async/casts.
 - Untrusted tracker/repository data; trusted verbatim hook/agent command configuration.
 - Small green slices, independent models, matching Section 17 examples and conformance map.
+- Development targets only `ethan-wickstrom/symphony`; specification links are provenance.
 
 ## Completed
 
@@ -46,11 +47,12 @@ gates, seeded fuzzing and Elixir. Every review thread is resolved; the final
 Codex review found no major issues. Slice 2 starts on `ethan/ocaml-workspaces`.
 Keys, frozen references, strict ownership codec and manager policy pass independent
 models. Ownership includes opaque issue IDs to reject historical identifier reuse.
-The frozen Eio group-custody source passes its macOS gate and independent review;
+The frozen Eio group-custody source passes its local macOS gate, independent review
+and hosted Linux glibc/macOS gates at `91788b4`;
 both Eio packages are pinned/installed. The application selects the POSIX backend
 explicitly. Store/Hooks ports and Driver composition pass real Eio cancellation
 tests. Live directory ownership, hook execution and inspection remain pending.
-No physical acquisition/ownership or Linux process claim yet.
+No physical directory acquisition/ownership claim yet. Musl/static remains unverified.
 
 ## Verified locally
 
@@ -94,18 +96,27 @@ opam build sandbox after bwrap failed, so this is no build-isolation claim.
 
 ## Next action
 
-Run the retained process gate on hosted Linux/macOS before native directory/hook
-integration. Review caught and fixed a CI switch-location mismatch before push. Both runners
+Implement native directory/hook integration after the verified hosted process gate.
+Review caught and fixed a CI switch-location mismatch before push. Both runners
 accept an explicit switch; another 5,000-case campaign and all normal/optimized
 controls pass with that argument. CI selects its workspace-root switch.
-Publication is awaiting explicit approval: automatic approval review rejected
-the push to github.com/ethan-wickstrom/symphony because exporting source/history
-needs destination authorization. No push or PR creation occurred. Draft body is
-prepared and passes mix pr_body.check; local commits are 953de28 and 4375b9e.
+The user explicitly approved publication to github.com/ethan-wickstrom/symphony.
+Branch pushed; draft PR #2 is open and attached, with live body validation passed.
+The sole remote and GitHub CLI default are `ethan-wickstrom/symphony`; every
+GitHub operation also names this repository explicitly. Hosted native checks
+passed on `91788b4`; local implementation commits are 953de28 and 4375b9e.
+The user detached GitHub's fork relationship; the API confirms `isFork=false`,
+`parent=null`, and preserved main/working-branch commit tips. PR #2 and the nightly
+release still exist. Clone hooks, cleanup and package metadata target only our
+repository; cleanup rejects repository overrides. Specification links remain
+source provenance. Browser work uses the in-app browser.
+The changed Elixir tree passes the full pinned gate: 301 tests, six skipped,
+100% coverage, formatting, lint and Dialyzer. Both opam metadata files pass lint.
+Logs: `/private/tmp/symphony-repo-destination-{red,green,all-pinned}.log`.
 Then implement the anchored directory Store and private Path/child-loan bracket,
 followed by Process and Hooks over the shared ports. Eio already supplies managed
 nofollow openat/stat/directory iteration; the smallest native gap is nonblocking
-flock. No user decision is pending. Do not start tracker slice 3 before slice 2 is
+flock. No design decision is pending. Do not start tracker slice 3 before slice 2 is
 complete, reviewed, green and merged.
 
 Review the full Algebra-Driven Design manuscript at source commit
@@ -132,6 +143,18 @@ Do not equate a delivered termination request with a closed OS process group.
   backtraces/finalizers and unchanged worker defect categories. Full hashes and
   retained logs are in vendor/eio/PATCHES.md. Preserve uncertain Darwin EPERM as a
   result; retain final group KILL before sole reap. No finite kernel reap bound.
+- Hosted native evidence at `91788b4d31834af7123253fd633860d8a736adbd`:
+  [push run 36804685419](https://github.com/ethan-wickstrom/symphony/actions/runs/36804685419)
+  and [PR run 36804908655](https://github.com/ethan-wickstrom/symphony/actions/runs/36804908655)
+  passed Linux 6.17.0-1022-azure x86-64/glibc 2.39 and macOS 26.6.2 arm64.
+  Each host/run passed 5,000 scenarios, focused custody controls and
+  normal/optimized acquisition controls. All four manifests match the nine frozen
+  hashes in vendor/eio/PATCHES.md. Linux retained no permission errors; macOS
+  retained 37/70 repeated-signal errors on push/PR, with zero cleanup errors.
+  Artifacts: `/private/tmp/symphony-group-hosted-linux`,
+  `/private/tmp/symphony-group-hosted-macos`, and
+  `/private/tmp/symphony-group-hosted-pr`. This verifies the POSIX backend on glibc,
+  not musl/static linkage or workspace containment.
 - Three Driver composition tests use actual Eio cancellation: after_run gets a
   fresh protected switch, joins its child, reports error and preserves the
   original cancellation before fake-lease release. Native leases remain pending.

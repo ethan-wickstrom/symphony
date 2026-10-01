@@ -4,7 +4,7 @@ defmodule Mix.Tasks.Workspace.BeforeRemove do
   @shortdoc "Close open GitHub PRs for the current branch before workspace removal"
 
   @moduledoc """
-  Closes open pull requests for the current Git branch.
+  Closes open pull requests for the current Git branch in ethan-wickstrom/symphony.
 
   This task is intended for use from the `before_remove` workspace hook.
 
@@ -12,16 +12,15 @@ defmodule Mix.Tasks.Workspace.BeforeRemove do
 
       mix workspace.before_remove
       mix workspace.before_remove --branch feature/my-branch
-      mix workspace.before_remove --repo openai/symphony
   """
 
-  @default_repo "openai/symphony"
+  @repo "ethan-wickstrom/symphony"
 
   @impl Mix.Task
   def run(args) do
     {opts, _argv, invalid} =
       OptionParser.parse(args,
-        strict: [branch: :string, help: :boolean, repo: :string],
+        strict: [branch: :string, help: :boolean],
         aliases: [h: :help]
       )
 
@@ -33,10 +32,9 @@ defmodule Mix.Tasks.Workspace.BeforeRemove do
         Mix.raise("Invalid option(s): #{inspect(invalid)}")
 
       true ->
-        repo = opts[:repo] || @default_repo
         branch = opts[:branch] || current_branch()
 
-        maybe_close_open_pull_requests(repo, branch)
+        maybe_close_open_pull_requests(@repo, branch)
     end
   end
 

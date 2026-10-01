@@ -5,8 +5,8 @@ synopsis: "A reference Symphony implementation with checked boundaries"
 maintainer: "Ethan Wickstrom"
 authors: "Ethan Wickstrom"
 license: "Apache-2.0"
-homepage: "https://github.com/openai/symphony"
-bug-reports: "https://github.com/openai/symphony/issues"
+homepage: "https://github.com/ethan-wickstrom/symphony"
+bug-reports: "https://github.com/ethan-wickstrom/symphony/issues"
 depends: [
   "afl-persistent" {= "1.4" & with-test}
   "alcotest" {= "1.9.1" & with-test}

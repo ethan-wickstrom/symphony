@@ -4,6 +4,12 @@ Status: P01–P08 and D01–D13 accepted by the user on 2026-09-30.
 Linear is the first adapter. Deploy and develop on macOS; also produce a static
 Linux musl release. Component signatures, laws and package recommendations are approved.
 
+Development destination: `ethan-wickstrom/symphony` only. `origin` is the sole Git
+remote and the GitHub CLI default; GitHub operations also name this repository
+explicitly. Clone hooks, PR cleanup and package metadata use this destination.
+Upstream specification links remain provenance, never publication targets.
+The user detached the GitHub fork; the API confirms `isFork=false` and `parent=null`.
+
 Evidence baseline: [SPEC.md](../SPEC.md) at upstream commit
 `be10a1b79df723d6d7612b5651c8522704dafb2e`, checked against live upstream main.
 The full specification and both READMEs were read before this audit.
