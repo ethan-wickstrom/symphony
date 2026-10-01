@@ -219,7 +219,7 @@ module Make (Clock : Clock.S) = struct
             (Report, close_fd process.site pipes.errors_w);
           ])
 
-  let resolve primary cleanup =
+  let resolve ~on_error primary cleanup =
     match primary with
     | Native_outcome.Returned (Error _ as error) -> error
     | Native_outcome.Raised (error, trace) ->
@@ -227,7 +227,7 @@ module Make (Clock : Clock.S) = struct
     | Native_outcome.Returned (Ok value) -> (
         match Native_outcome.resolve cleanup with
         | Ok () -> Ok value
-        | Error error -> Error error)
+        | Error error -> Error (on_error error))
 
   let pipes site sw =
     host site "Pipe creation" (fun () ->
@@ -236,8 +236,10 @@ module Make (Clock : Clock.S) = struct
         let errors_r, errors_w = Io.pipe ~sw in
         { input_r; input_w; output_r; output_w; errors_r; errors_w })
 
-  let launch t ~sw ~cwd ~env ~command site run =
-    Result.bind (pipes site sw) (fun pipes ->
+  let launch t ~sw ~cwd ~env ~command ~on_error site run =
+    Result.bind
+      (Result.map_error on_error (pipes site sw))
+      (fun pipes ->
         (* Spec section 10.1 requires this trusted shell invocation. Issue data
            never enters the command; argv and environment are separate arrays. *)
         let argv = [| shell; "-lc"; command |] in
@@ -251,7 +253,7 @@ module Make (Clock : Clock.S) = struct
             ~stderr:pipes.errors_w ~executable:shell ~argv ~env
             ~report_cleanup:(fun error -> t.report (cleanup_error site error))
         with
-        | Error error -> Error (spawn_error site error)
+        | Error error -> Error (on_error (spawn_error site error))
         | Ok group ->
             let process =
               {
@@ -275,13 +277,13 @@ module Make (Clock : Clock.S) = struct
                     |> Native_outcome.resolve
                   with
                   | Ok () -> run process
-                  | Error error -> Error error)
+                  | Error error -> Error (on_error error))
             in
             let cleanup =
               Native_outcome.capture (fun () ->
                   Native_outcome.resolve (close t process))
             in
-            resolve primary cleanup)
+            resolve ~on_error primary cleanup)
 
   let path_error = function
     | Workspace_manager.Invalid_key error
@@ -291,13 +293,9 @@ module Make (Clock : Clock.S) = struct
     | Workspace_manager.Hook_failed error
     | Workspace_manager.Hook_timeout error -> error
 
-  let with_process t ~cwd ~env ~command run =
-    match
-      Workspace_path_posix.with_child cwd (fun ~sw cwd_fd ->
-          launch t ~sw ~cwd:cwd_fd ~env ~command (Path.display cwd) run
-          |> Result.map_error (fun error ->
-              Workspace_manager.Filesystem_error error))
-    with
-    | Ok value -> Ok value
-    | Error error -> Error (path_error error)
+  let with_process t ~cwd ~env ~command ~on_error run =
+    Workspace_path_posix.with_child cwd
+      ~on_error:(fun error -> on_error (path_error error))
+      (fun ~sw cwd_fd ->
+        launch t ~sw ~cwd:cwd_fd ~env ~command ~on_error (Path.display cwd) run)
 end

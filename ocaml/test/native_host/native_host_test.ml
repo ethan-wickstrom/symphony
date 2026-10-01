@@ -230,7 +230,8 @@ let preserve fixture workspace cwd =
   Result.map_error
     (fun error -> Workspace_manager.Filesystem_error error)
     (Host.Process.with_process (Host.process fixture.host)
-       ~cwd:(shared_path cwd) ~env:(Host.Contract.environment workspace)
+       ~on_error:Fun.id ~cwd:(shared_path cwd)
+       ~env:(Host.Contract.environment workspace)
        ~command:"printf 'preserved\\n' > preserved" (fun process ->
          match observed (Host.Process.await_exit process) with
          | Host.Process.Exited 0 -> Ok ()
@@ -420,7 +421,7 @@ let native_cancellation () =
                          Result.map_error
                            (fun error ->
                              Workspace_manager.Filesystem_error error)
-                           (Host.Process.with_process
+                           (Host.Process.with_process ~on_error:Fun.id
                               (Host.process fixture.host) ~cwd:(shared_path cwd)
                               ~env:(Host.Contract.environment workspace)
                               ~command:child_command (fun process ->
@@ -455,8 +456,9 @@ let native_cancellation () =
       let launched = ref false in
       (match
          Host.Process.with_process (Host.process fixture.host)
-           ~cwd:(shared_path escaped) ~env:(Host.Contract.environment workspace)
-           ~command:"exit 0" (fun _process ->
+           ~on_error:Fun.id ~cwd:(shared_path escaped)
+           ~env:(Host.Contract.environment workspace) ~command:"exit 0"
+           (fun _process ->
              launched := true;
              Ok ())
        with
@@ -478,7 +480,8 @@ let stale_path () =
       let launched = ref false in
       (match
          Host.Process.with_process (Host.process fixture.host)
-           ~cwd:(shared_path escaped) ~env:(Host.Contract.environment workspace)
+           ~on_error:Fun.id ~cwd:(shared_path escaped)
+           ~env:(Host.Contract.environment workspace)
            ~command:"printf 'unexpected\\n' >> \"$TRACE_FILE\"" (fun _process ->
              launched := true;
              Ok ())
@@ -499,7 +502,7 @@ let nested_cleanup () =
              Result.map_error
                (fun error -> Workspace_manager.Filesystem_error error)
                (Host.Process.with_process (Host.process fixture.host)
-                  ~cwd:(shared_path cwd)
+                  ~on_error:Fun.id ~cwd:(shared_path cwd)
                   ~env:(Host.Contract.environment workspace)
                   ~command:
                     "printf 'ready\\n'; IFS= read -r line; printf '%s\\n' \

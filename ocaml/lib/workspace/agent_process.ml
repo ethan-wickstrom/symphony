@@ -11,8 +11,9 @@ module type S = sig
     cwd:Path.t ->
     env:Environment.child ->
     command:string ->
-    (process -> ('a, error) result) ->
-    ('a, error) result
+    on_error:(error -> 'e) ->
+    (process -> ('a, 'e) result) ->
+    ('a, 'e) result
 
   val read : process -> (string option, error) result
   val write : process -> string -> (unit, error) result

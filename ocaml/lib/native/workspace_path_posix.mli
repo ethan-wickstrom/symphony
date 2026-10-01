@@ -17,12 +17,16 @@ val check : t -> (unit, Workspace_manager.error) result
 
 val with_child :
   t ->
-  (sw:Eio.Switch.t -> Eio_unix.Fd.t -> ('a, Workspace_manager.error) result) ->
-  ('a, Workspace_manager.error) result
+  on_error:(Workspace_manager.error -> 'e) ->
+  (sw:Eio.Switch.t -> Eio_unix.Fd.t -> ('a, 'e) result) ->
+  ('a, 'e) result
 (** Admits one cancelable child scope while Held; lends cwd through that scope's
     complete closure. Closing rejects admission and cancels already admitted
     scopes. Every exit unregisters once, after all child fibers/resources close.
-    Other cancellation and defects propagate with their original backtrace. *)
+    Admission failures use [on_error]; callback errors retain their exact value
+    and take precedence over closure defects. No nested successful result is
+    needed to preserve the caller's error type. Other cancellation and defects
+    propagate with their original backtrace. *)
 
 val close : t -> unit
 (** Held -> Closing -> Released. Cancels and joins all admitted scopes before

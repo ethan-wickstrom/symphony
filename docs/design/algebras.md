@@ -147,6 +147,14 @@ the Held-to-Reaping transition may reap. Stable completion is an observable resu
 including expected OS failure. Repeated observation is stable; repeating a signal
 syscall can produce a different result and is not an unconditional idempotence law.
 
+The process bracket is polymorphic in its caller's error algebra. Its mapper
+translates only mechanism failures; semantic callback errors retain their type and
+value. For expected outcomes, `finish(Error e, cleanup) = Error e`,
+`finish(Ok x, Ok ()) = Ok x`, and `finish(Ok x, Error d) = Error(map d)`.
+Cleanup and reporting still finish before observing that result. A shadowed
+cleanup error invokes no mapper. This eliminates the nested `Ok(Error e)` carrier
+that could misclassify a hook timeout as successful work during cleanup.
+
 ## Ownership, order and orchestration
 
 The owner model is a finite function from issue ID to a closed lifecycle variant:

@@ -51,7 +51,7 @@ Seeded whole-service Eio simulation, orchestrator model agreement, static releas
 1,000-session benchmarks, HTTP API and portable harness remain pending their slices.
 Crowbar random campaigns are distinct from instrumented AFL coverage.
 
-Current local application gate: 122 example/property tests, 41,500 model/law cases,
+Current local application gate: 126 example/property tests, 41,500 model/law cases,
 178 source/interface files, 27 CLI scenarios, 34 source-gate controls, and 150,000
 Crowbar invocations at seed `20260930` pass.
 Build, formatting, interface pairing and protocol snapshot checks pass, normally
@@ -60,11 +60,14 @@ and optimized, with 16 corrupted-fixture controls.
 The policy also checks 100 explicit fault/cancellation scenarios, a full rollback
 trace and persistent-driver operation sequences. Separate native tests exercise
 physical locks, filesystem identities, exact-source ownership/retirement and
-actual hook subprocesses through the public host: 47 kernel and seven Host cases
+actual hook subprocesses through the public host: 50 kernel and seven Host cases
 pass under the watchdog in both modes. The lifetime gate checks 1,000
 seeded real Eio mock scenarios, including rejected callbacks and release/reporter
 defects; this is not yet the whole-service simulator. Retained frozen process
 custody passes on Linux/glibc and macOS. Musl/static linkage remains unverified.
+Hook-result regressions preserve timeout, exit and stream failures across cleanup
+errors; native cases check semantic identity, mapper suppression and conversion
+only after reap. The caller's error type passes directly through both brackets.
 
 Real integration results will be reported independently as passed, failed, or skipped.
 

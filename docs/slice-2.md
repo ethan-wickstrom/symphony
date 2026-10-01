@@ -134,7 +134,7 @@ native registration and public-host tests now exercise real resources.
    CONFORMANCE.md only after actual passes. Green Linux/macOS CI and review precede
    merge and tracker work.
 
-The current core suite passes 122 tests and 41,500 model/law samples;
+The current core suite passes 126 tests and 41,500 model/law samples;
 the 15-group seed `20260930` campaign passes 150,000 invocations. The key module's
 13 independent hash vectors, length/alias examples and four properties are included.
 Reference/policy models compare complete fake-driver traces, primary outcomes,
@@ -198,7 +198,7 @@ filesystem projection, redaction and terminal-control escaping.
 
 Native executables run under a 90s watchdog. Logs and manifests record platform,
 source hashes, executed binary hashes and outcomes; this identifies artifacts,
-not a source-to-binary attestation. Complete normal/optimized runs pass 47 kernel
+not a source-to-binary attestation. Complete normal/optimized runs pass 50 kernel
 and seven public-host cases. Timeout, interruption, admission and normal-exit
 controls retain the group through KILL-before-reap. The exec wrapper retains one
 live sentinel until final KILL, avoiding Darwin's zombie-only EPERM without
@@ -208,6 +208,13 @@ descendants, an empty exiting group and native signal dispositions. The latter
 failed before resetting Python's ignored pipe/file-size signals before exec.
 Bootstrap isolation ignores Python environment/site customization. Exec retains
 the target PID; no wait-status protocol or build attestation is introduced.
+
+Review exposed a nested-result bug: successful process callbacks could contain
+failed hooks, allowing cleanup to replace timeout, exit and stream outcomes.
+Four failing/passing hook controls and three native regressions now check primary
+precedence, typed error identity, mapper suppression and conversion after reap.
+Process and private Path brackets carry the callback's error type directly;
+mechanism errors use an explicit mapper only when they determine the outcome.
 
 Hosted [PR run 36840015440](https://github.com/ethan-wickstrom/symphony/actions/runs/36840015440)
 and [push run 36840011609](https://github.com/ethan-wickstrom/symphony/actions/runs/36840011609)

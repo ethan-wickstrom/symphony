@@ -199,8 +199,8 @@ let displacement () =
              write marker "preserve";
              rejected (Store.path lease);
              rejected
-               (Workspace_path_posix.with_child path (fun ~sw:_ _ ->
-                    Alcotest.fail "Displaced child launched"));
+               (Workspace_path_posix.with_child path ~on_error:Fun.id
+                  (fun ~sw:_ _ -> Alcotest.fail "Displaced child launched"));
              rejected (Store.remove store lease);
              Alcotest.(check bool) "Replacement preserved" true (exists marker))))
 
@@ -214,8 +214,8 @@ let expired () =
       in
       rejected (Workspace_path_posix.check escaped);
       rejected
-        (Workspace_path_posix.with_child escaped (fun ~sw:_ _ ->
-             Alcotest.fail "Expired child launched"));
+        (Workspace_path_posix.with_child escaped ~on_error:Fun.id
+           (fun ~sw:_ _ -> Alcotest.fail "Expired child launched"));
       acquired (Store.with_lease store issue (fun _ _ -> ())))
 
 let child_join () =
@@ -230,7 +230,8 @@ let child_join () =
                  let path = acquired (Store.path lease) in
                  Eio.Fiber.fork ~sw (fun () ->
                      rejected
-                       (Workspace_path_posix.with_child path (fun ~sw:_ _ ->
+                       (Workspace_path_posix.with_child path ~on_error:Fun.id
+                          (fun ~sw:_ _ ->
                             Fun.protect
                               (fun () ->
                                 record "child admitted";
@@ -340,7 +341,8 @@ let removal_after_close_defect () =
                    let inode = (Unix.stat (lock_file root issue)).Unix.st_ino in
                    Eio.Fiber.fork ~sw (fun () ->
                        rejected
-                         (Workspace_path_posix.with_child path (fun ~sw:_ _ ->
+                         (Workspace_path_posix.with_child path ~on_error:Fun.id
+                            (fun ~sw:_ _ ->
                               Fun.protect
                                 (fun () ->
                                   Eio.Promise.resolve ready ();

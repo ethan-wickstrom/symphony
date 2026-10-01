@@ -43,29 +43,34 @@ against an independent model, replayable simulation, parser fuzzing and measured
 ## Current focus
 
 Branch `ethan/ocaml-workspaces`; open PR #2 is attached (currently not a draft). Main remains `f56a66c`.
-Published delivery head is `b30263e`; commits include
+Published head is `ae2ed5b`; verified delivery code is `b30263e`. Commits include
 `77073ae` (cleanup ownership), `daf839c` (clock/hook policy), `a6d7118` (native
 ownership) and `48770fb` (inspection CLI). All owned workflows pass on the delivery
-head; a fresh Copilot review is pending. No user decision or approval is pending.
+head. Fresh Copilot review found hook failures hidden by an outer successful
+process callback. The repair carries the caller's error type directly through
+Process and Path; four hook regressions went red/green and three native cases
+check identity, mapper suppression and conversion after reap. Independent review
+found no remaining issue. Affected hosted gates must pass before merge.
+No user approval is pending.
 
 Independent review is complete for native Directory/Path/Gate/Store/Process/Host.
-Remaining work: publish hosted evidence, finish current-code review, then merge
+Remaining work: complete local/hosted gates and current-code review, then merge
 slice 2. Do not begin the tracker adapter before that. Devin analysis is unavailable
 because the diff exceeds its size limit; regeneration confirmed that cause.
 
 ## Current local evidence
 
 - macOS arm64; OCaml 5.5.0, Dune 3.24.0, ocamlformat 0.28.1.
-- Build and formatting pass; core: 122 cases, 39 properties and 41,500 samples.
+- Build and formatting pass; core: 126 cases, 39 properties and 41,500 samples.
 - 27 real CLI scenarios pass normally and optimized, including workspace ownership,
   absence, contention, scope/ID conflicts, symlinks, redaction and terminal escaping.
 - Source gate: 178 source/interface files; 34 positive/negative controls pass.
 - Protocol snapshot/digests pass normally and optimized; 16 corrupted controls reject.
 - Crowbar seed `20260930`: 15 groups × 10,000 = 150,000 invocations pass.
   This is a random/curated campaign, not an instrumented AFL coverage result.
-- Focused native gates: Directory 17, Store 11, Process 8, lifetime 7, IO classifier 4,
+- Focused native gates: Directory 17, Store 11, Process 11, lifetime 7, IO classifier 4,
   public Host 7. Lifetime checks 1,000 Eio mock seeds and explicit seed619 replay.
-  Complete watchdog runs pass normally and optimized (47 kernel + seven Host).
+  Complete watchdog runs pass normally and optimized (50 kernel + seven Host).
   Eight timeout/INT/TERM/admission/normal-exit/signal controls pass on both hosts.
 - Full `just check` passes; final isolated-bootstrap changes passed both native
   runners and complete watchdog controls again in both optimization modes.
@@ -85,6 +90,9 @@ because the diff exceeds its size limit; regeneration confirmed that cause.
 - `/private/tmp/symphony-store-close-defect-{red,green}.log`
 - `/private/tmp/symphony-native-io-sys-error-{red,green}.log`
 - `/private/tmp/symphony-native-process-lifetime-{red,green}.log`
+- `/private/tmp/symphony-hooks-cleanup-{red,green}.log`
+- `/private/tmp/symphony-hooks-precedence-check-unconfined.log`
+- `/private/tmp/symphony-native-generic-green/manifest.json`
 - `/private/tmp/symphony-owner-filter-all.log`
 - `/private/tmp/symphony-native-delivery-normal-6ycsgo62/manifest.json`
 - `/private/tmp/symphony-native-delivery-optimized-js58hbqy/manifest.json`

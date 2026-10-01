@@ -21,6 +21,7 @@ type observation =
   | Monotonic_read
   | Wall_sample
   | Deadline of string
+  | Mapped_error
 
 type trace = observation list ref
 
@@ -45,6 +46,11 @@ type completion =
   | Exit_error
 
 type launch = Execute | Reject | Raise of exn * Printexc.raw_backtrace
+type cleanup = Clean | Cleanup_error
+
+let cleanup_diagnostic =
+  Diagnostic.make ~site:(Diagnostic.Host "hook cleanup fixture")
+    ~message:"secondary process cleanup failure" ~remedy:"fixture control"
 
 module Process = struct
   module Path = Contract.Path
@@ -58,6 +64,7 @@ module Process = struct
     stderr : input;
     completion : completion;
     launch : launch;
+    cleanup : cleanup;
   }
 
   type stream = {
@@ -72,26 +79,36 @@ module Process = struct
     let ended, signal = Eio.Promise.create () in
     { input; ended; signal }
 
-  let with_process t ~cwd ~env ~command run =
+  let map_error t on_error error =
+    record t.trace Mapped_error;
+    on_error error
+
+  let with_process t ~cwd ~env ~command ~on_error run =
     match t.launch with
-    | Reject -> Error diagnostic
-    | Execute | Raise _ ->
+    | Reject -> Error (map_error t on_error diagnostic)
+    | Execute | Raise _ -> (
         record t.trace
           (Opened
              { cwd = Path.display cwd; command; env = Environment.bindings env });
-        Fun.protect
-          ~finally:(fun () -> record t.trace Closed)
-          (fun () ->
-            match t.launch with
-            | Reject -> Alcotest.fail "fixture launch changed inside bracket"
-            | Raise (ex, bt) -> Printexc.raise_with_backtrace ex bt
-            | Execute ->
-                run
-                  {
-                    owner = t;
-                    stdout = stream t.stdout;
-                    stderr = stream t.stderr;
-                  })
+        let primary =
+          Fun.protect
+            ~finally:(fun () -> record t.trace Closed)
+            (fun () ->
+              match t.launch with
+              | Reject -> Alcotest.fail "fixture launch changed inside bracket"
+              | Raise (ex, bt) -> Printexc.raise_with_backtrace ex bt
+              | Execute ->
+                  run
+                    {
+                      owner = t;
+                      stdout = stream t.stdout;
+                      stderr = stream t.stderr;
+                    })
+        in
+        match (primary, t.cleanup) with
+        | Error _, _ | Ok _, Clean -> primary
+        | Ok _, Cleanup_error -> Error (map_error t on_error cleanup_diagnostic)
+        )
 
   let read_stream process event stream =
     record process.owner.trace event;
@@ -195,13 +212,14 @@ let configured () =
     {|{"hooks":{"before_run":"printf '%s' \"$MARKER\"","timeout_ms":10}}|}
     [ ("MARKER", "frozen"); ("LINEAR_API_KEY", "secret") ]
 
-let make_process trace stdout stderr completion launch =
+let make_process ?(cleanup = Clean) trace stdout stderr completion launch =
   {
     Process.trace;
     Process.stdout;
     Process.stderr;
     Process.completion;
     Process.launch;
+    Process.cleanup;
   }
 
 let fixture ?deadline_ready trace process emit =
@@ -231,6 +249,7 @@ let kind = function
   | Monotonic_read -> "monotonic"
   | Wall_sample -> "wall"
   | Deadline _ -> "deadline"
+  | Mapped_error -> "mapped"
 
 let lifecycle trace =
   List.filter_map
@@ -241,7 +260,8 @@ let lifecycle trace =
       | Wrote_input
       | Monotonic_read
       | Wall_sample
-      | Deadline _ -> None)
+      | Deadline _
+      | Mapped_error -> None)
     (chronological trace)
 
 let expect_lifecycle expected trace =
@@ -307,7 +327,8 @@ let frozen_success () =
             | Wrote_input
             | Monotonic_read
             | Wall_sample
-            | Deadline _ -> None)
+            | Deadline _
+            | Mapped_error -> None)
           (chronological trace)
       in
       (match launch with
@@ -331,7 +352,8 @@ let frozen_success () =
             | Stderr
             | Wrote_input
             | Monotonic_read
-            | Wall_sample -> None)
+            | Wall_sample
+            | Mapped_error -> None)
           (chronological trace)
       in
       Alcotest.(check (list string))
@@ -353,7 +375,8 @@ let frozen_success () =
              | Stdout
              | Stderr
              | Monotonic_read
-             | Deadline _ -> false)
+             | Deadline _
+             | Mapped_error -> false)
            !trace))
 
 let failures () =
@@ -379,11 +402,13 @@ let failures () =
           (Endless, Read_error, Waiting, Execute);
         ])
 
-let timed_run cancel observe =
+let timed_run ?(cleanup = Clean) cancel observe =
   Eio_mock.Backend.run (fun () ->
       let trace = ref [] in
       let ready, signal = Eio.Promise.create () in
-      let process = make_process trace Endless Endless Waiting Execute in
+      let process =
+        make_process ~cleanup trace Endless Endless Waiting Execute
+      in
       let mono, hooks =
         fixture ~deadline_ready:signal trace process (emitter trace)
       in
@@ -422,6 +447,85 @@ let deadline_timeout () =
           | Workspace_manager.Filesystem_error _
           | Workspace_manager.Hook_failed _ ) ->
           Alcotest.fail "expected monotonic hook timeout")
+
+let failure_text = function
+  | Error (Workspace_manager.Hook_failed error) -> Diagnostic.render error
+  | Ok ()
+  | Error
+      ( Workspace_manager.Invalid_key _
+      | Workspace_manager.Unsafe_path _
+      | Workspace_manager.Ownership_conflict _
+      | Workspace_manager.Filesystem_error _
+      | Workspace_manager.Hook_timeout _ ) ->
+      Alcotest.fail "expected primary hook failure"
+
+let mapped_errors trace =
+  List.fold_left
+    (fun count -> function
+      | Mapped_error -> count + 1
+      | Hook _
+      | Opened _
+      | Closed
+      | Stdout
+      | Stderr
+      | Wrote_input
+      | Monotonic_read
+      | Wall_sample
+      | Deadline _ -> count)
+    0 !trace
+
+let cleanup_failure stdout stderr completion () =
+  Eio_mock.Backend.run (fun () ->
+      let execute cleanup =
+        let trace = ref [] in
+        let process =
+          make_process ~cleanup trace stdout stderr completion Execute
+        in
+        let _, hooks = fixture trace process (emitter trace) in
+        let result = run hooks (configured ()) in
+        expect_lifecycle [ "started"; "opened"; "closed"; "error" ] trace;
+        Alcotest.(check int)
+          "primary error bypasses process error mapper" 0 (mapped_errors trace);
+        failure_text result
+      in
+      (* Closing errors cannot change an already failed hook's observation. *)
+      Alcotest.(check string)
+        "primary failure survives secondary cleanup" (execute Clean)
+        (execute Cleanup_error))
+
+let cleanup_timeout () =
+  timed_run ~cleanup:Cleanup_error
+    (fun _sw mono ->
+      Alcotest.(check bool)
+        "deadline timer registered" true
+        (Eio_mock.Clock.Mono.try_advance mono))
+    (fun trace execute ->
+      match execute () with
+      | Error (Workspace_manager.Hook_timeout _) ->
+          expect_lifecycle [ "started"; "opened"; "closed"; "error" ] trace;
+          Alcotest.(check int)
+            "timeout bypasses process error mapper" 0 (mapped_errors trace)
+      | Ok ()
+      | Error
+          ( Workspace_manager.Invalid_key _
+          | Workspace_manager.Unsafe_path _
+          | Workspace_manager.Ownership_conflict _
+          | Workspace_manager.Filesystem_error _
+          | Workspace_manager.Hook_failed _ ) ->
+          Alcotest.fail "cleanup replaced the hook timeout")
+
+let cleanup_success () =
+  Eio_mock.Backend.run (fun () ->
+      let trace = ref [] in
+      let process =
+        make_process ~cleanup:Cleanup_error trace (Chunks []) (Chunks [])
+          (Immediately (Exit_code 0)) Execute
+      in
+      let _, hooks = fixture trace process (emitter trace) in
+      expect_failed (run hooks (configured ()));
+      Alcotest.(check int)
+        "successful hook maps cleanup failure once" 1 (mapped_errors trace);
+      expect_lifecycle [ "started"; "opened"; "closed"; "error" ] trace)
 
 exception Cancel_fixture
 exception Emit_fixture
@@ -515,4 +619,11 @@ let tests =
       report_precedence;
     Alcotest.test_case "original exception and backtrace survive cleanup" `Quick
       original_backtrace;
+    Alcotest.test_case "nonzero exit survives cleanup failure" `Quick
+      (cleanup_failure (Chunks []) (Chunks []) (Immediately (Exit_code 42)));
+    Alcotest.test_case "stream failure survives cleanup failure" `Quick
+      (cleanup_failure Read_error Endless Waiting);
+    Alcotest.test_case "timeout survives cleanup failure" `Quick cleanup_timeout;
+    Alcotest.test_case "successful hook exposes cleanup failure" `Quick
+      cleanup_success;
   ]

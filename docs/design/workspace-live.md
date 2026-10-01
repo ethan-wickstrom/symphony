@@ -85,6 +85,10 @@ Process is the sole trusted-shell module: executable /bin/bash plus argv
 [| "/bin/bash"; "-lc"; script |]. Hook interpreters pass script separately from
 checked Path and allowlisted Environment.child. They never build shell text from
 issue data. Hooks are the same interpreter over live/fake process and clock ports.
+The process bracket carries the caller's error type directly. Hooks map mechanism
+diagnostics with `on_error`, while timeout, exit and stream failures remain ordinary
+callback errors. Primary failure therefore outranks cleanup without a nested result
+or cached callback outcome. The private Path loan uses the same error relationship.
 
 ## workspace_driver.mli
 

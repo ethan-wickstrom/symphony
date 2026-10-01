@@ -35,16 +35,16 @@ let check t =
   if Native_lifetime.held t.lifetime then t.validate ()
   else Error (unavailable t)
 
-let with_child t f =
+let with_child t ~on_error f =
   match
     Native_lifetime.with_scope t.lifetime (fun ~sw ->
         match t.validate () with
-        | Error error -> Error error
+        | Error error -> Error (on_error error)
         | Ok () ->
             Eio.Fiber.check ();
             Workspace_directory.with_cwd t.directory (f ~sw))
   with
-  | Error Native_lifetime.Closed -> Error (unavailable t)
+  | Error Native_lifetime.Closed -> Error (on_error (unavailable t))
   | Error (Native_lifetime.Rejected error) -> Error error
   | Ok value -> Ok value
 

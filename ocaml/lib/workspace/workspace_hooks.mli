@@ -19,6 +19,9 @@ module type S = sig
       Completion or cancellation emits one Finished after Started. Cancellation
       emits Finished Cancelled after child closure, then propagates with its
       original backtrace. Both readers finish or reach their named drain bounds.
+      A timeout, nonzero exit or stream Error survives expected process cleanup
+      failure unchanged. A successful hook exposes process cleanup failure as
+      Hook_failed. Only a process error that becomes the result is mapped.
       Defects are outside this outcome algebra and may propagate after cleanup.
   *)
 end

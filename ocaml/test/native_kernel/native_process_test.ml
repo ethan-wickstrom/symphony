@@ -110,7 +110,7 @@ let streams () =
       let frame = String.make (3 * 65536) 'x' in
       let escaped =
         succeeded
-          (Process.with_process process ~cwd ~env:child
+          (Process.with_process process ~on_error:Fun.id ~cwd ~env:child
              ~command:
                "IFS= read -r line; printf '%s' \"$line\"; printf 'separate' \
                 >&2; exit 7" (fun running ->
@@ -149,7 +149,7 @@ let environment () =
       in
       let output =
         succeeded
-          (Process.with_process process ~cwd ~env:child
+          (Process.with_process process ~on_error:Fun.id ~cwd ~env:child
              ~command:
                "printf '%s\n\
                 %s|%s|%s' \"$PWD\" \"$SYMPHONY_ALLOWED\" \
@@ -189,6 +189,7 @@ end
 module Broken = Workspace_process_posix.Make (Broken_clock)
 
 exception Reporter_defect
+exception Mapper_defect
 exception Stop
 
 let sleeper = "printf '%s\n' \"$$\"; exec /bin/sleep 30"
@@ -222,8 +223,8 @@ let primary_error () =
       in
       let children = ref [] in
       let result =
-        Broken.with_process (broken ()) ~cwd ~env:child ~command:sleeper
-          (fun running ->
+        Broken.with_process (broken ()) ~on_error:Fun.id ~cwd ~env:child
+          ~command:sleeper (fun running ->
             children := [ pid (fun () -> Broken.read running) ];
             Error original)
       in
@@ -241,8 +242,8 @@ let primary_defect () =
       let traces = ref [] in
       let result =
         Native_outcome.capture (fun () ->
-            Broken.with_process (broken ()) ~cwd ~env:child ~command:sleeper
-              (fun running ->
+            Broken.with_process (broken ()) ~on_error:Fun.id ~cwd ~env:child
+              ~command:sleeper (fun running ->
                 children := [ pid (fun () -> Broken.read running) ];
                 try raise original
                 with exn ->
@@ -275,8 +276,8 @@ let cancellation () =
       let outcome =
         Native_outcome.capture (fun () ->
             Eio.Cancel.sub (fun cancel ->
-                Broken.with_process (broken ()) ~cwd ~env:child ~command:sleeper
-                  (fun running ->
+                Broken.with_process (broken ()) ~on_error:Fun.id ~cwd ~env:child
+                  ~command:sleeper (fun running ->
                     children := [ pid (fun () -> Broken.read running) ];
                     Eio.Cancel.cancel cancel Stop;
                     Eio.Fiber.check ();
@@ -294,8 +295,8 @@ let cleanup_defect () =
       let children = ref [] in
       let outcome =
         Native_outcome.capture (fun () ->
-            Broken.with_process (broken ()) ~cwd ~env:child ~command:sleeper
-              (fun running ->
+            Broken.with_process (broken ()) ~on_error:Fun.id ~cwd ~env:child
+              ~command:sleeper (fun running ->
                 children := [ pid (fun () -> Broken.read running) ];
                 Ok ()))
       in
@@ -305,6 +306,108 @@ let cleanup_defect () =
           Alcotest.fail "Wrong cleanup defect propagated"
       | Native_outcome.Returned (Ok () | Error _) ->
           Alcotest.fail "Cleanup reporter defect disappeared");
+      List.iter reaped !children)
+
+let semantic_error () =
+  with_fixture (fun ~clock:_ ~child ~cwd ->
+      let original =
+        Workspace_manager.Hook_timeout
+          (Diagnostic.make ~site:(Diagnostic.Host "callback hook")
+             ~message:"hook deadline reached" ~remedy:"repair the hook")
+      in
+      let children = ref [] in
+      let reports = ref [] in
+      let mapped = ref 0 in
+      let process =
+        Broken.create ~clock:() ~report:(fun error ->
+            reports := error :: !reports)
+      in
+      let result =
+        Broken.with_process process ~cwd ~env:child ~command:sleeper
+          ~on_error:(fun _ ->
+            incr mapped;
+            raise Mapper_defect)
+          (fun running ->
+            children := [ pid (fun () -> Broken.read running) ];
+            Error original)
+      in
+      (match result with
+      | Error observed ->
+          Alcotest.(check bool)
+            "semantic callback error identity" true (observed == original)
+      | Ok _ -> Alcotest.fail "Semantic callback error disappeared");
+      Alcotest.(check int) "shadowed cleanup never maps" 0 !mapped;
+      Alcotest.(check bool)
+        "cleanup clock failure was reported" true
+        (List.exists (fun error -> error == Broken_clock.error) !reports);
+      List.iter reaped !children)
+
+let mapped_cleanup () =
+  with_fixture (fun ~clock:_ ~child ~cwd ->
+      let children = ref [] in
+      let mapped = ref [] in
+      let original = Workspace_manager.Hook_failed Broken_clock.error in
+      let process = Broken.create ~clock:() ~report:(fun _ -> ()) in
+      let result =
+        Broken.with_process process ~cwd ~env:child ~command:sleeper
+          ~on_error:(fun error ->
+            (* Policy conversion follows complete native child closure. *)
+            List.iter reaped !children;
+            mapped := error :: !mapped;
+            original)
+          (fun running ->
+            children := [ pid (fun () -> Broken.read running) ];
+            Ok ())
+      in
+      (match result with
+      | Error observed ->
+          Alcotest.(check bool)
+            "mapped cleanup error identity" true (observed == original)
+      | Ok () -> Alcotest.fail "Expected cleanup error disappeared");
+      match !mapped with
+      | [ error ] ->
+          Alcotest.(check bool)
+            "first expected cleanup diagnostic" true
+            (error == Broken_clock.error)
+      | [] | _ :: _ -> Alcotest.fail "Cleanup conversion did not run once")
+
+let mapping_defect () =
+  with_fixture (fun ~clock:_ ~child ~cwd ->
+      let children = ref [] in
+      let traces = ref [] in
+      let original = Mapper_defect in
+      let process = Broken.create ~clock:() ~report:(fun _ -> ()) in
+      let outcome =
+        Native_outcome.capture (fun () ->
+            Broken.with_process process ~cwd ~env:child ~command:sleeper
+              ~on_error:(fun _ ->
+                List.iter reaped !children;
+                try raise original
+                with exn ->
+                  let trace = Printexc.get_raw_backtrace () in
+                  traces := [ trace ];
+                  Printexc.raise_with_backtrace exn trace)
+              (fun running ->
+                children := [ pid (fun () -> Broken.read running) ];
+                Ok ()))
+      in
+      (match outcome with
+      | Native_outcome.Raised (observed, trace) -> (
+          Alcotest.(check bool)
+            "mapper exception identity" true (observed == original);
+          match !traces with
+          | [ expected ] ->
+              Alcotest.(check bool)
+                "nonempty mapper backtrace" true
+                (Printexc.raw_backtrace_length expected > 0);
+              Alcotest.(check bool)
+                "mapper backtrace retained" true
+                (String.starts_with
+                   ~prefix:(Printexc.raw_backtrace_to_string expected)
+                   (Printexc.raw_backtrace_to_string trace))
+          | [] | _ :: _ -> Alcotest.fail "Mapper backtrace was not captured")
+      | Native_outcome.Returned (Ok () | Error _) ->
+          Alcotest.fail "Cleanup mapper defect disappeared");
       List.iter reaped !children)
 
 module Recording_clock = struct
@@ -338,7 +441,7 @@ let kill_after_grace () =
       in
       let owned =
         succeeded
-          (Recorded.with_process process ~cwd ~env:child
+          (Recorded.with_process process ~on_error:Fun.id ~cwd ~env:child
              ~command:"trap '' TERM; printf '%s\n' \"$$\"; exec /bin/sleep 30"
              (fun running -> Ok (pid (fun () -> Recorded.read running))))
       in
@@ -380,8 +483,8 @@ let escaped_read () =
           let ready () =
             let joined =
               succeeded
-                (Process.with_process process ~cwd ~env:child ~command
-                   (fun running ->
+                (Process.with_process process ~on_error:Fun.id ~cwd ~env:child
+                   ~command (fun running ->
                      (* Record ownership before granting permission to escape. *)
                      producer := [ pid (fun () -> Process.read running) ];
                      succeeded (Process.write running "!");
@@ -442,6 +545,12 @@ let tests =
       `Quick escaped_read;
     Alcotest.test_case "successful callback exposes reporter defect after reap"
       `Quick cleanup_defect;
+    Alcotest.test_case "semantic callback error never maps cleanup" `Quick
+      semantic_error;
+    Alcotest.test_case "successful callback maps cleanup once after reap" `Quick
+      mapped_cleanup;
+    Alcotest.test_case "cleanup mapper defect retains backtrace after reap"
+      `Quick mapping_defect;
     Alcotest.test_case "TERM-resistant child uses exact grace then KILL/reap"
       `Quick kill_after_grace;
   ]

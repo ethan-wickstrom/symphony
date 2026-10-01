@@ -98,32 +98,26 @@ struct
   let execute t workspace cwd hook script =
     match Clock.now t.clock with
     | Error error -> Error (failed workspace hook error)
-    | Ok started -> (
+    | Ok started ->
         let deadline =
           Clock.Pure.after started
             (Workspace_settings.timeout (Contract.settings workspace))
         in
-        let result =
-          Process.with_process t.process ~cwd
-            ~env:(Contract.environment workspace) ~command:script
-            (fun process ->
-              Ok
-                (Eio.Fiber.first
-                   (fun () -> observe workspace hook process)
-                   (fun () ->
-                     match Clock.sleep_until t.clock deadline with
-                     | Error error -> Error (failed workspace hook error)
-                     | Ok () ->
-                         Error
-                           (Workspace_manager.Hook_timeout
-                              (diagnostic workspace hook
-                                 "Hook exceeded its configured timeout"
-                                 "Fix the hook or increase hooks.timeout_ms in \
-                                  WORKFLOW.md")))))
-        in
-        match result with
-        | Error error -> Error (failed workspace hook error)
-        | Ok result -> result)
+        Process.with_process t.process ~cwd
+          ~env:(Contract.environment workspace)
+          ~command:script ~on_error:(failed workspace hook) (fun process ->
+            Eio.Fiber.first
+              (fun () -> observe workspace hook process)
+              (fun () ->
+                match Clock.sleep_until t.clock deadline with
+                | Error error -> Error (failed workspace hook error)
+                | Ok () ->
+                    Error
+                      (Workspace_manager.Hook_timeout
+                         (diagnostic workspace hook
+                            "Hook exceeded its configured timeout"
+                            "Fix the hook or increase hooks.timeout_ms in \
+                             WORKFLOW.md"))))
 
   let capture f =
     try Returned (f ()) with ex -> Raised (ex, Printexc.get_raw_backtrace ())
