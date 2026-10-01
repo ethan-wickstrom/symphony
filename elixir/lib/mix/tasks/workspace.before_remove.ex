@@ -14,7 +14,8 @@ defmodule Mix.Tasks.Workspace.BeforeRemove do
       mix workspace.before_remove --branch feature/my-branch
   """
 
-  @repo "ethan-wickstrom/symphony"
+  @repo_owner "ethan-wickstrom"
+  @repo "#{@repo_owner}/symphony"
 
   @impl Mix.Task
   def run(args) do
@@ -43,7 +44,7 @@ defmodule Mix.Tasks.Workspace.BeforeRemove do
   defp maybe_close_open_pull_requests(repo, branch) do
     if gh_available?() and gh_authenticated?() do
       repo
-      |> list_open_pull_request_numbers(branch)
+      |> list_pr_numbers(branch)
       |> Enum.each(&close_pull_request(repo, branch, &1))
     end
 
@@ -58,28 +59,37 @@ defmodule Mix.Tasks.Workspace.BeforeRemove do
     match?({:ok, _output}, run_command("gh", ["auth", "status"]))
   end
 
-  defp list_open_pull_request_numbers(repo, branch) do
-    case run_command("gh", [
-           "pr",
-           "list",
-           "--repo",
-           repo,
-           "--head",
-           branch,
-           "--state",
-           "open",
-           "--json",
-           "number",
-           "--jq",
-           ".[].number"
-         ]) do
-      {:ok, output} ->
-        output
-        |> String.split("\n", trim: true)
-        |> Enum.reject(&(&1 == ""))
+  defp list_pr_numbers(repo, branch) do
+    with {:ok, output} <-
+           run_command("gh", [
+             "pr",
+             "list",
+             "--repo",
+             repo,
+             "--head",
+             branch,
+             "--state",
+             "open",
+             "--json",
+             "number,headRefName,headRepository,headRepositoryOwner"
+           ]),
+         {:ok, pull_requests} when is_list(pull_requests) <- Jason.decode(output) do
+      # The head filter cannot qualify an owner; verify head identity before closing.
+      Enum.flat_map(pull_requests, fn
+        %{
+          "number" => number,
+          "headRefName" => ^branch,
+          "headRepository" => %{"nameWithOwner" => ^repo},
+          "headRepositoryOwner" => %{"login" => @repo_owner}
+        }
+        when is_integer(number) and number > 0 ->
+          [Integer.to_string(number)]
 
-      {:error, _reason} ->
-        []
+        _other ->
+          []
+      end)
+    else
+      _error -> []
     end
   end
 

@@ -64,7 +64,7 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
       fi
 
       if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
-        printf '101\n102\n'
+        printf '%s\n' '[{"number":101,"headRefName":"feature/workpad","headRepository":{"nameWithOwner":"ethan-wickstrom/symphony"},"headRepositoryOwner":{"login":"ethan-wickstrom"}},{"number":102,"headRefName":"feature/workpad","headRepository":{"nameWithOwner":"ethan-wickstrom/symphony"},"headRepositoryOwner":{"login":"ethan-wickstrom"}}]'
         exit 0
       fi
 
@@ -96,7 +96,7 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
         log = File.read!(log_path)
 
         assert log =~
-                 "pr list --repo ethan-wickstrom/symphony --head feature/workpad --state open --json number --jq .[].number"
+                 "pr list --repo ethan-wickstrom/symphony --head feature/workpad --state open --json number,headRefName,headRepository,headRepositoryOwner"
 
         assert log =~ "pr close 101 --repo ethan-wickstrom/symphony"
         assert log =~ "pr close 102 --repo ethan-wickstrom/symphony"
@@ -119,7 +119,7 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
       log = File.read!(log_path)
 
       assert log =~ "auth status"
-      assert log =~ "pr list --repo ethan-wickstrom/symphony --head feature/workpad --state open --json number --jq .[].number"
+      assert log =~ "pr list --repo ethan-wickstrom/symphony --head feature/workpad --state open --json number,headRefName,headRepository,headRepositoryOwner"
       assert log =~ "pr close 101 --repo ethan-wickstrom/symphony"
       assert log =~ "pr close 102 --repo ethan-wickstrom/symphony"
 
@@ -134,6 +134,53 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
     end)
   end
 
+  test "ignores colliding fork branches and unrelated head repositories" do
+    with_fake_gh(
+      """
+      #!/bin/sh
+      printf '%s\\n' "$*" >> "$GH_LOG"
+
+      if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+        exit 0
+      fi
+
+      if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
+        case "$*" in
+          *"--jq"*) printf '101\\n102\\n103\\n104\\n105\\n' ;;
+          *)
+            printf '%s\\n' '[
+              {"number":101,"headRefName":"feature/workpad","headRepository":{"nameWithOwner":"ethan-wickstrom/symphony"},"headRepositoryOwner":{"login":"ethan-wickstrom"}},
+              {"number":102,"headRefName":"feature/workpad","headRepository":{"nameWithOwner":"contributor/symphony"},"headRepositoryOwner":{"login":"contributor"}},
+              {"number":103,"headRefName":"feature/workpad","headRepository":{"nameWithOwner":"ethan-wickstrom/other"},"headRepositoryOwner":{"login":"ethan-wickstrom"}},
+              {"number":104,"headRefName":"feature/unrelated","headRepository":{"nameWithOwner":"ethan-wickstrom/symphony"},"headRepositoryOwner":{"login":"ethan-wickstrom"}},
+              {"number":105,"headRefName":"feature/workpad","headRepository":null,"headRepositoryOwner":{"login":"ethan-wickstrom"}}
+            ]'
+            ;;
+        esac
+        exit 0
+      fi
+
+      if [ "$1" = "pr" ] && [ "$2" = "close" ]; then
+        exit 0
+      fi
+
+      exit 99
+      """,
+      fn log_path ->
+        capture_task_output(fn ->
+          BeforeRemove.run(["--branch", "feature/workpad"])
+        end)
+
+        log = File.read!(log_path)
+        assert log =~ "pr close 101 --repo ethan-wickstrom/symphony"
+
+        for number <- [102, 103, 104, 105] do
+          refute log =~ "pr close #{number} "
+        end
+      end
+    )
+  end
+
   test "formats close failures without command stderr output" do
     with_fake_gh(
       """
@@ -145,7 +192,7 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
       fi
 
       if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
-        printf '102\n'
+        printf '%s\n' '[{"number":102,"headRefName":"feature/no-output","headRepository":{"nameWithOwner":"ethan-wickstrom/symphony"},"headRepositoryOwner":{"login":"ethan-wickstrom"}}]'
         exit 0
       fi
 
@@ -165,7 +212,7 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
         assert error_output =~ "Failed to close PR #102 for branch feature/no-output: exit 17"
         refute error_output =~ "output="
         log = File.read!(log_path)
-        assert log =~ "pr list --repo ethan-wickstrom/symphony --head feature/no-output --state open --json number --jq .[].number"
+        assert log =~ "pr list --repo ethan-wickstrom/symphony --head feature/no-output --state open --json number,headRefName,headRepository,headRepositoryOwner"
         assert log =~ "pr close 102 --repo ethan-wickstrom/symphony"
       end
     )
@@ -199,7 +246,7 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
         assert log =~ "auth status"
 
         assert log =~
-                 "pr list --repo ethan-wickstrom/symphony --head feature/list-fails --state open --json number --jq .[].number"
+                 "pr list --repo ethan-wickstrom/symphony --head feature/list-fails --state open --json number,headRefName,headRepository,headRepositoryOwner"
 
         refute log =~ "pr close"
       end
@@ -270,7 +317,7 @@ defmodule Mix.Tasks.Workspace.BeforeRemoveTest do
         fi
 
         if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
-          printf '101\n102\n'
+          printf '%s\n' '[{"number":101,"headRefName":"feature/workpad","headRepository":{"nameWithOwner":"ethan-wickstrom/symphony"},"headRepositoryOwner":{"login":"ethan-wickstrom"}},{"number":102,"headRefName":"feature/workpad","headRepository":{"nameWithOwner":"ethan-wickstrom/symphony"},"headRepositoryOwner":{"login":"ethan-wickstrom"}}]'
           exit 0
         fi
 
