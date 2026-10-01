@@ -47,7 +47,10 @@ let error_text = function
 let value source = checked (Config_value.parse source)
 
 let schedule ?(environment = env) extra =
-  match Scheduling_policy.parse ~env:environment (value (base ^ extra)) with
+  let public =
+    Environment.public environment ~deny:[ "LINEAR_API_KEY" ] ~secrets:[]
+  in
+  match Scheduling_policy.parse ~env:public (value (base ^ extra)) with
   | Ok settings -> settings
   | Error errors -> Alcotest.fail (diagnostics errors)
 
@@ -328,7 +331,10 @@ module Make (Config : Config_layer.S) = struct
       (fun (source, expected) ->
         Alcotest.(check string)
           source expected
-          (checked (Fields.text env (value source))))
+          (checked
+             (Fields.text
+                (Environment.public env ~deny:[ "LINEAR_API_KEY" ] ~secrets:[])
+                (value source))))
       [
         ("'$WORK_ROOT'", "repositories");
         ("'$WORK_ROOT/repo'", "$WORK_ROOT/repo");

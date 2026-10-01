@@ -32,15 +32,16 @@ jobs:
           opam pin add crowbar.0.2.2 ../vendor/crowbar --no-action --yes
           opam pin add eio.1.6 ../vendor/eio --no-action --yes
           opam pin add eio_posix.1.6 ../vendor/eio --no-action --yes
+          opam pin add h1.1.1.1 ../vendor/h1 --no-action --yes
           opam install . --deps-only --locked --with-test --with-dev-setup --yes
-      - run: opam exec -- dune build @all @fmt
+      - run: opam exec -- dune build @all @fmt @test/native-http-inputs
       - run: opam exec -- dune runtest
-      - name: Native workspace ownership and live hooks
+      - name: Bounded native workspace and HTTPS checks
         run: |
           python3 test/native_check_test.py
           PYTHONOPTIMIZE=1 python3 test/native_check_test.py
-          python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --out "$RUNNER_TEMP/symphony-workspace"
-          PYTHONOPTIMIZE=1 python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --out "$RUNNER_TEMP/symphony-workspace-optimized"
+          python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --out "$RUNNER_TEMP/symphony-workspace"
+          PYTHONOPTIMIZE=1 python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --out "$RUNNER_TEMP/symphony-workspace-optimized"
       - run: opam exec -- dune exec tools/check_source.exe -- .
       - run: opam exec -- dune exec tools/check_source.exe -- --self-test
       - run: |
@@ -49,7 +50,12 @@ jobs:
       - run: |
           python3 test/cli_check.py _build/default/bin/main.exe
           PYTHONOPTIMIZE=1 python3 test/cli_check.py _build/default/bin/main.exe
+          python3 test/tracker_cli_check.py _build/default/bin/main.exe
+          PYTHONOPTIMIZE=1 python3 test/tracker_cli_check.py _build/default/bin/main.exe
       - run: python3 test/verification_check.py .
+      - run: |
+          python3 tools/check_h1.py ../vendor/h1
+          PYTHONOPTIMIZE=1 python3 tools/check_h1.py ../vendor/h1
       - name: Seeded parser campaign
         run: opam exec -- dune exec fuzz/boundaries.exe -- --repeat 10000 --seed 20260930
       - name: Native process custody

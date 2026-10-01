@@ -16,13 +16,13 @@ type fixture =
   | Mli_only of string
   | No_files
   | Missing_root
+  | Ocaml_tree of (string * string) list
 
-type expectation = Accept | Reject of string
+type expectation = Accept | Accept_count of int | Reject of string
 
 let empty = { modules = Names.empty; values = Names.empty }
 let forbidden = [ "Obj"; "Str"; "Lwt"; "Async" ]
 let ignored = [ "_opam"; "_build"; "vendor"; ".git" ]
-let directories = [ "lib"; "bin"; "test"; "fuzz"; "tools" ]
 
 let standard = function
   | "Stdlib" :: rest -> rest
@@ -702,13 +702,7 @@ let rec files root =
     | Unix.Unix_error (error, operation, _) ->
         Error [ file_error root (operation ^ ": " ^ Unix.error_message error) ]
 
-let scope_roots root =
-  if Filename.basename root = "ocaml" then
-    List.filter Sys.file_exists (List.map (Filename.concat root) directories)
-  else [ root ]
-
 let check roots =
-  let roots = List.concat_map scope_roots roots in
   let found =
     List.fold_left
       (fun result root ->
@@ -770,9 +764,70 @@ let check roots =
 let write file text =
   Out_channel.with_open_bin file (fun channel -> output_string channel text)
 
+let rec mkdir directory =
+  if not (Sys.file_exists directory) then (
+    mkdir (Filename.dirname directory);
+    Unix.mkdir directory 0o700)
+
+let rec remove path =
+  match (Unix.lstat path).Unix.st_kind with
+  | Unix.S_DIR ->
+      Array.iter
+        (fun name -> remove (Filename.concat path name))
+        (Sys.readdir path);
+      Unix.rmdir path
+  | Unix.S_REG
+  | Unix.S_LNK
+  | Unix.S_CHR
+  | Unix.S_BLK
+  | Unix.S_FIFO
+  | Unix.S_SOCK -> Sys.remove path
+
 let controls () =
+  let base =
+    [
+      ("lib/base.ml", "let value = 1\n"); ("lib/base.mli", "val value : int\n");
+    ]
+  in
   let examples =
     [
+      ( "default-test-support-forbidden",
+        Ocaml_tree
+          (base
+          @ [
+              ("test_support/fixture.ml", "let convert = Obj.magic\n");
+              ("test_support/fixture.mli", "");
+            ]),
+        Reject "forbidden module Obj" );
+      ( "default-test-support-missing-interface",
+        Ocaml_tree (base @ [ ("test_support/fixture.ml", "let value = 2\n") ]),
+        Reject "missing sibling .mli" );
+      ( "default-future-folder",
+        Ocaml_tree
+          (base
+          @ [
+              ("future/nested/fixture.ml", "let value = 2\n");
+              ("future/nested/fixture.mli", "val value : int\n");
+            ]),
+        Accept_count 4 );
+      ( "default-future-folder-forbidden",
+        Ocaml_tree
+          (base
+          @ [
+              ("future/nested/fixture.ml", "let convert = Obj.magic\n");
+              ("future/nested/fixture.mli", "");
+            ]),
+        Reject "forbidden module Obj" );
+      ( "default-ignored-subtrees",
+        Ocaml_tree
+          (base
+          @ [
+              ("_opam/fixture.ml", "let convert = Obj.magic\n");
+              ("_build/fixture.ml", "let =\n");
+              ("vendor/fixture.ml", "let value = 2\n");
+              (".git/fixture.ml", "let convert = Obj.magic\n");
+            ]),
+        Accept_count 2 );
       ("missing-mli", Ml_only "let x = 1\n", Reject "missing sibling .mli");
       ( "object-alias",
         Paired ("module O = Obj\nlet f = O.magic\n", ""),
@@ -912,11 +967,7 @@ let controls () =
     (fun (name, fixture, expectation) ->
       let root = Filename.temp_dir "symphony-source-gate-" "" in
       Fun.protect
-        ~finally:(fun () ->
-          Array.iter
-            (fun file -> Sys.remove (Filename.concat root file))
-            (Sys.readdir root);
-          Unix.rmdir root)
+        ~finally:(fun () -> remove root)
         (fun () ->
           (match fixture with
           | Paired (implementation, interface) ->
@@ -926,14 +977,30 @@ let controls () =
               write (Filename.concat root "fixture.ml") implementation
           | Mli_only interface ->
               write (Filename.concat root "fixture.mli") interface
+          | Ocaml_tree entries ->
+              List.iter
+                (fun (name, source) ->
+                  let path =
+                    Filename.concat (Filename.concat root "ocaml") name
+                  in
+                  mkdir (Filename.dirname path);
+                  write path source)
+                entries
           | No_files | Missing_root -> ());
           let scan =
             match fixture with
             | Missing_root -> Filename.concat root "missing"
+            | Ocaml_tree _ -> Filename.concat root "ocaml"
             | Paired _ | Ml_only _ | Mli_only _ | No_files -> root
           in
           match (expectation, check [ scan ]) with
           | Accept, Ok _ -> Printf.printf "ok %s\n" name
+          | Accept_count expected, Ok actual ->
+              if actual = expected then Printf.printf "ok %s\n" name
+              else
+                failed
+                  (Printf.sprintf "%s checked %d files instead of %d" name
+                     actual expected)
           | Reject expected, Error errors ->
               let contains text =
                 let rec loop offset =
@@ -951,7 +1018,7 @@ let controls () =
                 failed
                   (name ^ " failed for the wrong reason:\n"
                   ^ String.concat "\n" (List.map display errors))
-          | Accept, Error errors ->
+          | (Accept | Accept_count _), Error errors ->
               failed
                 (name ^ " rejected:\n"
                 ^ String.concat "\n" (List.map display errors))
@@ -973,7 +1040,7 @@ let main () =
     ]
     (fun root -> roots := root :: !roots)
     "check_source [--self-test | --limitations] [ROOT ...]\n\
-     Default: application sources under ocaml/{lib,bin,test,fuzz,tools}.";
+     Default: recursively scan ocaml, excluding _opam, _build, vendor and .git.";
   match !mode with
   | Self_test -> controls ()
   | Limits ->

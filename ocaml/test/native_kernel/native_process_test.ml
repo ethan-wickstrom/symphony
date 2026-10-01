@@ -69,10 +69,12 @@ let with_fixture run =
                    ("SYMPHONY_HIDDEN", "host-private");
                  ])
           in
+          let env =
+            Environment.public env ~deny:[ "SYMPHONY_SECRET" ] ~secrets:[]
+          in
           let child =
             Environment.child env
               ~allow:[ "HOME"; "SYMPHONY_ALLOWED"; "SYMPHONY_SECRET" ]
-              ~deny:[ "SYMPHONY_SECRET" ]
           in
           let issue = reference root env child in
           let clock =

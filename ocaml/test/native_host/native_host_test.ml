@@ -51,7 +51,7 @@ type fixture = {
   root : string;
   trace_file : string;
   pid_file : string;
-  env : Environment.t;
+  env : Environment.public;
   child : Environment.child;
   clock : Clock_posix.t;
   host : Host.t;
@@ -89,6 +89,9 @@ let with_fixture ?(observe = fun _phase _event -> ()) run =
                    ("LINEAR_API_KEY", "tracker-secret");
                  ])
           in
+          let env =
+            Environment.public env ~deny:[ "LINEAR_API_KEY" ] ~secrets:[]
+          in
           let child =
             Environment.child env
               ~allow:
@@ -100,7 +103,6 @@ let with_fixture ?(observe = fun _phase _event -> ()) run =
                   "MARKER";
                   "LINEAR_API_KEY";
                 ]
-              ~deny:[ "LINEAR_API_KEY" ]
           in
           let events = ref [] and reports = ref [] in
           let clock =

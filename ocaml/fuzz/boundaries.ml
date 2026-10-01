@@ -1,4 +1,4 @@
-module Config = Config_layer.Make (Tracker_config)
+module Config = Config_layer.Make (Tracker_registry)
 module Generic_id = Checked_id.Make ()
 
 module Loader_io = struct
@@ -35,13 +35,8 @@ let env =
          ("EMPTY", "");
        ])
 
-let registry =
-  match
-    Tracker_config.make [ Tracker_config.Entry (module Linear_settings) ]
-  with
-  | Ok value -> value
-  | Error error ->
-      Crowbar.fail (Diagnostic.render (Tracker_error.diagnostic error))
+let public = Environment.public env ~deny:[ "LINEAR_API_KEY" ] ~secrets:[]
+let registry = Tracker_fixture.registry
 
 let tracker_yaml =
   "tracker:\n\
@@ -382,7 +377,7 @@ let text_time_path source =
   iter_ok
     (fun value -> absolute_law (Workflow_path.absolute value))
     (Workflow_path.resolve ~base source);
-  iter_ok absolute_law (Fields.path env ~base source)
+  iter_ok absolute_law (Fields.path public ~base source)
 
 let environments name value duplicate =
   let bindings =
@@ -391,29 +386,69 @@ let environments name value duplicate =
   iter_ok
     (fun snapshot ->
       Crowbar.check_eq (Some value) (Environment.lookup snapshot name);
-      let child =
-        Environment.child snapshot ~allow:[ name; name ] ~deny:[ name ]
-      in
+      let denied = Environment.public snapshot ~deny:[ name ] ~secrets:[] in
+      let child = Environment.child denied ~allow:[ name; name ] in
       Crowbar.check_eq [] (Environment.bindings child);
-      let allowed = Environment.child snapshot ~allow:[ name ] ~deny:[] in
+      let unrestricted = Environment.public snapshot ~deny:[] ~secrets:[] in
+      let allowed = Environment.child unrestricted ~allow:[ name ] in
       Crowbar.check_eq [ (name, value) ] (Environment.bindings allowed))
     (Environment.of_bindings ~temp_dir:base bindings)
 
+let public_environments value =
+  iter_ok
+    (fun snapshot ->
+      let public_value = value ^ "!" in
+      let restricted =
+        Environment.public snapshot
+          ~deny:[ "SECRET_SOURCE"; "SECRET_SOURCE" ]
+          ~secrets:[]
+      in
+      let literal =
+        Environment.public snapshot ~deny:[]
+          ~secrets:(Option.to_list (Environment.Secret.make value))
+      in
+      let model =
+        if value = "" then [ ("PATH", ""); ("PUBLIC", public_value) ]
+        else [ ("PUBLIC", public_value) ]
+      in
+      List.iter
+        (fun public ->
+          Crowbar.check_eq model
+            (Environment.bindings
+               (Environment.child public ~allow:[ "PUBLIC"; "PATH"; "PATH" ]));
+          Crowbar.check_eq public_value
+            (checked (Environment.check public public_value));
+          match (value = "", Environment.check public value) with
+          | true, Ok "" | false, Error _ -> ()
+          | true, Ok _ | false, Ok _ | true, Error _ ->
+              Crowbar.fail "quarantine differs from exact nonempty-value model")
+        [ restricted; literal ])
+    (Environment.of_bindings ~temp_dir:base
+       [ ("SECRET_SOURCE", value); ("PATH", value); ("PUBLIC", value ^ "!") ])
+
 let fields tree =
   ignore (Fields.get tree [ "tracker"; "kind" ]);
-  ignore (Fields.text env tree);
-  ignore (Fields.integer env tree);
-  ignore (Fields.strings env tree);
+  ignore (Fields.text public tree);
+  ignore (Fields.integer public tree);
+  ignore (Fields.strings public tree);
   ignore (Fields.mapping tree);
-  iter_ok json_laws (Fields.json tree);
+  iter_ok json_laws (Fields.json public tree);
   let checked_node source =
     iter_ok
       (fun node ->
-        ignore (Fields.integer env node);
-        ignore (Fields.text env node))
+        ignore (Fields.integer public node);
+        ignore (Fields.text public node))
       (Config_value.parse source)
   in
-  List.iter checked_node [ "$POLL_MS"; "'$EMPTY'"; "null"; "0xFF" ];
+  List.iter checked_node
+    [
+      "$POLL_MS";
+      "'$EMPTY'";
+      "null";
+      "0xFF";
+      "'$LINEAR_API_KEY'";
+      "'fuzz-fixture-token'";
+    ];
   iter_ok
     (fun policy ->
       Crowbar.check (Scheduling_policy.global_limit policy > 0);
@@ -424,18 +459,19 @@ let fields tree =
       in
       Crowbar.check (Scheduling_policy.Names.is_empty overlap);
       Crowbar.check (Scheduling_policy.state_limit policy "unknown" > 0))
-    (Scheduling_policy.parse ~env tree);
+    (Scheduling_policy.parse ~env:public tree);
   iter_ok
     (fun settings -> Crowbar.check (Agent_settings.command settings <> ""))
-    (Agent_settings.parse ~env tree);
-  ignore (Workspace_settings.parse ~env ~workflow_file:file tree);
+    (Agent_settings.parse ~env:public tree);
+  ignore (Workspace_settings.parse ~env:public ~workflow_file:file tree);
   iter_ok
-    (fun settings ->
-      let scope = Linear_settings.scope settings in
+    (fun (settings, _) ->
+      let scope = Tracker_fixture.Adapter.scope settings in
       Crowbar.check (Tracker_scope.text scope <> "");
       Crowbar.check
-        (List.mem "LINEAR_API_KEY" (Linear_settings.secret_names settings)))
-    (Linear_settings.parse ~env ~active:[ "Todo" ] ~terminal:[ "Done" ] tree)
+        (List.mem "LINEAR_API_KEY"
+           (Tracker_fixture.Adapter.secret_names settings)))
+    (Tracker_fixture.Adapter.parse ~env tree)
 
 let yaml_boundary source =
   iter_ok
@@ -494,6 +530,220 @@ let json_boundary source =
         [ "AskForApproval"; "SandboxMode"; "SandboxPolicy" ])
     (Json.parse source);
   iter_ok fixture_laws (Prompt_fixture.parse source)
+
+let http_ok = 200
+let http_bad_request = 400
+let http_rate_limited = 429
+let http_server_error = 500
+let max_omission_identity = 2048
+let max_omission_diagnostic = 4096
+let provider_secret = "fuzz-provider-secret"
+let secret_pattern = Re.compile (Re.str provider_secret)
+
+let tracker_error_key error =
+  ( Tracker_error.category error,
+    Diagnostic.render (Tracker_error.diagnostic error) )
+
+let linear_envelope status source =
+  let signature result =
+    Result.map Json.encode (Result.map_error tracker_error_key result)
+  in
+  let first = Linear_response.parse ~status ~body:source in
+  Crowbar.check_eq (signature first)
+    (signature (Linear_response.parse ~status ~body:source));
+  match first with
+  | Ok _ -> ()
+  | Error error ->
+      Crowbar.check
+        (not (Re.execp secret_pattern (snd (tracker_error_key error))))
+
+let omission_key omission =
+  let identity =
+    Linear_omission.identity_text (Linear_omission.identity omission)
+  in
+  let diagnostic = Diagnostic.render (Linear_omission.diagnostic omission) in
+  Crowbar.check (String.length identity <= max_omission_identity);
+  Crowbar.check (String.length diagnostic <= max_omission_diagnostic);
+  (Linear_omission.reason omission, identity, diagnostic)
+
+let omission_reasons =
+  let fields = Linear_omission.[ Id; Identifier; Title; State ] in
+  Linear_omission.[ Invalid_record; Record_rejected ]
+  @ List.concat_map
+      (fun field -> Linear_omission.[ Missing_field field; Wrong_type field ])
+      fields
+
+let unused_field node value =
+  match Json.view node with
+  | Json.Object fields ->
+      Json.of_view
+        (Json.Object
+           (("fuzz_unused", value) :: List.remove_assoc "fuzz_unused" fields))
+  | Json.Null | Json.Bool _ | Json.Number _ | Json.String _ | Json.Array _ ->
+      Ok node
+
+let linear_page node =
+  let signature result =
+    Result.map
+      (fun page ->
+        ( List.map Json.encode (Linear_page.nodes page),
+          Option.map Linear_page.cursor_text (Linear_page.next page) ))
+      (Result.map_error tracker_error_key result)
+  in
+  let first = Linear_page.parse node in
+  Crowbar.check_eq (signature first) (signature (Linear_page.parse node));
+  iter_ok
+    (fun page ->
+      List.iter json_laws (Linear_page.nodes page);
+      match Linear_page.next page with
+      | None -> ()
+      | Some cursor -> (
+          Crowbar.check (Linear_page.cursor_equal cursor cursor);
+          match Linear_page.advance Linear_page.start cursor with
+          | Error error -> Crowbar.fail (snd (tracker_error_key error))
+          | Ok history ->
+              must_error "repeated Relay cursor"
+                (Linear_page.advance history cursor)))
+    first
+
+let json_list value =
+  match Json.view value with
+  | Json.Array nodes -> nodes
+  | Json.Null | Json.Bool _ | Json.Number _ | Json.String _ | Json.Object _ ->
+      [ value ]
+
+let record_key = function
+  | Ok issue -> Ok (Json.encode (Issue.to_json issue))
+  | Error omission -> Error (omission_key omission)
+
+let linear_record node labels relations completeness =
+  let parse node =
+    Linear_record.parse ~terminal:[ "done" ] ~labels ~relations ~completeness
+      node
+  in
+  let first = parse node in
+  Crowbar.check_eq (record_key first) (record_key (parse node));
+  iter_ok fixture_laws first;
+  let changed =
+    unused_field node (checked (Json.of_view (Json.String "ignored payload")))
+  in
+  iter_ok
+    (fun changed ->
+      Crowbar.check_eq (record_key first) (record_key (parse changed));
+      List.iter
+        (fun reason ->
+          Crowbar.check_eq
+            (omission_key (Linear_omission.make reason node))
+            (omission_key (Linear_omission.make reason changed)))
+        omission_reasons)
+    changed
+
+let linear_boundaries source labels relations complete =
+  let completeness =
+    if complete then Linear_record.Complete else Linear_record.Incomplete
+  in
+  iter_ok
+    (fun node ->
+      linear_page node;
+      List.iter
+        (fun reason -> ignore (omission_key (Linear_omission.make reason node)))
+        omission_reasons;
+      let list source =
+        match Json.parse source with
+        | Ok value -> json_list value
+        | Error _ -> []
+      in
+      linear_record node (list labels) (list relations) completeness)
+    (Json.parse source)
+
+let linear_record_input =
+  Crowbar.map (ascii @> no_inputs) (fun text ->
+      Printf.sprintf
+        {|{"id":"fuzz-linear","identifier":"FUZZ-1","title":%s,"state":{"name":"Todo"},"priority":1,"project":{"id":"fuzz-project","slugId":"fixture"},"description":%s}|}
+        (quoted ("Title " ^ text))
+        (quoted text))
+
+let linear_input =
+  Crowbar.choose
+    [
+      linear_record_input;
+      choose_text
+        [
+          {|{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}|};
+          {|{"nodes":[{}],"pageInfo":{"hasNextPage":true,"endCursor":"next"}}|};
+          {|{"nodes":[{}],"pageInfo":{"hasNextPage":true,"endCursor":""}}|};
+          {|{"id":"fuzz-linear","identifier":"FUZZ-1","title":"fixture","state":{"name":"Todo"}}|};
+          {|{"id":"fuzz-linear","identifier":"FUZZ-1","title":null,"state":{"name":"Todo"}}|};
+          depth_source;
+        ];
+    ]
+
+let linear_labels =
+  Crowbar.choose
+    [
+      Crowbar.map (ascii @> no_inputs) (fun text ->
+          Printf.sprintf {|[{"name":%s},{"name":%s},{"name":null}]|}
+            (quoted text) (quoted text));
+      json_input;
+    ]
+
+let linear_relations =
+  choose_text
+    [
+      "[]";
+      {|[{"type":"blocks","issue":{"id":"other","identifier":"FUZZ-0","state":{"name":"Done"}},"relatedIssue":{"id":"fuzz-linear"}}]|};
+      {|[{"type":"blocks","issue":{"id":"other","state":{"name":"Todo"}},"relatedIssue":{"id":"fuzz-linear"}}]|};
+      {|[{"type":"blocks","issue":{"id":"fuzz-linear","state":{"name":"Done"}},"relatedIssue":{"id":"fuzz-linear"}}]|};
+      {|[{"type":"blocks","issue":null,"relatedIssue":{"id":"fuzz-linear"}}]|};
+      {|[{"type":"related","issue":null}]|};
+    ]
+
+let linear_envelopes =
+  choose_text
+    [
+      {|{"data":{}}|};
+      Printf.sprintf {|{"errors":[{"message":%s}],"data":{}}|}
+        (quoted provider_secret);
+      Printf.sprintf
+        {|{"errors":[{"message":%s,"extensions":{"code":"RATELIMITED"}}],"data":{}}|}
+        (quoted provider_secret);
+      {|{"data":{},"data":{"issues":{}}}|};
+      {|{"data":null}|};
+      "null";
+      depth_source;
+    ]
+
+let http_status =
+  Crowbar.choose
+    (Crowbar.uint16
+    :: List.map Crowbar.const
+         [ http_ok; http_bad_request; http_rate_limited; http_server_error ])
+
+let http_wire =
+  choose_text
+    [
+      "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
+      "HTTP/1.1 200 OK\r\n\
+       Transfer-Encoding: chunked\r\n\
+       \r\n\
+       2\r\n\
+       {}\r\n\
+       0\r\n\
+       \r\n";
+      "HTTP/1.1 200 OK\r\n\r\n{}";
+      "HTTP/1.1 429 Slow\r\nContent-Length: 0\r\n\r\n";
+      "HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\n{}";
+      "HTTP/1.1 200 OK\r\n\
+       Transfer-Encoding: chunked\r\n\
+       \r\n\
+       ffffffffffffffff\r\n";
+      "HTTP/1.1 200 OK\r\n\
+       Transfer-Encoding: chunked\r\n\
+       \r\n\
+       0\r\n\
+       Bad trailer\r\n\
+       \r\n";
+    ]
 
 let issue_boundary title metadata =
   let input : Issue.input =
@@ -776,6 +1026,41 @@ let () =
     workflow_boundary;
   Crowbar.add_test ~name:"JSON, policy JSON and normalized issue fixture"
     (json_input @> no_inputs) json_boundary;
+  Crowbar.add_test ~name:"Linear response envelope classification and redaction"
+    (http_status @> linear_envelopes @> no_inputs)
+    linear_envelope;
+  Crowbar.add_test
+    ~name:"actual Linear page, record and bounded omission parsers"
+    (linear_input @> linear_labels @> linear_relations @> Crowbar.bool
+   @> no_inputs)
+    linear_boundaries;
+  Crowbar.add_test ~name:"native HTTPS endpoint parsing"
+    (choose_text
+       [
+         "https://api.linear.app/graphql";
+         "https://[::1]:8443/graphql";
+         "http://linear.example/graphql";
+         "https://user:secret@linear.example/graphql";
+         "https://linear.example/graphql#fragment";
+         "https://linear.example/a\r\nheader";
+       ]
+    @> no_inputs)
+    Native_boundaries.endpoint;
+  Crowbar.add_test ~name:"native sealed authorization header values"
+    (choose_text [ "https://api.linear.app/graphql" ] @> raw @> no_inputs)
+    Native_boundaries.credential;
+  Crowbar.add_test ~name:"native PEM trust parser"
+    (choose_text
+       [
+         Native_boundaries.pem_sample;
+         "";
+         "-----BEGIN CERTIFICATE-----\ninvalid\n-----END CERTIFICATE-----\n";
+       ]
+    @> no_inputs)
+    Native_boundaries.trust;
+  Crowbar.add_test ~name:"actual H1 response framing is fragmentation invariant"
+    (http_wire @> Crowbar.range 256 @> no_inputs)
+    (fun source width -> Native_boundaries.framing source (width + 1));
   Crowbar.add_test ~name:"issue parser and normalized fixture roundtrip"
     (ascii @> raw @> no_inputs)
     issue_boundary;
@@ -822,6 +1107,10 @@ let () =
     (choose_text [ "HOME"; "LINEAR_API_KEY"; "X"; "BAD=NAME" ]
     @> raw @> Crowbar.bool @> no_inputs)
     environments;
+  Crowbar.add_test
+    ~name:"public environment agrees with exact-value alias model"
+    (choose_text [ ""; "token"; "617283"; "/fixture/temp" ] @> no_inputs)
+    public_environments;
   Crowbar.add_test ~name:"nonempty list and request identity allocation"
     (raw @> Crowbar.range 65 @> no_inputs)
     collections;

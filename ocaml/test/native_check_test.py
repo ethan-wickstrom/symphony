@@ -17,6 +17,8 @@ import native_check
 FIXTURE_LIFETIME = 20
 READY_TIMEOUT = 5
 INTERRUPT_TIMEOUT = 8
+GATE_TIMEOUT = 1
+GATE_OUTER_TIMEOUT = 12
 
 
 class Stage(Enum):
@@ -83,6 +85,68 @@ def await_fixtures(receipt):
 
 
 class NativeWatchdogTest(unittest.TestCase):
+    def test_http_hang_bounded(self):
+        # No service clock participates in this hung target. The watchdog is
+        # its independent owner and must finish after TERM/kill/sole reap.
+        with tempfile.TemporaryDirectory(prefix="symphony-http-hang-") as base:
+            base = Path(base)
+            helper, receipt = group_fixture(base, f"time.sleep({FIXTURE_LIFETIME})")
+            try:
+                outcome = native_check.execute(helper, base / "run.log", GATE_TIMEOUT)
+                self.assertEqual("timeout", outcome["status"])
+                self.assertTrue(receipt.is_file(), "hung target never became ready")
+                for text in receipt.read_text().split():
+                    self.assertFalse(running(int(text)), "hung target leaked its group")
+            finally:
+                await_fixtures(receipt)
+
+    def test_http_gate_manifest(self):
+        with tempfile.TemporaryDirectory(prefix="symphony-http-gate-") as base:
+            base = Path(base)
+            targets = {}
+            for name in ("kernel", "host"):
+                directory = base / name
+                directory.mkdir()
+                helper = directory / "target"
+                helper.write_text(
+                    f"#!{sys.executable}\n"
+                    "from pathlib import Path\n"
+                    "import sys\n"
+                    "sys.exit(0 if Path.cwd() == Path(__file__).parent else 2)\n"
+                )
+                helper.chmod(0o700)
+                targets[name] = helper
+            directory = base / "http"
+            directory.mkdir()
+            helper, receipt = group_fixture(directory, f"time.sleep({FIXTURE_LIFETIME})")
+            out = base / "evidence"
+            try:
+                probe = subprocess.run(
+                    [sys.executable, str(Path(native_check.__file__)),
+                     "--kernel", str(targets["kernel"]),
+                     "--host", str(targets["host"]), "--http", str(helper),
+                     "--out", str(out), "--timeout", str(GATE_TIMEOUT)],
+                    capture_output=True, text=True, check=False,
+                    timeout=GATE_OUTER_TIMEOUT,
+                )
+                self.assertNotEqual(0, probe.returncode, "hung HTTP gate passed")
+                manifest = out / "manifest.json"
+                self.assertTrue(manifest.is_file(), probe.stdout + probe.stderr)
+                evidence = json.loads(manifest.read_text())
+                self.assertEqual({"kernel", "host", "http"}, set(evidence["results"]))
+                self.assertEqual(0, evidence["results"]["kernel"]["status"])
+                self.assertEqual(0, evidence["results"]["host"]["status"])
+                self.assertEqual("timeout", evidence["results"]["http"]["status"])
+                self.assertIn("test/native_http_test.ml", evidence["sources"])
+                self.assertIn("test/native_http_test.mli", evidence["sources"])
+                self.assertIn("test/fixtures/tls/ca.pem", evidence["sources"])
+                self.assertIn("test/fixtures/tls/server.key", evidence["sources"])
+                self.assertTrue(receipt.is_file(), "HTTP target never became ready")
+                for text in receipt.read_text().split():
+                    self.assertFalse(running(int(text)), "HTTP gate leaked its group")
+            finally:
+                await_fixtures(receipt)
+
     def test_exec_signals(self):
         with tempfile.TemporaryDirectory(prefix="symphony-watchdog-signals-") as base:
             base = Path(base)

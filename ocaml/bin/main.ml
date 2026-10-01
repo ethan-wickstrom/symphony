@@ -31,7 +31,8 @@ let () =
                 ~mono:(Eio.Stdenv.mono_clock host)
                 ~wall:(Eio.Stdenv.clock host)
             in
-            Cli.run ~fs:(Eio.Stdenv.fs host) ~clock ~cwd ~env ~argv:Sys.argv
-              ~out:print_string ~err:Format.err_formatter)
+            Cli.run ~fs:(Eio.Stdenv.fs host) ~net:(Eio.Stdenv.net host) ~clock
+              ~cwd ~env ~argv:Sys.argv ~out:print_string
+              ~err:Format.err_formatter)
   in
   exit code

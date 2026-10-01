@@ -1,4 +1,13 @@
 (executable
  (name boundaries)
- (modules boundaries)
- (libraries symphony_workflow symphony_workspace crowbar))
+ (modules boundaries native_boundaries)
+ (libraries
+  symphony_workflow
+  symphony_workspace
+  symphony_tracker
+  symphony_native
+  symphony_test_support
+  h1
+  bstr
+  re
+  crowbar))

@@ -19,9 +19,10 @@ let parse ~env ~workflow_file config =
     match Fields.get config [ "workspace"; "root" ] with
     | None ->
         Result.map_error (error "workspace.root")
-          (Absolute_path.parse
+          (let* temp_dir = Environment.public_temp_dir env in
+           Fields.path env ~base
              (Filename.concat
-                (Absolute_path.display (Environment.temp_dir env))
+                (Absolute_path.display temp_dir)
                 "symphony_workspaces"))
     | Some v ->
         let value =

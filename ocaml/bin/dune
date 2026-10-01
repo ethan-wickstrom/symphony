@@ -7,6 +7,7 @@
   symphony_io
   symphony_workflow
   symphony_domain
+  symphony_tracker
   cmdliner
   eio_posix
   unix))

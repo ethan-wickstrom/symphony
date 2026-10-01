@@ -4,12 +4,25 @@
   slice_one
   config_model
   config_test
+  environment_boundary_test
   workflow_parser_test
   template_test
   domain_test
+  issue_batch_model
+  issue_batch_test
+  linear_boundary_model
+  linear_boundary_test
+  linear_pager_model
+  linear_pager_test
+  linear_tracker_test
+  http_codec_model
+  http_codec_test
   clock_model
   clock_test
+  deadline_test
   registry_test
+  registry_binding_test
+  linear_omission_test
   workspace_key_model
   workspace_key_test
   workspace_reference_model
@@ -23,7 +36,12 @@
  (libraries
   symphony_workflow
   symphony_io
+  symphony_tracker
+  symphony_native
+  symphony_test_support
   symphony_workspace
+  h1
+  bstr
   alcotest
   qcheck-core
   qcheck-core.runner
@@ -32,3 +50,24 @@
   ptime
   zarith
   eio_posix))
+
+(executable
+ (name native_http_test)
+ (modules native_http_test)
+ (libraries
+  symphony_native
+  symphony_io
+  symphony_domain
+  eio_posix
+  eio.unix
+  alcotest
+  tls-eio
+  x509
+  h1
+  bstr
+  unix))
+
+(alias
+ (name native-http-inputs)
+ (deps
+  (glob_files fixtures/tls/*)))

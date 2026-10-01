@@ -24,9 +24,9 @@ module type PURE = sig
   val file : t -> Workflow_path.t
 
   val child_env : t -> Environment.child
-  (** Immutable allowlisted environment excludes this binding's declared
-      secrets; freeze it in each launch reference and use the same value for
-      hooks and agent. *)
+  (** Immutable allowlisted public environment excludes declared sources and
+      value-equal credential aliases. Freeze this value in each launch reference
+      and use the same environment for hooks and agent. *)
 
   val equal : t -> t -> bool
   (** Semantic effective-settings equality, including secret changes without
@@ -54,9 +54,11 @@ module type S = sig
     env:Environment.t ->
     document:Workflow_document.t ->
     (t, error) result
-  (** Parses adapter binding and core settings from the same document. No
+  (** Bootstrap the adapter's frozen binding and restricted public environment
+      before parsing core settings from the same document. Credential material
+      cannot enter public settings through names, aliases or exact literals. No
       network request; callers cannot attach a binding parsed from a different
-      document. *)
+      document. Trusted shell strings retain their literal bytes. *)
 end
 
 module Make (Tracker : Tracker.CONFIG) :

@@ -1,4 +1,4 @@
-type turn = Default | Explicit of Json.t
+type turn = Default of Environment.Quarantine.t | Explicit of Json.t
 
 type t = {
   command : string;
@@ -11,8 +11,18 @@ type t = {
 
 let ( let* ) = Result.bind
 
+let default_turn roots =
+  Printf.sprintf
+    {|{"type":"workspaceWrite","writableRoots":%s,"networkAccess":false,"excludeSlashTmp":true,"excludeTmpdirEnvVar":true}|}
+    roots
+
 let parse ~env config =
   let error key e = Nonempty_list.singleton (Fields.diagnostic ~key e) in
+  let guard key value =
+    Result.map_error (error key)
+      (let* value = value in
+       Environment.check_json env value)
+  in
   let scalar key default =
     match Fields.get config [ "codex"; key ] with
     | None -> Ok default
@@ -61,15 +71,11 @@ let parse ~env config =
        else Ok (Z.to_int n))
   in
   let* approval =
-    match Fields.get config [ "codex"; "approval_policy" ] with
-    | None ->
-        Result.map_error
-          (error "codex.approval_policy")
-          (Json.of_view (Json.String "never"))
-    | Some v ->
-        Result.map_error
-          (error "codex.approval_policy")
-          (match Config_value.view v with
+    guard "codex.approval_policy"
+      (match Fields.get config [ "codex"; "approval_policy" ] with
+      | None -> Json.of_view (Json.String "never")
+      | Some v -> (
+          match Config_value.view v with
           | Config_value.String _ ->
               let* s = Fields.text env v in
               Json.of_view (Json.String s)
@@ -77,7 +83,7 @@ let parse ~env config =
           | Config_value.Bool _
           | Config_value.Number _
           | Config_value.Sequence _
-          | Config_value.Mapping _ -> Fields.json v)
+          | Config_value.Mapping _ -> Fields.json env v))
   in
   let* () =
     Result.map_error
@@ -86,9 +92,7 @@ let parse ~env config =
   in
   let* sandbox = scalar "thread_sandbox" "workspace-write" in
   let* sandbox_json =
-    Result.map_error
-      (error "codex.thread_sandbox")
-      (Json.of_view (Json.String sandbox))
+    guard "codex.thread_sandbox" (Json.of_view (Json.String sandbox))
   in
   let* () =
     Result.map_error
@@ -96,17 +100,23 @@ let parse ~env config =
       (Policy_check.validate ~definition:"SandboxMode" sandbox_json)
   in
   let* thread =
-    Result.map_error (error "codex")
+    guard "codex"
       (Json.of_view
          (Json.Object
             [ ("approvalPolicy", approval); ("sandbox", sandbox_json) ]))
   in
   let* turn_policy =
     match Fields.get config [ "codex"; "turn_sandbox_policy" ] with
-    | None -> Ok Default
+    | None ->
+        let* _ =
+          guard "codex.turn_sandbox_policy" (Json.parse (default_turn "[]"))
+        in
+        Ok (Default (Environment.quarantine env))
     | Some v ->
         let* j =
-          Result.map_error (error "codex.turn_sandbox_policy") (Fields.json v)
+          Result.map_error
+            (error "codex.turn_sandbox_policy")
+            (Fields.json env v)
         in
         let* () =
           Result.map_error
@@ -131,22 +141,24 @@ let equal a b =
   && Json.equal a.thread b.thread
   &&
   match (a.turn_policy, b.turn_policy) with
-  | Default, Default -> true
+  | Default a, Default b -> Environment.Quarantine.equal a b
   | Explicit a, Explicit b -> Json.equal a b
-  | Default, Explicit _ | Explicit _, Default -> false
+  | Default _, Explicit _ | Explicit _, Default _ -> false
 
 module Bind (Path : Workspace_path.S) = struct
   let turn_policy t path =
     match t.turn_policy with
-    | Explicit j -> j
-    | Default -> (
+    | Explicit j -> Ok j
+    | Default rules -> (
         let encoded =
-          Printf.sprintf
-            {|{"type":"workspaceWrite","writableRoots":[%s],"networkAccess":false,"excludeSlashTmp":true,"excludeTmpdirEnvVar":true}|}
-            (Yojson.Safe.to_string (`String (Path.display path)))
+          default_turn
+            (Yojson.Safe.to_string (`List [ `String (Path.display path) ]))
         in
         (* The sealed workspace capability guarantees a valid bounded path. *)
         match Json.parse encoded with
-        | Ok j -> j
+        | Ok j ->
+            Result.map_error
+              (Fields.diagnostic ~key:"codex.turn_sandbox_policy")
+              (Environment.Quarantine.check_json rules j)
         | Error e -> invalid_arg ("workspace capability defect: " ^ e))
 end

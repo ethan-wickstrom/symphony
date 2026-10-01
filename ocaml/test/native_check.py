@@ -100,6 +100,7 @@ def close_group(child, before):
 
 def execute(binary, log, timeout):
     require_waitid()
+    binary = binary.resolve()
     flags = ["-I"]
     if sys.flags.optimize:
         flags.append("-O" if sys.flags.optimize == 1 else "-OO")
@@ -125,7 +126,7 @@ def execute(binary, log, timeout):
             # Popen admission and mask setup. Delivery uses owned safe points.
             child = subprocess.Popen(
                 [sys.executable, *flags, str(SENTINEL), str(binary)], stdout=output,
-                stderr=subprocess.STDOUT, start_new_session=True,
+                stderr=subprocess.STDOUT, start_new_session=True, cwd=binary.parent,
             )
             try:
                 wait_exit(child, timeout, observe)
@@ -152,6 +153,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kernel", type=Path, required=True)
     parser.add_argument("--host", type=Path, required=True)
+    parser.add_argument("--http", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=90)
     args = parser.parse_args()
@@ -160,10 +162,16 @@ def main():
 
     root = Path(__file__).resolve().parents[1]
     sources = sorted((root / "lib/native").glob("*"))
-    sources += sorted((root / "lib/io").glob("clock*"))
+    for area in ("domain", "io", "workflow"):
+        sources += [
+            path for path in sorted((root / "lib" / area).glob("*"))
+            if path.suffix in (".ml", ".mli") or path.name == "dune"
+        ]
     sources += sorted((root / "lib/workspace").glob("*.ml*"))
     sources += sorted((root / "test/native_kernel").glob("*.ml*"))
     sources += sorted((root / "test/native_host").glob("*.ml*"))
+    sources += sorted((root / "test").glob("native_http_test.ml*"))
+    sources += sorted((root / "test/fixtures/tls").glob("*"))
     hashes = {
         str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in sources
@@ -182,7 +190,8 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     results = {}
     binaries = {}
-    for name, binary in [("kernel", args.kernel), ("host", args.host)]:
+    targets = [("kernel", args.kernel), ("host", args.host), ("http", args.http)]
+    for name, binary in targets:
         binary = binary.resolve()
         if not binary.is_file():
             parser.error(f"{name} binary is missing: {binary}")

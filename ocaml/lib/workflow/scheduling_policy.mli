@@ -5,7 +5,7 @@ module Names : Set.S with type elt = string
 type stall = Disabled | Silence_limit of Milliseconds.t
 
 val parse :
-  env:Environment.t ->
+  env:Environment.public ->
   Config_value.t ->
   (t, Diagnostic.t Nonempty_list.t) result
 (** Applies spec defaults, except accepted D01 requires explicit active/terminal

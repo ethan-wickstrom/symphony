@@ -1,8 +1,8 @@
 # Symphony in OCaml
 
 Checked workflow loading, configuration, strict prompt rendering, last-good reload
-and native owned workspaces/hooks are implemented. `doctor`, `dry-run` and
-`workspace` work locally. Scheduling and app-server integration arrive in later
+and native owned workspaces/hooks are implemented. `doctor`, `dry-run`, `workspace`
+and authenticated Linear `tracker` inspection work locally. Scheduling and app-server integration arrive in later
 slices; this executable does not dispatch issues yet.
 
 ## Build
@@ -15,20 +15,24 @@ opam pin add yaml.3.2.0 ../vendor/yaml --no-action --yes
 opam pin add crowbar.0.2.2 ../vendor/crowbar --no-action --yes
 opam pin add eio.1.6 ../vendor/eio --no-action --yes
 opam pin add eio_posix.1.6 ../vendor/eio --no-action --yes
+opam pin add h1.1.1.1 ../vendor/h1 --no-action --yes
 opam install . --deps-only --locked --with-test --with-dev-setup --yes
 opam exec --switch . -- dune build @all
 ```
 
-All four pins are mandatory: YAML releases native parser/events and preserves
+All five pins are mandatory: YAML releases native parser/events and preserves
 embedded NUL bytes; Crowbar fixes a random-input refill hang. Eio resumes callers
 when worker acquisition fails; Eio POSIX retains child identity through cleanup.
+H1 rejects malformed chunk lengths/status and exposes pending errors before EOF.
 The executable uses the POSIX backend on both target platforms.
 [YAML provenance](../vendor/yaml/PATCHES.md),
 [Crowbar provenance](../vendor/crowbar/PATCHES.md),
-[Eio provenance](../vendor/eio/PATCHES.md). The lock records exact
+[Eio provenance](../vendor/eio/PATCHES.md),
+[H1 provenance](../vendor/h1/SYMPHONY_PATCHES.md). The lock records exact
 transitive versions and excludes machine-specific local URLs. Pin these sources
-before installing. macOS builds a native binary; fully static Linux musl
-artifact verification remains a release gate.
+before installing. The current macOS development binary requires Homebrew GMP
+and macOS 26.0. A clean-host macOS binary and a fully static Linux musl binary
+remain release gates; see the [release plan](../docs/design/static-release-plan.md).
 
 ## Inspect a workflow
 
@@ -52,6 +56,22 @@ The command and hook strings remain verbatim trusted configuration.
 informational label or absence. It never creates directories or runs hooks. A busy,
 foreign, unowned or displaced directory returns an actionable error. The label
 grants no launch authority; only scoped acquired paths can launch native processes.
+
+## Inspect Linear
+
+Set the workflow's project slug and explicit state lists, then supply your key
+through the captured environment and fetch normalized issues:
+
+```sh
+_build/default/bin/main.exe tracker /path/to/WORKFLOW.md
+_build/default/bin/main.exe tracker /path/to/WORKFLOW.md --ca-bundle /path/to/anchors.pem
+```
+
+The default explicit trust file is `/etc/ssl/cert.pem`. Results are an ordered JSON
+array emitted only after every page succeeds. Missing required records produce
+bounded warnings on stderr; malformed envelopes, pagination, TLS or limits fail
+the read. No workflow/workspace inspection triggers networking. See the published
+[Linear profile](../docs/adapters/linear.md) for scope, eligibility, errors and bounds.
 
 ## Check
 

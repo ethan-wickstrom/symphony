@@ -26,13 +26,35 @@ let resolve env s =
       | Some v -> Ok v
       | None ->
           Error
+            "referenced environment variable is missing; set it or change the \
+             reference")
+  | None -> Ok s
+
+let credential_text env v =
+  match Config_value.view v with
+  | Config_value.String s -> resolve env s
+  | Config_value.Null
+  | Config_value.Bool _
+  | Config_value.Number _
+  | Config_value.Sequence _
+  | Config_value.Mapping _ -> Error "expected a string"
+
+let resolve_public env s =
+  let* s = Environment.check env s in
+  match reference s with
+  | None -> Ok s
+  | Some name -> (
+      let* value = Environment.lookup_public env name in
+      match value with
+      | Some value -> Ok value
+      | None ->
+          Error
             ("environment variable " ^ name
            ^ " is missing; set it or change the reference"))
-  | None -> Ok s
 
 let text env v =
   match Config_value.view v with
-  | Config_value.String s -> resolve env s
+  | Config_value.String s -> resolve_public env s
   | Config_value.Null
   | Config_value.Bool _
   | Config_value.Number _
@@ -53,9 +75,11 @@ let integer env v =
   let* s, kind =
     match Config_value.view v with
     | Config_value.String s ->
-        let* s = resolve env s in
+        let* s = resolve_public env s in
         Ok (s, Decimal)
-    | Config_value.Number s -> Ok (s, Core)
+    | Config_value.Number s ->
+        let* s = Environment.check env s in
+        Ok (s, Core)
     | Config_value.Null
     | Config_value.Bool _
     | Config_value.Sequence _
@@ -82,8 +106,14 @@ let integer env v =
   in
   if not (decimal value || core_int) then Error "expected an exact integer"
   else
-    try Ok (Z.of_string value)
-    with Invalid_argument _ -> Error "invalid integer"
+    let* integer =
+      try Ok (Z.of_string value)
+      with Invalid_argument _ -> Error "invalid integer"
+    in
+    let* canonical = Environment.check env (Z.to_string integer) in
+    let* number = Json.of_view (Json.Number canonical) in
+    let* _ = Environment.check_json env number in
+    Ok integer
 
 let rec sequence = function
   | [] -> Ok []
@@ -110,30 +140,35 @@ let mapping v =
   | Config_value.String _
   | Config_value.Sequence _ -> Error "expected a mapping"
 
-let rec json v =
-  let* v =
-    match Config_value.view v with
-    | Config_value.Null -> Ok Json.Null
-    | Config_value.Bool b -> Ok (Json.Bool b)
-    | Config_value.Number n -> Ok (Json.Number n)
-    | Config_value.String s -> Ok (Json.String s)
-    | Config_value.Sequence xs ->
-        let* xs = sequence (List.map json xs) in
-        Ok (Json.Array xs)
-    | Config_value.Mapping xs ->
-        let* xs =
-          sequence
-            (List.map
-               (fun (k, v) ->
-                 let* v = json v in
-                 Ok (k, v))
-               xs)
-        in
-        Ok (Json.Object xs)
+let json env v =
+  let rec convert v =
+    let* v =
+      match Config_value.view v with
+      | Config_value.Null -> Ok Json.Null
+      | Config_value.Bool b -> Ok (Json.Bool b)
+      | Config_value.Number n -> Ok (Json.Number n)
+      | Config_value.String s -> Ok (Json.String s)
+      | Config_value.Sequence xs ->
+          let* xs = sequence (List.map convert xs) in
+          Ok (Json.Array xs)
+      | Config_value.Mapping xs ->
+          let* xs =
+            sequence
+              (List.map
+                 (fun (k, v) ->
+                   let* v = convert v in
+                   Ok (k, v))
+                 xs)
+          in
+          Ok (Json.Object xs)
+    in
+    Json.of_view v
   in
-  Json.of_view v
+  let* value = convert v in
+  Environment.check_json env value
 
 let path env ~base s =
+  let* s = Environment.check env s in
   let b = Buffer.create (String.length s) in
   let is_name = function
     | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
@@ -156,7 +191,8 @@ let path env ~base s =
       then Error "invalid environment reference in path"
       else
         let name = String.sub s start (last - start) in
-        match Environment.lookup env name with
+        let* value = Environment.lookup_public env name in
+        match value with
         | None ->
             Error
               ("path environment variable " ^ name
@@ -166,9 +202,11 @@ let path env ~base s =
             expand (if brace then last + 1 else last)
   in
   let* s = expand 0 in
+  let* s = Environment.check env s in
   let* s =
     if s = "~" || String.starts_with ~prefix:"~/" s then
-      match Environment.lookup env "HOME" with
+      let* home = Environment.lookup_public env "HOME" in
+      match home with
       | None ->
           Error "HOME is missing; set it or use an absolute workspace.root"
       | Some home ->
@@ -180,10 +218,14 @@ let path env ~base s =
   in
   if String.trim s = "" then Error "path must be nonempty"
   else
-    Absolute_path.parse
-      (if Filename.is_relative s then
-         Filename.concat (Absolute_path.display base) s
-       else s)
+    let* path =
+      Absolute_path.parse
+        (if Filename.is_relative s then
+           Filename.concat (Absolute_path.display base) s
+         else s)
+    in
+    let* _ = Environment.check env (Absolute_path.display path) in
+    Ok path
 
 let diagnostic ~key message =
   Diagnostic.make
