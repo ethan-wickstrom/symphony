@@ -2,7 +2,6 @@
 
 import argparse
 import importlib.util
-import json
 import os
 from pathlib import Path
 import sys
@@ -21,10 +20,11 @@ SPEC.loader.exec_module(GATE)
 def check(data):
     try:
         try:
-            value = json.loads(data)
-        except (ValueError, RecursionError):
-            # JSON syntax, encoding, depth and integer limits are boundary failures.
-            return
+            value = GATE.decode_profile(data)
+        except ValueError as error:
+            if str(error).startswith(f"{GATE.PROFILE}: "):
+                return
+            raise
 
         try:
             GATE.check_profile(value)

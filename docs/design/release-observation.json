@@ -75,5 +75,49 @@
     "/private/tmp/symphony-release-profile-afl-35ahyeeu/receipt.json": "82166e3aecc7e042fbb0dba43b0598272c12f7326ac909a7c2a358220d6ebd42",
     "/private/tmp/symphony-materialize-review-xxu7osre/validator-final.json": "10ec4378d850af3fb5cc879c43fd0587da194d59257efc0cc6448b66b0b31a28",
     "/private/tmp/symphony-materialize-review-xxu7osre/reader-final.json": "ced169cbbbd3e73dab9ac398b936efef5f5ece6071c0ecf25c8b28174ec74a95"
+  },
+  "review_repairs": {
+    "scope": "Separate review phase; original gates/receipts above remain historical. Source hashes identify context, not source-to-binary attestation.",
+    "gates": {
+      "native_cases_per_mode": 79,
+      "kernel_cases": 51,
+      "host_cases": 7,
+      "https_cases": 21,
+      "selected_native_source_files": 156,
+      "native_source_mismatches": [],
+      "verifier_controls_per_mode": 23,
+      "materializer_controls_per_mode": 20,
+      "bounded_process_controls_per_mode": 9,
+      "fuzz_harness_controls_per_mode": 6,
+      "fuzz_harness_child_scenarios_per_mode": 20,
+      "required_native_sdk": true,
+      "macho_afl_blind_executions": 767,
+      "profile_afl_blind_executions": 724,
+      "seconds_per_afl_campaign": 45,
+      "afl_crashes": 0,
+      "afl_hangs": 0
+    },
+    "source_sha256": {
+      "ocaml/tools/check_release.py": "ac86a9440e817b671d3a10aef2c531743a4a1d0cddb9276be4fd2dee93ddca25",
+      "ocaml/tools/bounded_process.py": "6a1436170b52388f55130bc5cbfd9c16710c22bee2e463136ab09021a72cf17d",
+      "ocaml/release/materialize.py": "e5b8aff8e8f6115cf340922b277c65383f0b783cbc903c532839d517c892982b",
+      "ocaml/release/macos-arm64-26.0.json": "ee2220ed14ccbf4dcb31fab81848dd451423ddae33c8d395963d11ac6de2a41f",
+      "ocaml/fuzz/release_profile.py": "8ae277f54c710fafbf8ab00469b6b93b361c7beaa4b3157c15672d3dab797c42",
+      "ocaml/test/release_check_test.py": "45e5e3705003506bf1493238428743af1917913d3e39aa29ac0ff22f7a89ed8b",
+      "ocaml/test/release_materialize_test.py": "7efaae0c3503fcf4feab9bb306a89d07caaab9cf956f2f50cc2d1c8af4d4aa08",
+      "ocaml/test/release_process_test.py": "d9b4a84f2c40015d6a8bf53324ab0ad8f4863a4355dab595eea4f0a769950606",
+      "ocaml/test/release_fuzz_test.py": "ea1befe64f52eb5e54d231201970c82b6ba69fbd712287731fc9b68527464af9",
+      "ocaml/test/native_kernel/native_process_test.ml": "86d96e308d45a52d59a373a36d39c6a50ac1cd59cf57e4aa5b98315c16765992"
+    },
+    "receipts": {
+      "/private/tmp/symphony-release-target/mac-arm64-26.0/review-native-evidence-0/manifest.json": "3743c6e5701302bc0e8fd600cf1bc6600a2162dd3e91d630c36c9890d8c6da22",
+      "/private/tmp/symphony-release-target/mac-arm64-26.0/review-native-evidence-1/manifest.json": "4ec3e5b2da18f37f84cc1e35f16080375f01aac3a587fe1ef361e0d58a6696fd",
+      "/private/tmp/symphony-release-native-verification-8_7lyqpc/receipt.json": "c6376a76d4ac041bf9a660dfeb8fdce18f6936701a7dbc51dd59982489bc2be5",
+      "/private/tmp/symphony-release-afl-followup-46gfjatp/receipt.json": "aec662cdf6d41d969eadf1f4fc3843b2f8135b35a66e32791cbf51c8783ab3de",
+      "/private/tmp/symphony-reviewed-profile-afl-e919ez5r/receipt.json": "22c118b96f22847e693dfdb9eb05af60031dd274fd869962d0c04555502b8db5",
+      "/private/tmp/symphony-release-io-notes-artifact.json": "a9a1a928f9e7ae270c811ca4962b3640226971d587870568c25dbea3bbd37aba"
+    },
+    "full_tools_log_sha256": "f27c80de5a1c4178394f0fb013f027323364813386efa15d051779fa9a0739a3",
+    "pinned_elixir_log_sha256": "b353addda63da1922f028c2fa9f941eef042edb36f46f45fb7bfe954256d30a3"
   }
 }

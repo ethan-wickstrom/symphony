@@ -1,8 +1,10 @@
 """Real Appleclang/Mach-O release controls; no text fixture proves acceptance."""
 
+import errno
 import importlib.util
 import itertools
 import json
+import os
 from pathlib import Path
 import random
 import struct
@@ -10,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 CHECK = Path(__file__).resolve().parents[1] / "tools/check_release.py"
@@ -22,6 +25,18 @@ WRONG_MINIMUM = "15.0"
 WRONG_SDK = "26.4"
 PARSER_SEED = 0x53594D50484F4E59
 PARSER_MUTATIONS = 10000
+# Selected SDK mach-o/loader.h layout and mach/vm_prot.h permissions.
+LC_SEGMENT_64 = 0x19
+LC_MAIN = 0x80000028
+FILEOFF_OFFSET = 40
+FILESIZE_OFFSET = 48
+ENTRYOFF_OFFSET = 8
+MAXPROT_OFFSET = 56
+INITPROT_OFFSET = 60
+VM_PROT_READ = 0x01
+VM_PROT_WRITE = 0x02
+VM_PROT_EXECUTE = 0x04
+VM_PROT_IS_MASK = 0x40
 
 
 def command(argv):
@@ -58,17 +73,68 @@ class PortableReleaseTest(unittest.TestCase):
             self.assertEqual(result.stderr, "")
             self.assertEqual(json.loads(result.stdout)["diagnostic"]["code"], "arguments")
 
+    def test_required_native_available(self):
+        # Inject availability only; this oracle does not replace native compilation.
+        for platform, sdk in (("linux", "26.4"), ("darwin", "26.4")):
+            fixture = type("UnavailableNative", (ReleaseCheckTest,), {})
+            with self.subTest(platform=platform, sdk=sdk):
+                try:
+                    with mock.patch.object(sys, "platform", platform), \
+                         mock.patch.dict(os.environ, {"SYMPHONY_REQUIRE_NATIVE": "1"}), \
+                         mock.patch(__name__ + ".command", side_effect=["/unused-sdk", sdk]):
+                        try:
+                            with self.assertRaisesRegex(RuntimeError, "required"):
+                                fixture.setUpClass()
+                        except unittest.SkipTest as error:
+                            self.fail(f"Required native controls silently skipped: {error}")
+                finally:
+                    fixture.doClassCleanups()
 
-@unittest.skipUnless(sys.platform == "darwin", "Real controls require macOS and SDK 26.5")
+    def test_tool_output_live_bound(self):
+        # Small injected budgets exercise actual pipe ownership before child exit.
+        for descriptor in (1, 2):
+            with self.subTest(descriptor=descriptor):
+                source = f"import os,time; os.write({descriptor}, b'x'*33); time.sleep(5)"
+                with mock.patch.object(GATE, "MAX_TOOL_OUTPUT", 32), \
+                     mock.patch.object(GATE, "TOOL_TIMEOUT", 0.5):
+                    with self.assertRaises(GATE.Rejected) as caught:
+                        GATE.tool_output([sys.executable, "-I", "-c", source], Path("/unused"))
+                self.assertEqual(caught.exception.diagnostic["code"], "tool")
+                self.assertIn("exceeds", caught.exception.diagnostic["detail"])
+
+    def test_tool_cleanup_notes(self):
+        note = "Direct subprocess cleanup failed: stage=reap pid=42 class=TimeoutExpired"
+        failures = [GATE.CAPTURE.OutputLimit("private inspection detail"),
+                    subprocess.TimeoutExpired(["private inspection argv"], 1)]
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__):
+                failure.add_note(note)
+                failure.add_note("private inspection note")
+                with mock.patch.object(GATE.CAPTURE, "run", side_effect=failure):
+                    with self.assertRaises(GATE.Rejected) as caught:
+                        GATE.tool_output(["/usr/bin/otool", "-l"], Path("/unused"))
+                diagnostic = json.loads(json.dumps(caught.exception.diagnostic))
+                self.assertEqual(diagnostic["code"], "tool")
+                self.assertEqual(diagnostic.get("cleanup_notes"), [note])
+                self.assertNotIn("private inspection", json.dumps(diagnostic))
+
+
 class ReleaseCheckTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        required = os.environ.get("SYMPHONY_REQUIRE_NATIVE") == "1"
+        if sys.platform != "darwin":
+            if required:
+                raise RuntimeError("Native release controls are required, but macOS is unavailable")
+            raise unittest.SkipTest("Real controls require macOS and SDK 26.5")
         cls.temporary = tempfile.TemporaryDirectory(prefix="symphony-release-controls-")
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.base = Path(cls.temporary.name)
         sdk = command(["/usr/bin/xcrun", "--sdk", "macosx", "--show-sdk-path"])
         sdk_version = command(["/usr/bin/xcrun", "--sdk", "macosx", "--show-sdk-version"])
         if sdk_version != "26.5":
+            if required:
+                raise RuntimeError(f"Native release controls are required with SDK 26.5, found {sdk_version}")
             raise unittest.SkipTest(f"Native release controls require SDK 26.5, found {sdk_version}")
         cls.clang = command(["/usr/bin/xcrun", "--find", "clang"])
         cls.flags = ["-arch", "arm64", "-isysroot", sdk, "-mmacosx-version-min=26.0"]
@@ -115,6 +181,26 @@ class ReleaseCheckTest(unittest.TestCase):
         path.chmod(0o700)
         return path
 
+    def text_offset(self, data):
+        count = struct.unpack_from("<I", data, 16)[0]
+        offset = GATE.HEADER_SIZE
+        for _ in range(count):
+            command_id, size = struct.unpack_from("<II", data, offset)
+            if command_id == LC_SEGMENT_64 and data[offset + 8:offset + 24].rstrip(b"\0") == b"__TEXT":
+                return offset
+            offset += size
+        self.fail("Appleclang fixture has no __TEXT segment")
+
+    def command_offset(self, data, wanted):
+        count = struct.unpack_from("<I", data, 16)[0]
+        offset = GATE.HEADER_SIZE
+        for _ in range(count):
+            command_id, size = struct.unpack_from("<II", data, offset)
+            if command_id == wanted:
+                return offset
+            offset += size
+        self.fail(f"Appleclang fixture has no load command {wanted:#x}")
+
     def test_system_and_repeat(self):
         first = self.require_status(self.good, "accepted")
         second = self.require_status(self.good, "accepted")
@@ -134,6 +220,107 @@ class ReleaseCheckTest(unittest.TestCase):
 
     def test_wrong_sdk(self):
         self.require_status(self.wrong_sdk, "rejected", "deployment")
+
+    def test_text_needs_execute(self):
+        data = bytearray(self.good.read_bytes())
+        offset = self.text_offset(data) + INITPROT_OFFSET
+        initial = struct.unpack_from("<i", data, offset)[0]
+        self.assertTrue(initial & VM_PROT_EXECUTE)
+        struct.pack_into("<i", data, offset, initial & ~VM_PROT_EXECUTE)
+        path = self.write_artifact("text-without-execute", data)
+        self.require_status(path, "rejected", "permissions")
+
+    def test_init_within_max(self):
+        data = bytearray(self.good.read_bytes())
+        offset = self.text_offset(data)
+        struct.pack_into("<i", data, offset + MAXPROT_OFFSET, VM_PROT_READ | VM_PROT_EXECUTE)
+        struct.pack_into("<i", data, offset + INITPROT_OFFSET,
+                         VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE)
+        path = self.write_artifact("initial-exceeds-maximum", data)
+        self.require_status(path, "rejected", "permissions")
+
+    def test_unsupported_permissions(self):
+        for name, permissions in (("permission-modifier", VM_PROT_READ | VM_PROT_EXECUTE | VM_PROT_IS_MASK),
+                                  ("negative-permissions", -1)):
+            with self.subTest(name=name):
+                data = bytearray(self.good.read_bytes())
+                offset = self.text_offset(data)
+                struct.pack_into("<i", data, offset + MAXPROT_OFFSET, permissions)
+                struct.pack_into("<i", data, offset + INITPROT_OFFSET, permissions)
+                path = self.write_artifact(name, data)
+                self.require_status(path, "rejected", "permissions")
+
+    def test_entry_needs_execute_range(self):
+        original = self.good.read_bytes()
+        text = self.text_offset(original)
+        fileoff, filesize = struct.unpack_from("<QQ", original, text + FILEOFF_OFFSET)
+        main = self.command_offset(original, LC_MAIN)
+        for name, entry in (("entry-at-text-end", fileoff + filesize),
+                            ("entry-in-linkedit", len(original) - 1)):
+            with self.subTest(name=name):
+                self.assertLess(entry, len(original))
+                data = bytearray(original)
+                struct.pack_into("<Q", data, main + ENTRYOFF_OFFSET, entry)
+                path = self.write_artifact(name, data)
+                self.require_status(path, "rejected", "entrypoint")
+
+    def test_receipt_preserves_existing(self):
+        flags = [] if not sys.flags.optimize else ["-" + "O" * sys.flags.optimize]
+        original = self.good.read_bytes()
+        for kind in ("artifact", "hardlink", "symlink", "existing"):
+            with self.subTest(kind=kind):
+                artifact = self.write_artifact("receipt-artifact-" + kind, original)
+                receipt = self.base / ("receipt-target-" + kind)
+                expected = original
+                if kind == "artifact":
+                    receipt = artifact
+                elif kind == "hardlink":
+                    os.link(artifact, receipt)
+                elif kind == "symlink":
+                    receipt.symlink_to(artifact)
+                else:
+                    expected = b"operator receipt\n"
+                    receipt.write_bytes(expected)
+                result = subprocess.run([sys.executable, *flags, str(CHECK), str(artifact),
+                                         "--receipt", str(receipt)], capture_output=True, text=True,
+                                        timeout=CLI_TIMEOUT)
+                self.assertEqual(artifact.read_bytes(), original, "Receipt modified artifact")
+                self.assertEqual(receipt.read_bytes(), expected, "Receipt overwrote existing data")
+                self.assertEqual(result.returncode, 1, result.stderr + result.stdout)
+                self.assertEqual(json.loads(result.stdout)["diagnostic"]["code"], "receipt")
+
+    def test_io_cleanup_notes_visible(self):
+        original = GATE.CAPTURE.subprocess.Popen
+        processes = []
+
+        def launch(*args, **kwargs):
+            process = original(*args, **kwargs)
+            close = process.stdout.close
+
+            def fail_close():
+                close()
+                failure = OSError(errno.EIO, "controlled stdout cleanup")
+                failure.add_note("private inspection note")
+                raise failure
+
+            process.stdout.close = fail_close
+            processes.append(process)
+            return process
+
+        with mock.patch.object(GATE.CAPTURE.subprocess, "Popen", side_effect=launch):
+            receipt = GATE.verify(self.good)
+        self.assertEqual(len(processes), 1)
+        process = processes[0]
+        self.assertEqual(process.returncode, 0)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
+        self.assertEqual(receipt["status"], "rejected")
+        diagnostic = receipt["diagnostic"]
+        self.assertEqual(diagnostic["code"], "io")
+        self.assertIn("Artifact/inspection I/O failed:", diagnostic["detail"])
+        note = f"Direct subprocess cleanup failed: stage=stdout-close pid={process.pid} class=OSError"
+        self.assertEqual(diagnostic.get("cleanup_notes"), [note])
+        self.assertNotIn("private inspection note", json.dumps(diagnostic))
 
     def test_weak_and_rpath(self):
         self.require_status(self.weak, "rejected", "command")

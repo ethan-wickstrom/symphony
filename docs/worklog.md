@@ -51,8 +51,14 @@ Branch `ethan/static-release` starts from merged `98833b3`.
 The isolated macOS arm64 build now passes physical closure, observed link,
 copied-artifact CLI and native process/HTTPS checks: minimum 26.0/SDK 26.5,
 only libSystem imported, exact static GMP archive.
-Reviewed input decoder/materializer controls are green. Next: publish and merge
-the foundation. Clean-host execution and Linux musl remain release gates.
+PR #4 is published in the owned repository. Review repairs pass locally:
+live bounded subprocess capture, executable entry mapping, exclusive receipts,
+complete duplicate-free profile decoding and required native SDK coverage. Checked
+JSON values are serialized before binding substitution. A native Darwin
+control now retains the frozen driver's documented conservative cleanup error
+while checking grace timing, direct-child reap and lease release.
+Next: publish reviewed fixes, verify exact-head CI and merge the foundation.
+Clean-host execution and Linux musl remain release gates.
 Plans: `docs/design/static-release-plan.md`, then
 `docs/design/slice-4-orchestrator-plan.md`.
 No user approval is pending under the accepted recommendations/autonomy instruction.
@@ -106,6 +112,20 @@ No user approval is pending under the accepted recommendations/autonomy instruct
 - Six portable harness tests drive 19 real child scenarios per mode, including
   six unexpected-error aborts, exact byte bounds and effect guards. Core dumps
   are disabled. Both modes pass; Linux/macOS CI runs these controls.
+
+Review repairs supersede those initial tool/native counts: 23 verifier,
+20 materializer, nine bounded-capture and six fuzz-harness controls pass per mode,
+with required native SDK coverage. The harness now drives 20 children per mode
+and uses the exact production decoder. A fresh isolated native rebuild passes
+79 cases per mode (51 kernel + seven Host + 21 HTTPS); all production modules
+remain unchanged. Duplicate-key and JSON-escape reproducers went red before the
+checked-value publication fix. Initial receipt evidence remains historical.
+Fresh full-profile AFL passes 724 executions/45 s without crashes or hangs;
+the revised Mach-O parser passes another 767/45 s. Both campaigns are blind
+mutation. Independent verification of the two latest native manifests matches
+all 156 source hashes, watchdog/sentinel and binary identities, with zero
+mismatches. Required pinned Elixir `make all` passes after registry access is
+restored by scoped unconfined execution; the sandboxed registry failure is retained.
 
 ## Last merged slice evidence
 

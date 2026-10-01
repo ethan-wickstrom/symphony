@@ -312,7 +312,29 @@
         "-j4",
         "check"
       ],
-      "build_note": "Official release tarball omits Makefile.lite; the unmodified recipe is a supplementary exact-release-commit input. Build occurs in a copy, leaving extracted source pristine. Header target runs before parallel compile because upstream object rules do not make the generated header an explicit prerequisite."
+      "build_note": "Official release tarball omits Makefile.lite; the unmodified recipe is a supplementary exact-release-commit input. Build occurs in a copy, leaving extracted source pristine. Header target runs before parallel compile because upstream object rules do not make the generated header an explicit prerequisite.",
+      "install": [
+        {
+          "operation": "mkdir",
+          "path": "@TARGET@/tools/bin"
+        },
+        {
+          "operation": "copyfile",
+          "source": "@TARGET@/pkgconf-build/pkgconf",
+          "destination": "@TARGET@/tools/bin/pkgconf"
+        },
+        {
+          "operation": "chmod",
+          "path": "@TARGET@/tools/bin/pkgconf",
+          "mode": "0755"
+        },
+        {
+          "operation": "symlink",
+          "path": "@TARGET@/tools/bin/pkg-config",
+          "target": "pkgconf"
+        }
+      ],
+      "install_note": "Installation steps reconstructed from qualification receipt paths, executable mode and relative alias; the historical copy API/argv was not retained. Materialization does not run these steps."
     },
     "compiler_install": {
       "argv": [

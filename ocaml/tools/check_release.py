@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,13 @@ import struct
 import subprocess
 import sys
 import tempfile
+
+
+CAPTURE_SPEC = importlib.util.spec_from_file_location(
+    "symphony_bounded_process", Path(__file__).resolve().with_name("bounded_process.py")
+)
+CAPTURE = importlib.util.module_from_spec(CAPTURE_SPEC)
+CAPTURE_SPEC.loader.exec_module(CAPTURE)
 
 
 PROFILE = "macos-arm64-26.0-sdk26.5"
@@ -29,6 +37,10 @@ ARM64 = 0x0100000C
 MH_MAGIC_64 = 0xFEEDFACF
 MH_EXECUTE = 2
 PLATFORM_MACOS = 1
+VM_PROT_READ = 0x01
+VM_PROT_WRITE = 0x02
+VM_PROT_EXECUTE = 0x04
+VM_PROT_ALL = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE
 
 # Apple's SDK mach-o/loader.h defines these command numbers and layouts.
 COMMANDS = {
@@ -65,8 +77,11 @@ class Arguments(argparse.ArgumentParser):
         raise Rejected("arguments", message, "Run check_release.py --help for the fixed profile and artifact argument.")
 
 
-def reject(code, detail):
-    raise Rejected(code, detail, "Rebuild for the declared release profile; do not edit the receipt.")
+def reject(code, detail, *, cleanup_notes=()):
+    error = Rejected(code, detail, "Rebuild for the declared release profile; do not edit the receipt.")
+    if cleanup_notes:
+        error.diagnostic["cleanup_notes"] = list(cleanup_notes)
+    raise error
 
 
 def digest(data):
@@ -115,9 +130,18 @@ def check_segment(block, total):
         reject("malformed", "A segment command is truncated.")
     values = struct.unpack_from("<II16sQQQQiiII", block)
     name = values[2].rstrip(b"\0")
+    segment = ascii_name(name, "segment name")
     fileoff, filesize, sections = values[5], values[6], values[9]
+    maximum, initial = values[7], values[8]
     if len(block) != 72 + sections * 80:
         reject("malformed", "A segment's section count disagrees with its size.")
+    # SDK mach/vm_prot.h defines ordinary segment access; VM API modifiers are excluded.
+    if (maximum | initial) & ~VM_PROT_ALL:
+        reject("permissions", f"Segment {segment} has unsupported permission bits.")
+    if initial & ~maximum:
+        reject("permissions", f"Segment {segment} initial permissions exceed its maximum.")
+    if segment == "__TEXT" and not initial & VM_PROT_EXECUTE:
+        reject("permissions", "The __TEXT segment must initially permit execution.")
     require_range(fileoff, filesize, total)
     for offset in range(72, len(block), 80):
         section = struct.unpack_from("<16s16sQQIIIIIIII", block, offset)
@@ -128,7 +152,7 @@ def check_segment(block, total):
         if section_type not in {1, 0xC, 0x12}:
             require_range(section[4], section[3], total)
         require_range(section[6], section[7] * 8, total)
-    return ascii_name(name, "segment name")
+    return {"name": segment, "fileoff": fileoff, "filesize": filesize, "initial": initial}
 
 
 def check_shape(name, block, total):
@@ -172,6 +196,7 @@ def parse_macho(data):
     singletons = set()
     build = None
     loader = None
+    entry = None
     for _ in range(count):
         if offset + 8 > end:
             reject("malformed", "A load-command header is truncated.")
@@ -190,6 +215,8 @@ def parse_macho(data):
         check_shape(name, block, len(data))
         if name == "LC_SEGMENT_64":
             segments.append(check_segment(block, len(data)))
+        if name == "LC_MAIN":
+            entry = struct.unpack_from("<Q", block, 8)[0]
         if name == "LC_LOAD_DYLIB":
             if length < 32:
                 reject("malformed", "A dylib command is truncated.")
@@ -208,8 +235,13 @@ def parse_macho(data):
         offset += length
     if offset != end or not REQUIRED <= singletons:
         reject("malformed", "Load commands are missing or leave unparsed bytes.")
-    if len(segments) != len(set(segments)) or not {"__TEXT", "__LINKEDIT"} <= set(segments):
+    segment_names = [segment["name"] for segment in segments]
+    if len(segment_names) != len(set(segment_names)) or not {"__TEXT", "__LINKEDIT"} <= set(segment_names):
         reject("malformed", "Executable segments are missing or duplicated.")
+    if not any(segment["initial"] & VM_PROT_EXECUTE and
+               segment["fileoff"] <= entry < segment["fileoff"] + segment["filesize"]
+               for segment in segments):
+        reject("entrypoint", "LC_MAIN must lie in an initially executable, file-backed segment.")
     if loader != DYLD:
         reject("loader", "The executable does not use the approved system loader.")
     if build != {"platform": PLATFORM_MACOS, "minimum": MINIMUM, "sdk": SDK}:
@@ -221,25 +253,22 @@ def parse_macho(data):
 
 
 def tool_output(argv, base):
-    with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
-        try:
-            result = subprocess.run(argv, stdout=stdout, stderr=stderr, timeout=TOOL_TIMEOUT,
-                                    env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"})
-        except subprocess.TimeoutExpired:
-            reject("tool", f"Inspection timed out: {argv[0]}")
-        if stdout.tell() > MAX_TOOL_OUTPUT or stderr.tell() > MAX_TOOL_OUTPUT:
-            reject("tool", f"Inspection output exceeds the bound: {argv[0]}")
-        stdout.seek(0)
-        stderr.seek(0)
-        output, errors = stdout.read(), stderr.read()
-        if result.returncode or errors:
-            reject("tool", f"Inspection failed or warned: {argv[0]} (exit {result.returncode})")
-        try:
-            text = output.decode("utf-8")
-        except UnicodeDecodeError:
-            reject("tool", f"Inspection output is not UTF-8: {argv[0]}")
-        return text, {"argv": [str(item).replace(str(base), "<snapshot>") for item in argv],
-                      "stdout_sha256": digest(output)}
+    try:
+        result = CAPTURE.run(argv, timeout=TOOL_TIMEOUT,
+                             stdout_limit=MAX_TOOL_OUTPUT, stderr_limit=MAX_TOOL_OUTPUT,
+                             env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"})
+    except subprocess.TimeoutExpired as error:
+        reject("tool", f"Inspection timed out: {argv[0]}", cleanup_notes=CAPTURE.cleanup_notes(error))
+    except CAPTURE.OutputLimit as error:
+        reject("tool", f"Inspection output exceeds the bound: {argv[0]}", cleanup_notes=CAPTURE.cleanup_notes(error))
+    if result.returncode or result.stderr:
+        reject("tool", f"Inspection failed or warned: {argv[0]} (exit {result.returncode})")
+    try:
+        text = result.stdout.decode("utf-8")
+    except UnicodeDecodeError:
+        reject("tool", f"Inspection output is not UTF-8: {argv[0]}")
+    return text, {"argv": [str(item).replace(str(base), "<snapshot>") for item in argv],
+                  "stdout_sha256": digest(result.stdout)}
 
 
 def inspect_tools(path, parsed):
@@ -323,6 +352,9 @@ def verify(artifact):
     except OSError as error:
         receipt["diagnostic"] = {"code": "io", "detail": f"Artifact/inspection I/O failed: {error}",
                                  "remedy": "Provide a readable physical executable and the selected Apple inspection tools."}
+        notes = CAPTURE.cleanup_notes(error)
+        if notes:
+            receipt["diagnostic"]["cleanup_notes"] = list(notes)
     return receipt
 
 
@@ -330,7 +362,7 @@ def main():
     parser = Arguments(description=__doc__)
     parser.add_argument("artifact", type=Path)
     parser.add_argument("--profile", choices=[PROFILE], default=PROFILE)
-    parser.add_argument("--receipt", type=Path, help="also save the structured JSON receipt")
+    parser.add_argument("--receipt", type=Path, help="exclusively create a new structured JSON receipt")
     try:
         arguments = parser.parse_args()
     except Rejected as error:
@@ -341,11 +373,12 @@ def main():
     rendered = json.dumps(receipt, indent=2, sort_keys=True) + "\n"
     if arguments.receipt is not None:
         try:
-            arguments.receipt.write_text(rendered)
+            with arguments.receipt.open("x", encoding="utf-8") as output:
+                output.write(rendered)
         except OSError as error:
             receipt["status"] = "rejected"
             receipt["diagnostic"] = {"code": "receipt", "detail": f"Cannot write receipt: {error}",
-                                     "remedy": "Choose a writable receipt file."}
+                                     "remedy": "Choose a new writable receipt path; existing files are never overwritten."}
             rendered = json.dumps(receipt, indent=2, sort_keys=True) + "\n"
     print(rendered, end="")
     return 0 if receipt["status"] == "accepted" else 1

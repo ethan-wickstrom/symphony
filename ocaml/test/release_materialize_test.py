@@ -3,7 +3,9 @@
 
 import hashlib
 import copy
+import contextlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -12,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 RELEASE = Path(__file__).resolve().parent.parent / "release"
@@ -20,6 +23,7 @@ SPEC = importlib.util.spec_from_file_location("materialize", RELEASE / "material
 MATERIALIZE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MATERIALIZE)
 RUN_TIMEOUT = 60
+GIT_STDERR_BOUND = 64 * 1024
 
 
 class Materialization(unittest.TestCase):
@@ -38,12 +42,20 @@ class Materialization(unittest.TestCase):
             capture_output=True, text=True, timeout=RUN_TIMEOUT,
         )
 
+    def copy_release(self, destination):
+        shutil.copytree(RELEASE, destination, dirs_exist_ok=True)
+        tools = destination.parent / "tools"
+        tools.mkdir(exist_ok=True)
+        shutil.copyfile(RELEASE.parent / "tools/bounded_process.py", tools / "bounded_process.py")
+
     def test_fresh_inputs(self):
         result = self.run_materializer(self.output)
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads((self.output / "materialization.json").read_text())
         self.assertEqual(len(receipt["recipes"]), 13)
         self.assertEqual(len(receipt["vendor_archives"]), 4)
+        self.assertEqual(receipt["bounded_process_sha256"], hashlib.sha256(
+            (RELEASE.parent / "tools/bounded_process.py").read_bytes()).hexdigest())
         for name, digest in receipt["files"].items():
             actual = hashlib.sha256((self.output / name).read_bytes()).hexdigest()
             self.assertEqual(actual, digest, name)
@@ -64,6 +76,226 @@ class Materialization(unittest.TestCase):
             template = (RELEASE / entry["template"]).read_text()
             restored = MATERIALIZE.substitute(template, original).encode()
             self.assertEqual(hashlib.sha256(restored).hexdigest(), entry["qualified_sha256"], name)
+
+    def test_git_output_bound(self):
+        tools = self.base / "bin"
+        tools.mkdir()
+        producer = tools / "git"
+        producer.write_text(
+            f"#!{sys.executable}\n"
+            "import os, sys\n"
+            "fd = 1 if sys.argv[1] == 'stdout' else 2\n"
+            "remaining = int(sys.argv[2])\n"
+            "while remaining:\n"
+            "    remaining -= os.write(fd, b'x' * min(remaining, 16384))\n"
+        )
+        producer.chmod(0o700)
+        with mock.patch.dict(os.environ, {"PATH": str(tools)}):
+            for stream, limit in [("stdout", MATERIALIZE.MAX_ARCHIVE), ("stderr", GIT_STDERR_BOUND)]:
+                with self.subTest(stream=stream):
+                    with self.assertRaisesRegex(ValueError, f"{stream} exceeds"):
+                        MATERIALIZE.git(self.base, stream, str(limit + 1))
+
+    def test_git_before_publication(self):
+        actual_git = shutil.which("git")
+        self.assertIsNotNone(actual_git)
+        tools = self.base / "bin"
+        tools.mkdir()
+        producer = tools / "git"
+        producer.write_text(
+            f"#!{sys.executable}\n"
+            "import os, sys\n"
+            "if sys.argv[1] != 'archive':\n"
+            f"    os.execv({actual_git!r}, [{actual_git!r}, *sys.argv[1:]])\n"
+            f"remaining = {MATERIALIZE.MAX_ARCHIVE + 1}\n"
+            "while remaining:\n"
+            "    remaining -= os.write(1, b'x' * min(remaining, 16384))\n"
+        )
+        producer.chmod(0o700)
+        with mock.patch.dict(os.environ, {"PATH": str(tools)}):
+            result = self.run_materializer(self.output)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("stdout exceeds", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_cleanup_note_visible(self):
+        actual_git = shutil.which("git")
+        self.assertIsNotNone(actual_git)
+        tools = self.base / "bin"
+        tools.mkdir()
+        producer = tools / "git"
+        producer.write_text(
+            f"#!{sys.executable}\n"
+            "import os, sys, time\n"
+            "if sys.argv[1] != 'archive':\n"
+            f"    os.execv({actual_git!r}, [{actual_git!r}, *sys.argv[1:]])\n"
+            f"remaining = {MATERIALIZE.MAX_ARCHIVE + 1}\n"
+            "while remaining:\n"
+            "    remaining -= os.write(1, b'x' * min(remaining, 16384))\n"
+            "time.sleep(3)\n"
+        )
+        producer.chmod(0o700)
+        real_popen = subprocess.Popen
+        processes = []
+
+        def spawn(*args, **kwargs):
+            process = real_popen(*args, **kwargs)
+            processes.append((process, process.kill))
+            if args[0][1] == "archive":
+                kill = process.kill
+                def failed_kill():
+                    kill()
+                    raise RuntimeError("synthetic secret cleanup payload")
+                process.kill = failed_kill
+            return process
+
+        output = io.StringIO()
+        try:
+            with mock.patch.dict(os.environ, {"PATH": str(tools)}):
+                with mock.patch.object(MATERIALIZE._PROCESS.subprocess, "Popen", side_effect=spawn):
+                    with mock.patch.object(sys, "argv", ["materialize.py", "--output", str(self.output)]):
+                        with contextlib.redirect_stderr(output):
+                            status = MATERIALIZE.main()
+            self.assertEqual(status, 2)
+            self.assertIn("stdout exceeds", output.getvalue())
+            self.assertIn(f"stage=kill pid={processes[-1][0].pid} class=RuntimeError", output.getvalue())
+            self.assertNotIn("synthetic secret cleanup payload", output.getvalue())
+            self.assertFalse(self.output.exists())
+            for process, _ in processes:
+                self.assertIsNotNone(process.returncode)
+                with self.assertRaises(ChildProcessError):
+                    os.waitpid(process.pid, os.WNOHANG)
+                self.assertTrue(process.stdout.closed)
+                self.assertTrue(process.stderr.closed)
+        finally:
+            for process, kill in processes:
+                if process.returncode is None:
+                    kill()
+                    process.wait(timeout=MATERIALIZE._PROCESS.REAP_TIMEOUT)
+
+    def test_published_profile_shapes(self):
+        original = json.loads((RELEASE / MATERIALIZE.PROFILE).read_text())
+        cases = [
+            (["name"], False),
+            (["qualification_date"], "2026-02-31"),
+            (["target"], False),
+            (["target", "arch"], "x86_64"),
+            (["target", "minimum_os"], "25.0"),
+            (["target", "clang_sha256"], True),
+            (["target", "cpu_baseline"], "native"),
+            (["sources"], False),
+            (["sources", "opam"], None),
+            (["sources", "ocaml", "url"], False),
+            (["sources", "gmp", "signature_sha256"], False),
+            (["sources", "gmp", "path"], "@TARGET@/../../outside"),
+            (["sources", "zarith", "via"], "unknown.opam"),
+            (["operations"], False),
+            (["operations", "compiler_install"], None),
+            (["operations", "compiler_install", "argv"], []),
+            (["operations", "dependencies_install", "argv"], [True]),
+            (["operations", "gmp", "configure_argv"], ["/bin/sh", "bad\0argument"]),
+            (["operations", "gmp", "environment"], False),
+            (["operations", "gmp", "environment", "CC"], True),
+            (["operations", "gmp", "abi"], "32"),
+            (["operations", "gmp", "cpu_baseline"], "native"),
+            (["operations", "pkgconf", "cpu_baseline"], "native"),
+            (["boundaries"], False),
+            (["boundaries"], []),
+            (["boundaries"], [""]),
+        ]
+        for index, (path, value) in enumerate(cases):
+            with self.subTest(field=".".join(path)):
+                checkout = self.base / f"metadata-{index}"
+                copied = checkout / "ocaml/release"
+                self.copy_release(copied)
+                (checkout / ".git").symlink_to(RELEASE.parent.parent / ".git", target_is_directory=True)
+                profile = copy.deepcopy(original)
+                parent = profile
+                for key in path[:-1]:
+                    parent = parent[key]
+                parent[path[-1]] = value
+                (copied / MATERIALIZE.PROFILE).write_text(json.dumps(profile))
+                output = self.base / f"published-{index}"
+                result = subprocess.run(
+                    [sys.executable, str(copied / "materialize.py"), "--output", str(output)],
+                    capture_output=True, text=True, timeout=RUN_TIMEOUT,
+                )
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn(MATERIALIZE.PROFILE, result.stderr)
+                self.assertIn(path[0], result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertFalse(output.exists())
+
+    def test_duplicate_profile_keys(self):
+        checkout = self.base / "checkout"
+        copied = checkout / "ocaml/release"
+        self.copy_release(copied)
+        (checkout / ".git").symlink_to(RELEASE.parent.parent / ".git", target_is_directory=True)
+        profile_path = copied / MATERIALIZE.PROFILE
+        text = profile_path.read_text().replace(
+            '"install": [',
+            '"install": [{"operation":"unlink","path":"/outside"}], "install": [',
+            1,
+        )
+        profile_path.write_text(text)
+        result = subprocess.run(
+            [sys.executable, str(copied / "materialize.py"), "--output", str(self.output)],
+            capture_output=True, text=True, timeout=RUN_TIMEOUT,
+        )
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("duplicate", result.stderr)
+        self.assertIn("install", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_escaped_profile_tokens(self):
+        checkout = self.base / "checkout"
+        copied = checkout / "ocaml/release"
+        self.copy_release(copied)
+        (checkout / ".git").symlink_to(RELEASE.parent.parent / ".git", target_is_directory=True)
+        profile_path = copied / MATERIALIZE.PROFILE
+        text = profile_path.read_text().replace("@INPUTS@", r"\u0040INPUTS\u0040")
+        text = text.replace("@TARGET@", r"\u0040TARGET\u0040")
+        profile_path.write_text(text)
+        result = subprocess.run(
+            [sys.executable, str(copied / "materialize.py"), "--output", str(self.output)],
+            capture_output=True, text=True, timeout=RUN_TIMEOUT,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        emitted = json.loads((self.output / "profile.json").read_text())
+        self.assertEqual(emitted["operations"]["compiler_install"]["argv"][0],
+                         str(self.output / "inputs/opam-2.5.2-arm64-macos"))
+        self.assertNotIn("@INPUTS@", json.dumps(emitted))
+        self.assertNotIn("@TARGET@", json.dumps(emitted))
+
+    def test_pkgconf_install_recipe(self):
+        profile = json.loads((RELEASE / MATERIALIZE.PROFILE).read_text())
+        operation = profile["operations"]["pkgconf"]
+        self.assertIn("install", operation)
+        target = self.base / "target"
+        source = target / "pkgconf-build/pkgconf"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b"safe fixture bytes; never execute this candidate")
+        for step in operation["install"]:
+            resolved = {key: MATERIALIZE.substitute(value, {"TARGET": str(target)})
+                        for key, value in step.items()}
+            kind = resolved["operation"]
+            if kind == "mkdir":
+                Path(resolved["path"]).mkdir(parents=True)
+            elif kind == "copyfile":
+                shutil.copyfile(resolved["source"], resolved["destination"])
+            elif kind == "chmod":
+                Path(resolved["path"]).chmod(int(resolved["mode"], 8))
+            elif kind == "symlink":
+                Path(resolved["path"]).symlink_to(resolved["target"])
+            else:
+                self.fail(f"unsupported install operation: {kind}")
+        binary = target / "tools/bin/pkgconf"
+        alias = target / "tools/bin/pkg-config"
+        self.assertEqual(binary.read_bytes(), source.read_bytes())
+        self.assertEqual(binary.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(os.readlink(alias), "pkgconf")
+        self.assertEqual(alias.stat().st_ino, binary.stat().st_ino)
 
     def test_existing_prefix(self):
         self.output.mkdir()
@@ -90,7 +322,7 @@ class Materialization(unittest.TestCase):
 
     def test_template_tampering(self):
         copied = self.base / "release"
-        shutil.copytree(RELEASE, copied)
+        self.copy_release(copied)
         template = copied / "templates/package-pins/zarith.opam.in"
         template.write_text(template.read_text().replace("-cclib", "-ccopt", 1))
         with self.assertRaisesRegex(ValueError, "template hash mismatch"):
@@ -99,7 +331,7 @@ class Materialization(unittest.TestCase):
 
     def test_token_inventory(self):
         copied = self.base / "release"
-        shutil.copytree(RELEASE, copied)
+        self.copy_release(copied)
         profile_path = copied / MATERIALIZE.PROFILE
         profile = json.loads(profile_path.read_text())
         entry = profile["templates"]["package-pins/zarith.opam"]
@@ -114,7 +346,7 @@ class Materialization(unittest.TestCase):
 
     def test_binding_escape(self):
         copied = self.base / "release"
-        shutil.copytree(RELEASE, copied)
+        self.copy_release(copied)
         profile_path = copied / MATERIALIZE.PROFILE
         profile = json.loads(profile_path.read_text())
         profile["bindings"]["TARGET"] = "../outside"
@@ -126,7 +358,7 @@ class Materialization(unittest.TestCase):
     def test_vendor_tree_change(self):
         checkout = self.base / "checkout"
         copied = checkout / "ocaml/release"
-        shutil.copytree(RELEASE, copied)
+        self.copy_release(copied)
         # Read the actual immutable objects through a fixture checkout; do not alter Git.
         (checkout / ".git").symlink_to(RELEASE.parent.parent / ".git", target_is_directory=True)
         profile_path = copied / MATERIALIZE.PROFILE
@@ -165,7 +397,7 @@ class Materialization(unittest.TestCase):
         self.assertNotEqual(old_lookup.returncode, 0, "qualification ancestor unexpectedly present")
         self.assertEqual(git(shallow, "rev-list", "--count", "HEAD").stdout.strip(), b"1")
         copied = shallow / "ocaml/release"
-        shutil.copytree(RELEASE, copied, dirs_exist_ok=True)
+        self.copy_release(copied)
         result = subprocess.run(
             [sys.executable, str(copied / "materialize.py"), "--output", str(self.output)],
             capture_output=True, text=True, timeout=RUN_TIMEOUT,
@@ -209,7 +441,7 @@ class Materialization(unittest.TestCase):
             with self.subTest(name=name):
                 checkout = self.base / name
                 copied = checkout / "ocaml/release"
-                shutil.copytree(RELEASE, copied)
+                self.copy_release(copied)
                 (checkout / ".git").symlink_to(RELEASE.parent.parent / ".git", target_is_directory=True)
                 (copied / MATERIALIZE.PROFILE).write_text(json.dumps(value))
                 output = self.base / f"out-{name}"
@@ -228,7 +460,7 @@ class Materialization(unittest.TestCase):
         }.items():
             with self.subTest(name=name):
                 copied = self.base / name / "ocaml/release"
-                shutil.copytree(RELEASE, copied)
+                self.copy_release(copied)
                 (copied / MATERIALIZE.PROFILE).write_bytes(data)
                 output = self.base / f"out-{name}"
                 result = subprocess.run(
@@ -242,7 +474,7 @@ class Materialization(unittest.TestCase):
 
     def test_read_bounds(self):
         copied = self.base / "release"
-        shutil.copytree(RELEASE, copied)
+        self.copy_release(copied)
         profile_path = copied / MATERIALIZE.PROFILE
         profile_path.write_bytes(profile_path.read_bytes() + b" " * MATERIALIZE.MAX_PROFILE)
         with self.assertRaisesRegex(ValueError, "byte bound"):

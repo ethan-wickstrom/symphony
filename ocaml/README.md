@@ -89,7 +89,8 @@ optimized Python checks have a separate directory. `just fuzz` runs the seeded C
 campaign. Without `just`, use the commands in [justfile](justfile).
 `just release-tools` checks the immutable input materializer and physical binary
 verifier. Native verifier controls explicitly skip hosts without the selected
-macOS/SDK profile; portable controls still run. AFL has a separate bounded
+macOS/SDK profile locally; macOS CI requires it and fails on missing coverage.
+Portable controls still run on Linux. AFL has a separate bounded
 [Mach-O parser harness](fuzz/release_macho.py), with campaign limits in
 [release evidence](../docs/design/release-evidence.md).
 

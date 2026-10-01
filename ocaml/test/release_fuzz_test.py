@@ -47,7 +47,10 @@ elif mode == 'profile-defect':
     harness.GATE.check_profile = defect
     harness.check(b'{}')
 elif mode == 'decoder-defect':
-    harness.json.loads = defect
+    harness.GATE.json.loads = defect
+    harness.check(b'{}')
+elif mode == 'profile-decoder-defect':
+    harness.GATE.decode_profile = defect
     harness.check(b'{}')
 elif mode == 'named-rejection':
     def rejected(value):
@@ -56,6 +59,7 @@ elif mode == 'named-rejection':
     harness.check(b'{}')
 elif mode == 'profile-effects':
     data = Path(sys.argv[4]).read_bytes()
+    harness.GATE._PROCESS.run = defect
     for name in ('git', 'archive', 'prepare', 'materialize', 'read_bound'):
         setattr(harness.GATE, name, defect)
     harness.GATE.subprocess.run = defect
@@ -64,6 +68,7 @@ elif mode == 'profile-effects':
     builtins.open = defect
     harness.check(data)
 elif mode == 'macho-effects':
+    harness.GATE.CAPTURE.run = defect
     for name in ('verify', 'snapshot', 'inspect_tools', 'tool_output'):
         setattr(harness.GATE, name, defect)
     harness.GATE.subprocess.run = defect
@@ -127,6 +132,7 @@ print(sys.flags.optimize)
             (PROFILE, "profile-defect", "ValueError"),
             (PROFILE, "profile-defect", "RecursionError"),
             (PROFILE, "decoder-defect", "RuntimeError"),
+            (PROFILE, "profile-decoder-defect", "RuntimeError"),
         )
         for harness, mode, error in cases:
             with self.subTest(mode=mode, error=error):

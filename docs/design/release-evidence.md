@@ -19,6 +19,9 @@ macOS build-version command specifying minimum 26.0 and SDK 26.5. The loader is
 loads, missing commands, malformed lengths, and truncated referenced file ranges
 are rejected. The admitted modern command layouts come from Apple's selected
 SDK `mach-o/loader.h`; the list is deliberately closed.
+Segment protections use ordinary read/write/execute bits, with initial access a
+subset of maximum access. `__TEXT` initially permits execution; `LC_MAIN` lies in
+a file-backed segment with initial execute access.
 
 Apple's `/usr/bin/file`, `/usr/bin/lipo`, and `/usr/bin/otool -l/-L` must agree
 with the checked bytes. Tool warnings, failures, timeouts, excess output, and
@@ -30,6 +33,12 @@ stable.
 Bounds are explicit constants: artifact 256 MiB, load commands 1 MiB/4096
 commands, each tool output 8 MiB, each tool deadline 30 s. Inspection never
 executes the candidate.
+Git and Apple inspector output use one shared live capture mechanism, with
+independent stdout/stderr caps and one drain/reap deadline. Overflow kills the
+owned direct producer before bounded cleanup. OS cleanup failure remains visible
+as a secondary note on the primary error. No temporary disk capture is used.
+Receipts exclusively create a new path; existing files and artifact aliases are
+never overwritten.
 
 ## Laws and reference models
 
@@ -58,6 +67,8 @@ coverage, not instrumented AFL/Crowbar fuzzing or an exhaustive malformed-input
 proof.
 Native controls explicitly require macOS and SDK 26.5; skipping them elsewhere
 is not native release evidence.
+The macOS CI job sets `SYMPHONY_REQUIRE_NATIVE=1`, making missing SDK/tool
+availability a failure. Local unsupported hosts and Linux retain explicit skips.
 
 `ocaml/fuzz/release_macho.py INPUT` is a separate bounded AFL file harness.
 It accepts at most 64 KiB, parses only bytes, treats checked `Rejected` values as
@@ -80,16 +91,42 @@ fixture claim: it imported
 
 The new release profile boundary has its own pure harness,
 `ocaml/fuzz/release_profile.py INPUT`, with the same 64 KiB bound. It decodes JSON
-and validates consumed profile fields; it never calls Git, prepares files or
+and validates all published profile fields; it never calls Git, prepares files or
 publishes inputs. Actual AFL++ 4.35c blind mutation from the real profile seed
 completed 45 s/698 executions with zero crashes/hangs. Injected unnamed errors
 and defects abort; checked JSON/profile failures are normal outcomes. A separate
 10,000-case directed validator campaign checks malformed shapes and valid order
 permutations against its input model, without invoking effects.
 
-Six portable harness controls drive 19 real child scenarios per Python mode.
+Six portable harness controls drive 20 real child scenarios per Python mode.
 They observe child optimization directly, require SIGABRT for unexpected errors,
-check exact/+1-byte bounds, and trap forbidden effects. Core dumps are disabled.
+check exact/+1-byte bounds, bind the production decoder, and trap forbidden
+effects. Core dumps are disabled.
+
+## Review repair evidence
+
+The revised gate passes 23 physical-verifier, 20 materializer, nine live capture
+and six fuzz-harness controls per Python mode. The macOS run requires native
+SDK availability. Actual failing controls preceded fixes for segment permissions,
+entry mapping, destructive receipt aliases, unbounded producer output,
+unchecked profile fields, duplicate keys, unresolved escaped tokens and missing
+pkgconf installation steps. Successful materialization publishes the validated
+value, eliminating disagreement between checked and emitted JSON.
+
+The revised native process control accepts only the frozen driver's exact
+documented Darwin cleanup result. It verifies timer wake before KILL, direct-child
+reap and workspace lease release. Production code is unchanged. A fresh isolated
+release-profile rebuild passes 51 kernel, seven Host and 21 HTTPS cases per mode;
+this supersedes the earlier 78-case native observation below.
+
+After the entry/permission repairs, the Mach-O harness completed another 45 s
+campaign with 767 executions and zero crashes/hangs. The receipt binds the sources
+used at that phase; later diagnostic-only changes are tested separately.
+The complete profile decoder/validator and its production-bound harness completed
+a fresh 45 s campaign with 724 executions and zero crashes/hangs. Its receipt
+binds the final decoder, shared helper, profile, harness and harness-control bytes.
+Retained review receipts and logs are under `/private/tmp/symphony-release-*`
+and `review-native-evidence-{0,1}/` in the isolated target.
 
 ## Observed Symphony build
 

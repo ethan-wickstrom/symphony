@@ -23,8 +23,12 @@ qualified argv/environment records, and `materialization.json` with output
 hashes. Eio and Eio_posix share one archive; YAML, H1 and Crowbar have their own.
 It ignores uncommitted vendor changes, never overwrites a prefix, and performs no
 download, opam operation or build. All checks precede prefix creation.
-Profile input is capped at 64 KiB and templates at 32 KiB. Checked JSON fields precede
-path use; descriptor reads reject symlinks and nonregular files without blocking.
+Profile input is capped at 64 KiB and templates at 32 KiB. Recursive duplicate
+JSON keys are rejected. A closed schema checks every published field before
+path use; publication serializes the checked value before token substitution,
+so JSON escapes cannot preserve unresolved tokens. Descriptor reads reject
+symlinks and nonregular files without blocking. Git stdout/stderr have independent
+live caps of 4 MiB/64 KiB and a 30 s drain/reap deadline.
 The inputs are an owned checkout, with concurrent same-user mutation outside this
 receipt's custody claim.
 
@@ -42,6 +46,9 @@ binary as `target/tools/bin/pkgconf` and a `pkg-config` alias, then use the expl
 compiler and package pins in the fresh opam root. Compiler cloning is disabled;
 compression is disabled. Keep `--no-depexts` and `--require-checksums`, and supply
 the recorded child environments rather than exporting global flags.
+The pkgconf install record specifies directory creation, binary copy, mode 0755
+and the relative `pkg-config -> pkgconf` symlink. These steps reconstruct the
+qualified filesystem result; the historical copy command was not retained.
 
 The persisted compiler, GMP, pkgconf and Zarith flags are unchanged from the
 qualified recipes. The package-local Zarith make command records the exact static
@@ -67,9 +74,12 @@ PYTHONOPTIMIZE=1 python3 ocaml/test/release_materialize_test.py
 The content laws are checked against independent hash/inventory oracles:
 
 - Checked profile decoding preserves the value and is idempotent; invalid shapes
-  return named failures before effects. Boolean schema versions are invalid.
+  and duplicate keys return named failures before effects. Boolean schema
+  versions are invalid. Binding substitution is invariant under JSON escaping.
 - Fixed tree IDs, templates and bindings produce identical archive/recipe bytes.
 - A fresh prefix publishes one checked input set; an existing prefix is preserved.
 - Template/tree/hash drift rejects the input set before publication.
 
 These laws have example, tamper and seeded mutation evidence, not a proof.
+Receipts identify both materializer and bounded-capture source hashes as context;
+these hashes do not attest execution or establish source-to-binary provenance.

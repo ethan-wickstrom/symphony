@@ -29,6 +29,8 @@ check: test check-format
     just release-tools
 
 release-tools:
+    python3 test/release_process_test.py -v
+    python3 -O test/release_process_test.py -v
     python3 test/release_materialize_test.py -v
     PYTHONOPTIMIZE=1 python3 test/release_materialize_test.py -v
     python3 test/release_check_test.py -v
