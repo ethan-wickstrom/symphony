@@ -1,4 +1,12 @@
 (executable
  (name main)
  (public_name symphony)
- (libraries symphony_io cmdliner eio_posix unix))
+ (libraries
+  symphony_native
+  symphony_workspace
+  symphony_io
+  symphony_workflow
+  symphony_domain
+  cmdliner
+  eio_posix
+  unix))

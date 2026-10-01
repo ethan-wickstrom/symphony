@@ -26,7 +26,12 @@ let () =
         2
     | Ok (cwd, env) ->
         Eio_posix.run (fun host ->
-            Cli.run ~fs:(Eio.Stdenv.fs host) ~cwd ~env ~argv:Sys.argv
+            let clock =
+              Clock_posix.create
+                ~mono:(Eio.Stdenv.mono_clock host)
+                ~wall:(Eio.Stdenv.clock host)
+            in
+            Cli.run ~fs:(Eio.Stdenv.fs host) ~clock ~cwd ~env ~argv:Sys.argv
               ~out:print_string ~err:Format.err_formatter)
   in
   exit code

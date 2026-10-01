@@ -19,7 +19,16 @@ let config_error = function
 let template_error = function
   | Template.Parse_error d | Template.Render_error d -> Diagnostic.render d
 
-let run ~fs ~cwd ~env ~argv ~out ~err =
+let read_issue io ~cwd filename =
+  let* file = Workflow_path.resolve ~base:cwd filename in
+  let* text = Result.map_error loader_error (Workflow_file.read io ~file) in
+  Result.map_error
+    (fun message ->
+      Text.escape (Workflow_path.display file)
+      ^ ": " ^ Text.escape message ^ "; fix the normalized issue JSON")
+    (Prompt_fixture.parse text)
+
+let run ~fs ~clock ~cwd ~env ~argv ~out ~err =
   let io = Workflow_file.make fs in
   let load filename =
     let* file = Workflow_path.resolve ~base:cwd filename in
@@ -51,15 +60,7 @@ let run ~fs ~cwd ~env ~argv ~out ~err =
   in
   let dry filename fixture attempt =
     let* _, template = load filename in
-    let* file = Workflow_path.resolve ~base:cwd fixture in
-    let* text = Result.map_error loader_error (Workflow_file.read io ~file) in
-    let* issue =
-      Result.map_error
-        (fun e ->
-          Workflow_path.display file ^ ": " ^ e
-          ^ "; fix the normalized issue JSON")
-        (Prompt_fixture.parse text)
-    in
+    let* issue = read_issue io ~cwd fixture in
     let* attempt =
       match attempt with
       | None -> Ok Template.First
@@ -76,6 +77,28 @@ let run ~fs ~cwd ~env ~argv ~out ~err =
       Result.map_error template_error (Template.render template ~issue ~attempt)
     in
     out (prompt ^ "\n");
+    Ok ()
+  in
+  let workspace filename fixture =
+    let* config, _ = load filename in
+    let* issue = read_issue io ~cwd fixture in
+    let identifier =
+      Text.escape (Issue_identifier.text (Issue.identifier issue))
+    in
+    let* found =
+      Result.map_error
+        (fun error ->
+          Text.escape (Workflow_path.display (Config.file config))
+          ^ ": issue " ^ identifier ^ ": " ^ Workspace_cli.error error)
+        (Workspace_cli.inspect ~fs ~clock ~settings:(Config.workspace config)
+           ~env:(Config.child_env config)
+           ~scope:(Tracker_config.Contract.scope (Config.tracker config))
+           ~issue)
+    in
+    out
+      (match found with
+      | None -> "Workspace missing: " ^ identifier ^ "\n"
+      | Some label -> "Workspace: " ^ Text.escape label ^ "\n");
     Ok ()
   in
   let file_arg =
@@ -109,11 +132,19 @@ let run ~fs ~cwd ~env ~argv ~out ~err =
          ~doc:"Render a prompt using a local issue fixture.")
       Cmdliner.Term.(const dry $ file_arg $ issue_arg $ attempt_arg)
   in
+  let workspace =
+    Cmdliner.Cmd.v
+      (Cmdliner.Cmd.info "workspace"
+         ~doc:
+           "Inspect an existing owned workspace without creating it or running \
+            hooks.")
+      Cmdliner.Term.(const workspace $ file_arg $ issue_arg)
+  in
   let command =
     Cmdliner.Cmd.group
       (Cmdliner.Cmd.info "symphony" ~version:"0.1.0"
-         ~doc:"Symphony OCaml workflow inspection (slice 1).")
-      [ doctor; dry ]
+         ~doc:"Symphony OCaml workflow and workspace inspection.")
+      [ doctor; dry; workspace ]
   in
   Cmdliner.Cmd.eval_result ~catch:false ~env:(Environment.lookup env) ~argv ~err
     command

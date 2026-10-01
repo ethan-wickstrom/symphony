@@ -5,7 +5,11 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
+
+sys.dont_write_bytecode = True
+import workspace_cli_check
 
 
 def require(condition: bool, message: str) -> None:
@@ -131,6 +135,7 @@ def run(binary: Path) -> None:
                 "doctor accepted oversized workflow or omitted limit diagnostic")
 
     print("CLI integration: 19 scenarios passed")
+    workspace_cli_check.run(binary)
 
 
 if __name__ == "__main__":
