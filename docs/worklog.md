@@ -98,6 +98,10 @@ Run the retained process gate on hosted Linux/macOS before native directory/hook
 integration. Review caught and fixed a CI switch-location mismatch before push. Both runners
 accept an explicit switch; another 5,000-case campaign and all normal/optimized
 controls pass with that argument. CI selects its workspace-root switch.
+Publication is awaiting explicit approval: automatic approval review rejected
+the push to github.com/ethan-wickstrom/symphony because exporting source/history
+needs destination authorization. No push or PR creation occurred. Draft body is
+prepared and passes mix pr_body.check; local commits are 953de28 and 4375b9e.
 Then implement the anchored directory Store and private Path/child-loan bracket,
 followed by Process and Hooks over the shared ports. Eio already supplies managed
 nofollow openat/stat/directory iteration; the smallest native gap is nonblocking
