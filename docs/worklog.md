@@ -27,6 +27,9 @@ against an independent model, replayable simulation, parser fuzzing and measured
   Workflow/config/template/reload and offline commands passed hosted Linux/macOS gates.
 - Slice 2 merged as PR #2 at `92f7ac670bb90fae2c21ab1a4a1523a1edde5112`.
   Native ownership, scoped hooks/processes and inspection passed both host workflows.
+- Slice 3 merged as [PR #3](https://github.com/ethan-wickstrom/symphony/pull/3)
+  at `98833b39c59a2def4257ac5ac9e405e1010554ca` on `2026-10-01T15:36:13Z`.
+  Linear reads and native HTTPS inspection passed local and hosted Linux/macOS gates.
 - Slice 2 keys, frozen references, opaque issue-ID ownership and strict bounded
   owner codec; independent models, hash vectors and parser fuzz targets.
 - Frozen Eio custody/admission extension and worker controls passed local macOS and
@@ -44,9 +47,19 @@ against an independent model, replayable simulation, parser fuzzing and measured
 
 ## Current focus
 
-Branch `ethan/linear-adapter` starts at merged `92f7ac6`; local/remote main agree.
-Slice 3's first usable path is explicit Linear inspection over verified HTTPS,
-tested through the actual adapter against a loopback HTTPS fake with an explicit CA.
+Branch `ethan/static-release` starts clean from merged `98833b3`.
+Static release foundation comes before slice 4; no release artifact is built.
+The development Mach-O imports Homebrew GMP and has a macOS26.0 minimum.
+Next: freeze release compiler/dependency profiles, link GMP statically, and build
+and verify clean-host macOS and Linux musl artifacts. Both release targets remain
+unverified. Plans: `docs/design/static-release-plan.md`, then
+`docs/design/slice-4-orchestrator-plan.md`.
+No user approval is pending under the accepted recommendations/autonomy instruction.
+
+## Last merged slice evidence
+
+Slice 3 provides explicit Linear inspection over verified HTTPS, tested through
+the actual adapter against a loopback HTTPS fake with an explicit CA.
 
 Implemented ordered issue batches, frozen registry bindings, Linear envelope/record/
 page parsing and atomic pagination. Independent list/query models cover these paths.
@@ -72,7 +85,7 @@ Independent review found no remaining blocker in these contracts.
 Final serial gates pass: 241 core cases (61 properties), 63 CLI scenarios,
 78 native cases per mode, 235 source/interface files, 39 source controls,
 16 protocol corruption controls and 22 Crowbar groups × 10,000 invocations.
-Both native manifests bind 156 selected source hashes and the runner/sentinel.
+Both final local native manifests bind 156 selected source hashes and the runner/sentinel.
 An overlapping gate run failed child publication and an Elixir response timeout;
 its cause remains unproven. A deliberate startup delay reproduced the watchdog
 fixture race. Bounded READY admission fixes that control without changing the
@@ -80,27 +93,32 @@ production timeout or PID probes. Normal/optimized full controls now pass.
 Pinned Elixir passes alone: 302 tests, six skips, coverage/lint/Dialyzer green.
 The sandbox blocks PID-specific `ps` probes, so native validation runs outside it.
 Framing provenance passes six corruption controls in both Python modes.
-PR #3 is open; final hosted CI/publication/merge remain next.
 Final review found that the first native manifests predated the source-inventory
 expansion. Both native modes were rerun successfully with the final runner;
 the new evidence binds the expanded domain/IO/workflow source inventory.
 
-Deployment audit found the development Mach-O imports Homebrew GMP and has a
-macOS26.0 minimum. This is not a clean-host single-file release. Resolve static
-GMP linkage and pin the target profile in a dedicated release gate; Linux musl
-linkage remains unverified. Orchestrator/simulator planning follows in slice 4.
+Final [PR run 36883354256](https://github.com/ethan-wickstrom/symphony/actions/runs/36883354256)
+and [push run 36883346701](https://github.com/ethan-wickstrom/symphony/actions/runs/36883346701)
+passed on Linux/glibc and macOS at
+`06ce6c577c48142b7fb89cf8223c3c35acdf0184`, the exact merged PR head.
+Four hosted native manifests match all 156 selected committed Git blobs,
+watchdog/sentinel hashes and modes 0/1, with status 0 and 50+7+21 cases each.
+Both frozen custody manifests match all nine Eio hashes and 5,000 scenarios per
+host. Linux records 2,000 normal closes, zero cleanup EPERM and zero repeated-signal
+EPERM values; macOS records 1,999 normal closes, one conservative cleanup EPERM
+and 31 repeated-signal EPERM values. Both retain 2,000 stable explicit close outcomes.
+Focused custody/admission controls pass. Binary hashes are recorded context only;
+archives exclude executables and provide no source-to-binary attestation.
+Hosted verification and both final local source receipts have zero mismatches.
 Plan: `docs/design/slice-3-tracker-plan.md`.
-Next foundations: `docs/design/static-release-plan.md` and
-`docs/design/slice-4-orchestrator-plan.md`.
-No user approval is pending under the accepted recommendations/autonomy instruction.
+
+## Previous slice-two evidence
 
 Slice 2's final hook repair (`98e9d6a`) carries caller errors directly through Process
 and Path. Four hook controls went red/green; three native controls check identity,
 mapper suppression and conversion after reap. Independent review and current-head
 Copilot found no remaining finding; all three review threads are resolved. Devin
 analysis was unavailable at its diff-size limit; Sourcery exceeded its file limit.
-
-## Last merged slice evidence
 
 - macOS arm64; OCaml 5.5.0, Dune 3.24.0, ocamlformat 0.28.1.
 - Build and formatting pass; core: 126 cases, 39 properties and 41,500 samples.
@@ -160,6 +178,10 @@ analysis was unavailable at its diff-size limit; Sourcery exceeded its file limi
 - `/private/tmp/symphony-slice3-reviewed-serial-check.log`
 - `/private/tmp/symphony-slice3-reviewed-fuzz.log`
 - `/private/tmp/symphony-slice3-reviewed-elixir-isolated.log`
+- `/private/tmp/symphony-slice3-reviewed-native/manifest.json`
+- `/private/tmp/symphony-slice3-reviewed-native-optimized/manifest.json`
+- `/private/tmp/symphony-hosted-06ce6c5/verification.json`
+- `/private/tmp/symphony-hosted-06ce6c5/local-source-verification.json`
 - `/private/tmp/symphony-watchdog-admission-red-receipt.json`
 - `/private/tmp/symphony-watchdog-admission-green-optimized.log`
 - `/private/tmp/symphony-ca-default-linux-red.log`
