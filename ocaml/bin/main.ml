@@ -25,8 +25,13 @@ let () =
         Format.eprintf "%s; fix the host environment\n" (Text.escape e);
         2
     | Ok (cwd, env) ->
-        Eio_main.run (fun host ->
-            Cli.run ~fs:(Eio.Stdenv.fs host) ~cwd ~env ~argv:Sys.argv
+        Eio_posix.run (fun host ->
+            let clock =
+              Clock_posix.create
+                ~mono:(Eio.Stdenv.mono_clock host)
+                ~wall:(Eio.Stdenv.clock host)
+            in
+            Cli.run ~fs:(Eio.Stdenv.fs host) ~clock ~cwd ~env ~argv:Sys.argv
               ~out:print_string ~err:Format.err_formatter)
   in
   exit code

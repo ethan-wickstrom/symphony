@@ -4,7 +4,7 @@
 module Make
     (Tracker : Tracker.S)
     (Clock : Clock.S)
-    (Workspace : Workspace_manager.S with module Contract.Issue = Tracker.Contract.Issue)
+    (Workspace : Workspace_manager.S)
     (Agent : Agent_runner.S
        with module Contract.Issue = Tracker.Contract.Issue
         and module Contract.Path = Workspace.Contract.Path

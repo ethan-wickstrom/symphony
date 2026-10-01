@@ -685,6 +685,72 @@ let workflow_boundary source next missing =
         (Config.resolve registry ~env ~document))
     (Workflow_document.parse ~file source)
 
+let workspace_keys text =
+  let allowed =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
+  in
+  let max_key_bytes = 255 in
+  let suffix_bytes = 33 in
+  iter_ok
+    (fun identifier ->
+      let raw = Issue_identifier.text identifier in
+      let unchanged = String.for_all (String.contains allowed) raw in
+      let size = String.length raw + if unchanged then 0 else suffix_bytes in
+      let expected = raw <> "." && raw <> ".." && size <= max_key_bytes in
+      let derived = Workspace_key.of_identifier identifier in
+      Crowbar.check_eq expected (Result.is_ok derived);
+      iter_ok
+        (fun key ->
+          let encoded = Workspace_key.text key in
+          Crowbar.check_eq size (String.length encoded);
+          Crowbar.check (String.for_all (String.contains allowed) encoded);
+          if unchanged then Crowbar.check_eq raw encoded;
+          let reparsed = checked (Issue_identifier.parse encoded) in
+          let replay = checked (Workspace_key.of_identifier reparsed) in
+          Crowbar.check_eq 0 (Workspace_key.compare key replay))
+        derived)
+    (Issue_identifier.parse text)
+
+let owner_source scope issue_id =
+  "{\"version\":1,\"scope\":" ^ quoted scope ^ ",\"issue_id\":"
+  ^ quoted issue_id
+  ^ ",\"identifier\":\"A/B\",\"device\":\"8000000000000000\",\"inode\":\"ffffffffffffffff\"}"
+
+let owner_input =
+  Crowbar.choose
+    [
+      Crowbar.map (ascii @> ascii @> no_inputs) owner_source;
+      choose_text
+        [
+          owner_source "linear:project" "opaque-id";
+          "{}";
+          "{\"version\":1,\"version\":1}";
+          "null";
+          String.make (Workspace_owner.max_bytes + 1) ' ';
+          owner_source (String.make Workspace_owner.max_bytes 'x') "id";
+        ];
+    ]
+
+let workspace_owners source =
+  iter_ok
+    (fun owner ->
+      let encoded = Workspace_owner.encode owner in
+      Crowbar.check (String.length encoded <= Workspace_owner.max_bytes);
+      let replay = checked (Workspace_owner.parse encoded) in
+      Crowbar.check (Workspace_owner.equal owner replay);
+      Crowbar.check_eq encoded (Workspace_owner.encode replay);
+      let rebuilt =
+        checked
+          (Workspace_owner.make
+             ~scope:(Workspace_owner.scope owner)
+             ~issue_id:(Workspace_owner.issue_id owner)
+             ~identifier:(Workspace_owner.identifier owner)
+             ~device:(Workspace_owner.device owner)
+             ~inode:(Workspace_owner.inode owner))
+      in
+      Crowbar.check (Workspace_owner.equal owner rebuilt))
+    (Workspace_owner.parse source)
+
 let collections text count =
   let values = List.init count (fun i -> text ^ string_of_int i) in
   (match Nonempty_list.of_list values with
@@ -719,6 +785,23 @@ let () =
   Crowbar.add_test ~name:"checked identity equivalence and comparator"
     (choose_text [ "id"; "SYMPHONY-1"; " "; "\000" ] @> raw @> no_inputs)
     ids;
+  Crowbar.add_test ~name:"workspace key image, bounds and canonicalization"
+    (choose_text
+       [
+         "A/B";
+         "A B";
+         "é";
+         ".";
+         "..";
+         String.make 255 'a';
+         String.make 256 'a';
+         String.make 221 'a' ^ "/";
+         String.make 222 'a' ^ "/";
+       ]
+    @> no_inputs)
+    workspace_keys;
+  Crowbar.add_test ~name:"bounded ownership JSON and exact directory identity"
+    (owner_input @> no_inputs) workspace_owners;
   Crowbar.add_test ~name:"exact count, positive count and duration algebras"
     (choose_text [ "0"; "1"; "42"; "999999999999999999999999999999"; "-1" ]
     @> choose_text [ "0"; "1"; "5" ]

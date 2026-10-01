@@ -1,7 +1,7 @@
 # Domain algebras and reference models
 
 Status: laws for the proposed interfaces, not proved implementation properties.
-Equations use semantic equality of checked values. Operations with different input
+Equations use named observations of checked values. Operations with different input
 and output types are not falsely classified as associative binary operations.
 Expected failure remains `result`; absence remains `option`.
 
@@ -18,8 +18,8 @@ naming two operations on a shared carrier; it is not a generic checkbox.
 | Count, Usage / componentwise max | Yes | zero | Yes | Yes | No | No finite top | Join semilattice. Addition distributes over max: `a + max(b,c) = max(a+b,a+c)`. |
 | Nonempty_list / append | Yes | None | No | No | No | No | Nonempty list semigroup. |
 | command/log trace / append | Yes | [] | No | No | No | No | Free list monoid. |
-| ID set / union | Yes | empty | Yes | Yes | No | Full universe, not materialized | Stdlib Set; intersection distributes over union and conversely. |
-| retry index / union of entries | Yes | empty | Yes | Yes | No | No | Stdlib Set ordered by exact due/issue ID; validity couples it to the map. |
+| finite ID set / union | Yes | empty | Yes | Yes | No | No | Stdlib Set; intersection distributes over union and conversely. The unbounded ID universe is outside the carrier. |
+| raw retry-entry Set / union | Yes | empty | Yes | Yes | No | No | Generic Set law only. Domain retry queues do not export union; differing due times for one ID would violate ownership. |
 | comparator / then_by | Yes, by sign | always-equal | No | Yes, by sign | No | No general two-sided absorber | Lexicographic composition of total preorders; canonical signs. |
 | owner map / last-write put | — | — | Different IDs only | Same value/key | — | — | Finite function. Conflicting writes do not commute. |
 | reload / apply | — | — | No | Same valid load | — | — | Last-good settings plus latest validity. An invalid load is not identity on readiness. |
@@ -56,7 +56,8 @@ No core operation rechecks normalized issue strings.
 
 [Workspace_key](interfaces/workspace_key.mli) is a deterministic transformation, not
 an injective mapping. Unchanged safe identifiers retain their bytes; changed keys use
-the accepted suffix. Dot/dot-dot and aliases fail. Live containment is a resource
+the accepted suffix. Key construction rejects dot/dot-dot; acquisition rejects aliases.
+Live containment is a resource
 invariant, not a string-algebra theorem. [Workspace_path](interfaces/workspace_path.mli)
 has no parser or public constructor.
 
@@ -121,13 +122,38 @@ normalized; partial success cannot masquerade as an atomic ID refresh. The same
 remote data/settings produce the same normalization; repeated network calls need not
 produce the same remote data. The fake HTTP driver models page/error traces.
 
-A workspace reference freezes root, hooks, identifier, scope and sanitized environment.
+A workspace reference freezes root, hooks, opaque issue ID, identifier, scope and
+sanitized environment.
 Its acquisition bracket has a resource-ledger model: each acquired lease releases once
-on success, error or cancellation. A successful removal repeated on absence succeeds;
-a failed operation need not be idempotent. Preparation distinguishes new and reused
+on success, error or cancellation. If removal succeeds and no directory is recreated,
+another cleanup returns success and preserves the resulting filesystem projection.
+The hook/log traces differ; this is not equality of whole executions. A failed operation
+need not be idempotent. Preparation distinguishes new and reused
 directories. Cleanup cannot reconstruct its target from current reload settings.
 OS mutation and non-linear lifetimes require the hidden driver checks documented in
 [verification](verification.md#5-safety-by-construction-and-host-limits).
+
+The protected ownership record models a five-component tuple: scope, opaque ID,
+original identifier, device and inode. Equality is the conjunction of component
+equalities, hence an equivalence relation. Its canonical codec satisfies
+`parse(encode(owner)) = Ok owner`; canonicalization is idempotent. Versioned
+records have exact fields and bounded encodings. Record equality grants no live
+directory authority; acquisition must compare it under the key lock.
+
+Process exit observation and process custody are separate axes. Observing a terminal
+leader does not release its reserved identifier or certify group emptiness. Cleanup
+collects signal/reap errors while proceeding through every stage; only the owner of
+the Held-to-Reaping transition may reap. Stable completion is an observable result,
+including expected OS failure. Repeated observation is stable; repeating a signal
+syscall can produce a different result and is not an unconditional idempotence law.
+
+The process bracket is polymorphic in its caller's error algebra. Its mapper
+translates only mechanism failures; semantic callback errors retain their type and
+value. For expected outcomes, `finish(Error e, cleanup) = Error e`,
+`finish(Ok x, Ok ()) = Ok x`, and `finish(Ok x, Error d) = Error(map d)`.
+Cleanup and reporting still finish before observing that result. A shadowed
+cleanup error invokes no mapper. This eliminates the nested `Ok(Error e)` carrier
+that could misclassify a hook timeout as successful work during cleanup.
 
 ## Ownership, order and orchestration
 
@@ -205,6 +231,7 @@ approval. No proof dependency or generated abstraction is added preemptively.
 
 Design references: [OCaml 5.5 modules](https://ocaml.org/manual/5.5/moduleexamples.html)
 and [functor tutorial](https://ocaml.org/docs/functors); Sandy Maguire's
-[Algebra-Driven Design](https://leanpub.com/algebra-driven-design), official free sample
-(preface, overview and Tiles). The full book was not read; the requested site was
-unavailable during this audit.
+[Algebra-Driven Design full manuscript source](https://github.com/isovector/algebra-driven-design/tree/118aa81a48fb46255dfe4503cbcdee6d893098c9/prose).
+The user's source correction supersedes the earlier sample-only reference.
+The main prose manuscript has been reviewed. [Coverage and resulting changes](book-review.md)
+distinguish that reading from compiling the book or its companion code.

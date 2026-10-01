@@ -1,0 +1,4 @@
+(library
+ (name symphony_workspace)
+ (wrapped false)
+ (libraries symphony_workflow symphony_io yojson eio))

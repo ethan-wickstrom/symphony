@@ -7,6 +7,14 @@ val parse : string -> (t, string) result
 
 val decimal : t -> string
 
+val of_uint64_bits : int64 -> t
+(** Interpret all 64 bits as an unsigned natural. Total, including negative
+    signed representations; no decimal formatting or reparsing. *)
+
+val to_uint64_bits : t -> int64 option
+(** [to_uint64_bits (of_uint64_bits bits) = Some bits]. Returns None exactly
+    above [2^64 - 1]; an absent projection never truncates or saturates. *)
+
 val decimal_bounded : max_bytes:int -> t -> (string, string) result
 (** Preflights bit length before conversion; temporary decimal allocation is at
     most twice the byte budget. Accepted output never exceeds the byte budget.

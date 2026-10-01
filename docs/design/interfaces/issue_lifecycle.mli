@@ -2,9 +2,10 @@
     Unclaimed/Released witnesses are transient; no historical claims accumulate. *)
 
 module Make
+    (Issue : Issue.S with type t = Issue.t)
     (Clock : Clock.PURE)
-    (Workspace : Workspace_manager.PURE with type Issue.t = Issue.t)
-    (Agent : Agent_runner.PURE with module Issue = Workspace.Issue
+    (Workspace : Workspace_manager.PURE)
+    (Agent : Agent_runner.PURE with module Issue = Issue
                                and module Path = Workspace.Path
                                and type workspace = Workspace.reference) : sig
   type unclaimed

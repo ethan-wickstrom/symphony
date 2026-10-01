@@ -51,7 +51,6 @@ normal shutdown requires both core quiescence and runtime resource drainage.
 [service.mli](interfaces/service.mli) assembles the same modules as the pure functor:
 
 ```ocaml
-Workspace.Contract.Issue = Tracker.Contract.Issue
 Agent.Contract.Issue = Tracker.Contract.Issue
 Agent.Contract.Path = Workspace.Contract.Path
 Agent.Contract.workspace = Workspace.Contract.reference
@@ -61,6 +60,9 @@ Core.clock_sample = Clock.Pure.sample
 ```
 
 These are declared in the functor parameters/results, before implementations.
+Workspace references use checked identifiers, not Issue.t; the workspace contract
+has no Issue module. Its reference functor equates the input/output Path.t capability
+types without exporting a driver's private constructors or extra operations.
 `Issue.S.t` is the one normalized `Issue.t`. Workspace launch authority remains
 abstract in `Path.t`; a wire cwd is never equal to it. Milliseconds, seconds, UTC,
 monotonic instants, issue IDs/identifiers, run/retry/request IDs and protocol IDs are

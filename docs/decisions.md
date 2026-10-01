@@ -4,6 +4,12 @@ Status: P01–P08 and D01–D13 accepted by the user on 2026-09-30.
 Linear is the first adapter. Deploy and develop on macOS; also produce a static
 Linux musl release. Component signatures, laws and package recommendations are approved.
 
+Development destination: `ethan-wickstrom/symphony` only. `origin` is the sole Git
+remote and the GitHub CLI default; GitHub operations also name this repository
+explicitly. Clone hooks, PR cleanup and package metadata use this destination.
+Upstream specification links remain provenance, never publication targets.
+The user detached the GitHub fork; the API confirms `isFork=false` and `parent=null`.
+
 Evidence baseline: [SPEC.md](../SPEC.md) at upstream commit
 `be10a1b79df723d6d7612b5651c8522704dafb2e`, checked against live upstream main.
 The full specification and both READMEs were read before this audit.
@@ -50,7 +56,7 @@ entries, the population heading, and the repeated failure description.
 | P03 | Turn sandbox default: §5.3.6 line 484; §6.4 line 630 | `workspaceWrite`, current issue workspace as the sole additional writable root, network off, both temporary-root exclusions on. Explicit workflow overrides remain schema-validated. |
 | P04 | Workspace preparation: §9.2 line 886; population heading/body: §9.3 lines 888, 892; population failure: §14.1 line 1646 | Hooks own VCS/bootstrap; no built-in checkout or destructive reset. Remove an owned newly created directory after failed preparation, using the cleanup hook contract. Preserve reused workspaces. |
 | P05 | Approval/sandbox/user input behavior: §10.5 line 1067 | Apply P01–P03. User-input and elicitation requests immediately end the attempt with an explicit reason. Cancel elicitation using its valid response, including experimental device-verification requests; never fabricate answers or proofs. Unsupported tools return protocol-valid failure and the session continues. No extra indefinitely blocked claim state. |
-| P06 | In-memory timestamp type: §11.3 line 1272 | Abstract UTC instants backed by Ptime; separate monotonic instants and duration units. Wall time never schedules retries or measures elapsed runtime. Package feasibility remains to be checked. |
+| P06 | In-memory timestamp type: §11.3 line 1272 | Abstract UTC instants backed by locked Ptime 1.2.0; separate monotonic instants and duration units. Wall time never schedules retries or measures elapsed runtime. Clock/UTC builds, examples and independent models pass. |
 | P07 | Human-readable status: §13.4 line 1414 | Minimal server-rendered `/` in the requested HTTP slice, using the same snapshot as JSON. No separate TUI or compiled browser application in core. |
 | P08 | Human-readable rate limits: §13.5 line 1448 | Preserve the latest protocol payload, including nullable model/quota metadata; show bounded formatted JSON initially. Do not infer recovery from reset times or percentages. Account-read permission fields remain distinct from notification data. |
 
@@ -89,7 +95,7 @@ These are not additional literal implementation-defined occurrences.
 | --- | --- | --- |
 | D01 | §5.3.1, §11.2 | Require explicit active and terminal state lists for the first adapter. Do not guess provider-specific workflows. Reject overlapping normalized state sets. |
 | D02 | §17.2 | Physically resolve the configured root. Fail on non-directory or symlink managed workspace entries, dot/dot-dot keys, overlong names, or failed containment. Never replace an existing path. Ordinary repository symlinks remain permitted under the selected sandbox. Keep unchanged valid identifiers' keys unchanged. |
-| D03 | §4.2, §9.5 | Changed keys append a hyphen and the first 128 bits of SHA-256 over the original identifier bytes, encoded as lowercase hex. Protected ownership metadata binds the original identifier and tracker scope, detecting hash/literal and filesystem aliases before reuse. Collisions fail safely. |
+| D03 | §4.2, §9.5 | Changed keys append a hyphen and the first 128 bits of SHA-256 over the original identifier bytes, encoded as lowercase hex. Protected ownership metadata binds the opaque issue ID, original identifier and tracker scope, detecting historical identifier reuse, hash/literal and filesystem aliases before reuse. Collisions fail safely. |
 | D04 | §5.3, §6.1 | Ignore unknown core keys and preserve adapter-owned provider keys. Expand explicit environment references and filesystem paths only; preserve shell commands verbatim. Duplicate YAML mapping keys fail instead of selecting a parser-dependent winner. |
 | D05 | §5.4 | Empty prompt uses the spec's literal minimal fallback. Missing/invalid workflow never falls back. Unknown template variables and filters fail the affected attempt. |
 | D06 | §11.1, §11.3–11.4 | Omit malformed state-list records with a warning; malformed requested ID records fail the atomic refresh. Normalize optional metadata to null/empty, deduplicate labels, and retain every required normalized field. Use the listed stable error categories. |
@@ -226,10 +232,10 @@ at `/private/tmp/symphony-protocol-audit/{stable,experimental}` for comparison.
 
 The OCaml 5.5 [module/manual chapter](https://ocaml.org/manual/5.5/moduleexamples.html)
 was read, including functors and sharing constraints. The original unversioned URLs
-were unavailable. For Algebra-Driven Design, the publisher's
-[official free sample](https://leanpub.com/algebra-driven-design) was available and
-read (preface, overview, Tiles); the full book was not read. The requested site was
-unavailable. The interfaces use the user's explicit algebra rules as requirements.
+were unavailable. The user supplied the [full Algebra-Driven Design manuscript](https://github.com/isovector/algebra-driven-design/tree/118aa81a48fb46255dfe4503cbcdee6d893098c9/prose),
+replacing the initial sample-only reference. The main prose chapters have been read;
+[coverage and concrete corrections](design/book-review.md) distinguish that review
+from building the book or companion code. The user's algebra rules remain requirements.
 
 ## Toolchain and dependencies
 
@@ -256,14 +262,16 @@ Approved direct runtime package families:
 
 | Package | Purpose / why a smaller substitute is insufficient |
 | --- | --- |
-| `eio`, `eio_main` | Structured direct-style concurrency plus native backend selection. `eio.mock` ships in `eio`; no Lwt/Async scheduler or separate mock package. Audited Eio 1.6. |
+| `eio`, `eio_posix` | Structured direct-style concurrency with one POSIX backend on both hosts. Pin both 1.6 sources: worker-admission errors resume the caller; process identity survives exit observation until cleanup/reap. `eio.mock` ships in `eio`; no second scheduler or mock package. See `vendor/eio/PATCHES.md` for the narrow delta and host evidence. |
+| `mtime` | Exact unsigned native nanosecond observations and spans for the injected Eio monotonic clock. Already an Eio dependency; named directly because the adapter imports its API. Logical deadlines remain unbounded naturals, with explicit native-horizon errors. |
+| `cstruct` | Bounded buffers for public Eio POSIX vectored ownership-record IO. Already installed through Eio; direct import, without a new parser or framing layer. |
 | `yaml` | Existing parser with positioned event/scalar access and vendored static libyaml archive. Audited 3.2.0; wrap events to preserve kinds/precision and validate complete input, duplicates and bounded aliases. |
 | `jingoo` | Existing template parser/interpreter, behind one bounded strict Jinja wrapper. Audited 1.5.4. No full Liquid claim; see the template choice below. |
 | `re` | Direct import of Jingoo's existing dependency for literal replacement at the template boundary. Use `Re.str` only; no user regular expressions or regex core logic. Pinned 1.14.0. |
 | `yojson` | Existing JSON parser/encoder. Lexeme-preserving checked wrapper for exact numbers, duplicate keys, UTF-8, size/depth and standard JSON. Locked 3.0.0. |
 | `ptime` | Parsed RFC 3339/UTC values and range-checked wall projection; no ambient clock inside domain code. Locked 1.2.0. |
 | `zarith` | Exact natural token/runtime totals, preserving monoid laws beyond machine integer range. Locked 1.14; its GMP static archive must pass Linux artifact checks. Avoid saturation or hand-written big integers. |
-| `digestif` | SHA-256 workspace suffix/ownership digest, not Stdlib MD5. Candidate 1.3.1; already required by the selected certificate/TLS stack. |
+| `digestif` | SHA-256 workspace suffix/ownership digest, not Stdlib MD5. Slice 2 pins 1.3.1; eqaf 0.10 is its transitive equality helper. The selected certificate/TLS stack also requires it. |
 | `uucp` | Unicode lowercase/property tables for states/labels. Locked 17.0.0; already required by Jingoo. Normalization cases are tested. |
 | `cohttp-eio`, `uri` | One existing HTTP client/server stack for Linear and the operator listener. Uri 4.4.0 is needed now to validate HTTPS endpoints; cohttp-eio 6.3.0 remains planned. No hand-written HTTP or GraphQL framework. |
 | `angstrom` | Direct use of Uri's existing parser dependency for full-input URI/IPv6 parsing. A small raw-syntax guard rejects the malformed input that Uri canonicalizes. Locked 0.16.1; no HTTP implementation. |
@@ -394,3 +402,42 @@ URLs are excluded from the portable lock; setup and CI pin checked-in sources be
 locked installation. No global opam switch is modified. The Elixir PR-description
 validator accepts the review bot's complete badge region; all other HTML comments
 and incomplete/repeated markers remain invalid.
+
+## Slice 2 native choices
+
+- Public Host exports the policy Workspace manager, never raw lease/removal
+  authority. This makes joining one's own admitted process scope unexpressible.
+- One private lifetime gate owns workspace loans and pending process operations.
+  Held admits; Closing revokes/cancels/joins; Released admits nothing. Captured
+  primary outcomes stay outside Eio's exception aggregation. Release-hook traces
+  may be empty under pinned Eio 1.6; primary traces retain their original frames.
+- Store receives one mandatory private close-path capability. Its law requires
+  revocation and every loan join before return or exception. This isolates removal
+  policy from authority discharge and permits exact-source faults without private
+  Eio APIs or a public test hook. The public host always supplies native Path.close.
+- Native process reads use 4,096-byte chunks. Cleanup grants TERM 1,000 ms, then
+  KILL; independent stream draining is bounded to 100 ms. Kernel reaping has no
+  finite POSIX bound. All timings use the injected monotonic clock.
+- Directory deletion takes batches of at most 128 entries and depth at most 128.
+  Reject other-device directories before traversal. Protected parents and a
+  cooperating host govern final name-based unlink/rmdir; neither inode checks nor
+  device equality exclude same-user rename races or same-device bind mounts.
+- Fresh directory authority is distinct from reused authority. Publication rollback
+  can delete only the exact fresh unowned directory. A mkdir/open failure before
+  acquiring identity preserves the entry and gives recovery instructions.
+- Native tests are executables run by a 90 s watchdog, rather than Dune test
+  aliases that could block before the watchdog. Every exit path retains the
+  unreaped leader through final owned-group KILL, then reaps once. A tiny exec
+  wrapper forks a live sentinel that ignores INT/TERM until that KILL. This
+  preserves Darwin group signal permission even after the test leader exits;
+  no ambiguous EPERM normalization or process-table parser is needed. The wrapper
+  preserves the target PID and normal subprocess signal defaults. Tests must
+  leave the sentinel, group and credentials intact; separate groups/sessions
+  and an unhandleable watchdog SIGKILL require host supervision. Controls run
+  normally and with Python optimization enabled. Manifests hash the wrapper,
+  sources and executed binaries; this is context, not build attestation.
+- PR #2's Devin analysis fails with an explicit diff-size-limit message after
+  regeneration. The full vendored import exceeds its supported input. Record
+  that analysis as unavailable, retain independent native reviews and require
+  the owned CI gates before merging. Do not falsify the status or change review,
+  monitoring or branch-protection settings to manufacture a pass.

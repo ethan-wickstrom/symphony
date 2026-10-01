@@ -7,11 +7,28 @@
   workflow_parser_test
   template_test
   domain_test
-  registry_test)
+  clock_model
+  clock_test
+  registry_test
+  workspace_key_model
+  workspace_key_test
+  workspace_reference_model
+  workspace_reference_test
+  workspace_owner_model
+  workspace_owner_test
+  workspace_policy_model
+  workspace_policy_test
+  workspace_driver_test
+  workspace_hooks_test)
  (libraries
   symphony_workflow
   symphony_io
+  symphony_workspace
   alcotest
   qcheck-core
   qcheck-core.runner
-  eio_main))
+  eio.mock
+  mtime
+  ptime
+  zarith
+  eio_posix))

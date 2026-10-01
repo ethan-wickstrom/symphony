@@ -10,43 +10,66 @@ type error =
   | Hook_timeout of Diagnostic.t
 
 module type PURE = sig
-  module Issue : Issue.S
   module Path : Workspace_path.S
   type reference
   val reference : settings:Workspace_settings.t -> env:Environment.child ->
-    scope:Tracker_scope.t -> identifier:Issue_identifier.t -> (reference, error) result
+    scope:Tracker_scope.t -> issue_id:Issue_id.t -> identifier:Issue_identifier.t ->
+    (reference, error) result
   (** Freeze root, hooks, environment and ownership. Physical safety is acquired later. *)
 
   val identifier : reference -> Issue_identifier.t
+  val issue_id : reference -> Issue_id.t
   val scope : reference -> Tracker_scope.t
   val environment : reference -> Environment.child
+  val key : reference -> Workspace_key.t
+  val settings : reference -> Workspace_settings.t
+  (** Read the frozen inputs; drivers never reread current configuration.
+      key(reference s e scope issue_id identifier) agrees with
+      Workspace_key.of_identifier identifier. *)
   type cleanup = { request_id : Request_id.t; workspace : reference }
 end
 
 module type DRIVER = sig
-  module Contract : PURE with type Issue.t = Issue.t
+  module Contract : PURE
   type t
   type lease
-  val with_lease : t -> Contract.reference -> (lease -> ('a, error) result) ->
+  type origin = Created | Reused
+  val with_lease : t -> Contract.reference -> (origin -> lease -> 'a) ->
     ('a, error) result
-  (** Caller scope owns the bracket. Serialize under the ownership lock; atomically
+  (** Acquire/create exactly once. Only Created permits after_create or preparation
+      rollback. The callback may return its own result type; the driver does not
+      change that result or swallow cancellation/defects. *)
+  val with_existing : t -> Contract.reference -> (lease option -> 'a) ->
+    ('a, error) result
+  (** Lookup under the same ownership lock; absence is None and never creates a
+      directory. In a stable filesystem, repeated absent lookup leaves it unchanged.
+      Caller scope owns both brackets. Serialize under the ownership lock; atomically
       acquire the directory without following a symlink. Metadata binds original
-      identifier/scope. Lock, mkdir, metadata and open are not one OS transaction.
+      identifier/scope/opaque issue ID. Lock, mkdir, metadata and open are not one OS transaction.
       Release on normal, error and cancellation paths. Released handles reject use:
       OCaml cannot prevent a callback from retaining a non-linear value. *)
 
-  val path : lease -> Contract.Path.t
+  val path : lease -> (Contract.Path.t, error) result
+  (** A released or displaced lease is an expected error, never a hidden exception.
+      Every later effect revalidates the returned non-linear capability. *)
   val hook : t -> lease -> Workspace_settings.hook -> (unit, error) result
   (** Trusted bash -lc script; bounded output/time; reference's immutable environment. *)
 
-  val remove : t -> Contract.cleanup -> (unit, error) result
-  (** Absent directory succeeds. Verify ownership/containment before removal.
-      Successful repetition is idempotent. Failed IO need not be idempotent. *)
+  val remove : t -> lease -> (unit, error) result
+  (** Delete only through the lease that ran before_remove; do not unlock/reacquire.
+      Revalidate identity/containment. Successful removal makes subsequent existing
+      lookup absent. Stale leases fail without touching a replacement directory.
+      The lock file survives removal, preventing lock-inode ABA. *)
+
+  val cleanup_scope : t -> (unit -> 'a) -> 'a
+  (** Fresh hook scope shields outer cancellation; actual POSIX reap has no bound. *)
+  val report : t -> error -> unit
+  (** Observe ignored cleanup errors without changing the primary result. *)
 
 end
 
 module type S = sig
-  module Contract : PURE with type Issue.t = Issue.t
+  module Contract : PURE
   type t
   val with_workspace : t -> Contract.reference ->
     (Contract.Path.t -> ('a, error) result) -> ('a, error) result
@@ -55,6 +78,11 @@ module type S = sig
       propagates after cleanup. No launcher may use an escaped/released Path.t. *)
 
   val cleanup : t -> Contract.cleanup -> (unit, error) result
+  (** Non-creating lookup, before_remove and deletion share one lease. After a
+      successful removal without recreation, another cleanup returns success and
+      preserves the filesystem projection, not the hook/log trace. Failed removal
+      has no idempotence guarantee. A delayed stale command must
+      also be fenced by the owner before any effect, not merely at its reply. *)
 end
 
 module Make (Driver : DRIVER) :

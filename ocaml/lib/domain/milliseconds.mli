@@ -6,6 +6,11 @@ val parse : string -> (t, string) result
 (** [parse (decimal x) = Ok x]; rejects negative values and overflow. *)
 
 val decimal : t -> string
+
+val nanoseconds : t -> Count.t
+(** Exact unit conversion: [nanoseconds ms = ms * 1_000_000]. Preserves zero and
+    representable sums; its unbounded result never overflows. *)
+
 val zero : t
 val compare : t -> t -> int
 

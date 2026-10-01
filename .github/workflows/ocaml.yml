@@ -30,9 +30,17 @@ jobs:
         run: |
           opam pin add yaml.3.2.0 ../vendor/yaml --no-action --yes
           opam pin add crowbar.0.2.2 ../vendor/crowbar --no-action --yes
+          opam pin add eio.1.6 ../vendor/eio --no-action --yes
+          opam pin add eio_posix.1.6 ../vendor/eio --no-action --yes
           opam install . --deps-only --locked --with-test --with-dev-setup --yes
       - run: opam exec -- dune build @all @fmt
       - run: opam exec -- dune runtest
+      - name: Native workspace ownership and live hooks
+        run: |
+          python3 test/native_check_test.py
+          PYTHONOPTIMIZE=1 python3 test/native_check_test.py
+          python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --out "$RUNNER_TEMP/symphony-workspace"
+          PYTHONOPTIMIZE=1 python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --out "$RUNNER_TEMP/symphony-workspace-optimized"
       - run: opam exec -- dune exec tools/check_source.exe -- .
       - run: opam exec -- dune exec tools/check_source.exe -- --self-test
       - run: |
@@ -44,3 +52,22 @@ jobs:
       - run: python3 test/verification_check.py .
       - name: Seeded parser campaign
         run: opam exec -- dune exec fuzz/boundaries.exe -- --repeat 10000 --seed 20260930
+      - name: Native process custody
+        run: |
+          python3 ../vendor/eio/symphony_tests/run.py --switch "$GITHUB_WORKSPACE" --campaigns 1 --out "$RUNNER_TEMP/symphony-custody"
+          python3 ../vendor/eio/symphony_tests/thread_failure.py --switch "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/symphony-admission"
+          PYTHONOPTIMIZE=1 python3 ../vendor/eio/symphony_tests/thread_failure.py --switch "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/symphony-admission-optimized"
+      - name: Retain native evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: custody-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/symphony-custody/*.log
+            ${{ runner.temp }}/symphony-custody/*.json
+            ${{ runner.temp }}/symphony-admission/*.log
+            ${{ runner.temp }}/symphony-admission-optimized/*.log
+            ${{ runner.temp }}/symphony-workspace/*.log
+            ${{ runner.temp }}/symphony-workspace/*.json
+            ${{ runner.temp }}/symphony-workspace-optimized/*.log
+            ${{ runner.temp }}/symphony-workspace-optimized/*.json
