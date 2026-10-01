@@ -43,14 +43,15 @@ against an independent model, replayable simulation, parser fuzzing and measured
 ## Current focus
 
 Branch `ethan/ocaml-workspaces`; open PR #2 is attached (currently not a draft). Main remains `f56a66c`.
-Published pre-integration head was `f07175c`; current local commits include
+Published delivery head is `b30263e`; commits include
 `77073ae` (cleanup ownership), `daf839c` (clock/hook policy), `a6d7118` (native
-ownership) and `48770fb` (inspection CLI). Publication and final hosted evidence
-are next. No user decision or approval is pending.
+ownership) and `48770fb` (inspection CLI). All owned workflows pass on the delivery
+head; a fresh Copilot review is pending. No user decision or approval is pending.
 
 Independent review is complete for native Directory/Path/Gate/Store/Process/Host.
-Remaining work: publish the reviewed delivery, verify both hosts and retained
-artifacts, then merge slice 2. Do not begin the tracker adapter before that.
+Remaining work: publish hosted evidence, finish current-code review, then merge
+slice 2. Do not begin the tracker adapter before that. Devin analysis is unavailable
+because the diff exceeds its size limit; regeneration confirmed that cause.
 
 ## Current local evidence
 
@@ -62,16 +63,20 @@ artifacts, then merge slice 2. Do not begin the tracker adapter before that.
 - Protocol snapshot/digests pass normally and optimized; 16 corrupted controls reject.
 - Crowbar seed `20260930`: 15 groups × 10,000 = 150,000 invocations pass.
   This is a random/curated campaign, not an instrumented AFL coverage result.
-- Focused native gates: Directory17, Store11, Process8, lifetime7, IO classifier4,
-  public Host7. Lifetime checks 1,000 Eio mock seeds and explicit seed619 replay.
+- Focused native gates: Directory 17, Store 11, Process 8, lifetime 7, IO classifier 4,
+  public Host 7. Lifetime checks 1,000 Eio mock seeds and explicit seed619 replay.
   Complete watchdog runs pass normally and optimized (47 kernel + seven Host).
-  Eight timeout/INT/TERM/admission/normal-exit/signal controls pass; hosted gates remain pending.
+  Eight timeout/INT/TERM/admission/normal-exit/signal controls pass on both hosts.
 - Full `just check` passes; final isolated-bootstrap changes passed both native
   runners and complete watchdog controls again in both optimization modes.
 - Pinned Elixir 1.19.5/OTP28 gate: 302 tests, six skipped, measured100% coverage,
   formatting, lint and Dialyzer pass. No unrelated compiler/library upgrade.
 - mtime/cstruct are direct imports already present through Eio. Lock regenerated;
   no global opam switch changed and no machine-specific URLs entered the lock.
+- PR run 36840015440 and push run 36840011609 passed at `b30263e` on Linux/glibc
+  and macOS. Downloaded artifacts match 56 selected native sources, watchdog/helper
+  and all nine frozen Eio hashes. Modes 0/1 each pass 47+7 native cases. Each custody
+  run passed 5,000 scenarios and 2,000 normal closures with zero cleanup EPERM.
 
 ## Retained evidence
 
@@ -85,6 +90,8 @@ artifacts, then merge slice 2. Do not begin the tracker adapter before that.
 - `/private/tmp/symphony-native-delivery-optimized-js58hbqy/manifest.json`
 - `/private/tmp/symphony-workspace-check-final.log`
 - `/private/tmp/symphony-watchdog-controls-delivery-{normal,optimized}.log`
+- `/private/tmp/symphony-hosted-b30263e/verification.json`
+- `/private/tmp/symphony-pr2-review-size-limit.jpg`
 - Frozen process evidence/provenance: `vendor/eio/PATCHES.md`.
 
 ## Boundaries

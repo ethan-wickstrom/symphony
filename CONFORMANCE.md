@@ -1,8 +1,9 @@
 # OCaml conformance
 
 Status: slice 1 is merged. Slice 2 implements native owned workspaces, four hooks,
-scoped process custody and non-creating inspection. Complete macOS native gates
-pass normally and optimized; current-head hosted Linux/macOS gates are pending. The full service
+scoped process custody and non-creating inspection. Native gates pass normally
+and optimized on macOS and Linux/glibc at `b30263e`; hosted artifacts match the
+committed source hashes. The full service
 remains pending.
 The upstream Elixir implementation is reference material, not evidence for this port.
 Requirements refer to SPEC.md at `be10a1b79df723d6d7612b5651c8522704dafb2e`.
@@ -20,9 +21,9 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | Dynamic workflow reload/re-apply | 1, 4 | `Config_layer.Make.apply`; `config_model.ml`, `config_test.ml` reload histories | Pure laws passed; watch/owner application pending |
 | Single-authority polling orchestrator | 4 | — | Pending |
 | State-list and ID-refresh tracker reads | 3 | — | Pending |
-| Sanitized collision-resistant workspaces | 2 | `workspace_key.ml`, `workspace_reference.ml`, `workspace_owner.ml`, `native/workspace_directory.ml`, `workspace_store_posix.ml`; key/owner models, hash vectors, parser fuzzing, `native_directory_test.ml`, `native_store_test.ml` | Local descriptor/lock/identity/replacement/rollback cases passed; hosted gate pending |
-| Four workspace lifecycle hooks | 2 | `workspace_manager.ml`, `workspace_hooks.ml`; policy models, fake-port hook tests and `native_host_test.ml` frozen lifecycle/cancellation/rollback cases | Local fake and live cases passed; hosted gate pending |
-| Configurable hook timeouts | 1, 2 | `workspace_settings.ml`, `workspace_hooks.ml`, `clock_posix.ml`; config and monotonic-clock models, independent stream faults, noisy output, native hook timeout | Local config/interpreter/subprocess cases passed; hosted gate pending |
+| Sanitized collision-resistant workspaces | 2 | `workspace_key.ml`, `workspace_reference.ml`, `workspace_owner.ml`, `native/workspace_directory.ml`, `workspace_store_posix.ml`; key/owner models, hash vectors, parser fuzzing, `native_directory_test.ml`, `native_store_test.ml` | Descriptor/lock/identity/replacement/rollback cases passed locally and on both CI hosts |
+| Four workspace lifecycle hooks | 2 | `workspace_manager.ml`, `workspace_hooks.ml`; policy models, fake-port hook tests and `native_host_test.ml` frozen lifecycle/cancellation/rollback cases | Fake and live cases passed locally and on both CI hosts |
+| Configurable hook timeouts | 1, 2 | `workspace_settings.ml`, `workspace_hooks.ml`, `clock_posix.ml`; config and monotonic-clock models, independent stream faults, noisy output, native hook timeout | Config/interpreter/subprocess cases passed locally and on both CI hosts |
 | App-server subprocess transport/framing | 5 | — | Pending |
 | Configurable Codex launch command | 1, 5 | `agent_settings.ml`; `config_test.ml` verbatim/empty/NUL validation | Config passed; launch pending |
 | Strict issue/attempt prompt rendering | 1 | `template.ml`; `template_test.ml` strictness/scope/limits, independent AST and rational models; CLI fixture rendering | Passed locally for documented strict Jinja profile |
@@ -66,3 +67,11 @@ defects; this is not yet the whole-service simulator. Retained frozen process
 custody passes on Linux/glibc and macOS. Musl/static linkage remains unverified.
 
 Real integration results will be reported independently as passed, failed, or skipped.
+
+Hosted slice-two evidence: [PR run 36840015440](https://github.com/ethan-wickstrom/symphony/actions/runs/36840015440)
+and [push run 36840011609](https://github.com/ethan-wickstrom/symphony/actions/runs/36840011609)
+passed at `b30263e00705d06a1118229d4aaf99c68ce6adab`. Four normal/optimized native
+manifests match 56 selected source hashes plus the watchdog/sentinel; both custody
+manifests match all nine frozen Eio hashes. Binary hashes identify executed artifacts
+without asserting build attestation. Devin analysis is unavailable because its
+diff-size limit excludes this import; independent native reviews completed.

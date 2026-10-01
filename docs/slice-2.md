@@ -1,8 +1,8 @@
 # Slice 2: owned workspaces and hooks
 
 Status: native owned workspaces, hooks, process custody and non-creating
-inspection are implemented. Independent models and complete macOS native gates
-pass normally and optimized. Current-head hosted workspace gates are pending; the complete service
+inspection are implemented. Independent models and complete native gates
+pass normally and optimized on macOS and Linux/glibc at `b30263e`; the complete service
 and Linux musl/static release remain later slices.
 Slice 1 is merged at
 `f56a66c`.
@@ -208,3 +208,11 @@ descendants, an empty exiting group and native signal dispositions. The latter
 failed before resetting Python's ignored pipe/file-size signals before exec.
 Bootstrap isolation ignores Python environment/site customization. Exec retains
 the target PID; no wait-status protocol or build attestation is introduced.
+
+Hosted [PR run 36840015440](https://github.com/ethan-wickstrom/symphony/actions/runs/36840015440)
+and [push run 36840011609](https://github.com/ethan-wickstrom/symphony/actions/runs/36840011609)
+passed at `b30263e00705d06a1118229d4aaf99c68ce6adab`. All four native manifests
+match 56 selected committed sources and both runner/helper hashes, with optimization
+levels 0/1. The two custody manifests match all nine frozen Eio source hashes;
+each passed 5,000 scenarios and 2,000 normal closures. Repeated-signal permission
+errors remain visible (Linux 0, macOS 8); cleanup permission errors were zero.

@@ -436,3 +436,8 @@ and incomplete/repeated markers remain invalid.
   and an unhandleable watchdog SIGKILL require host supervision. Controls run
   normally and with Python optimization enabled. Manifests hash the wrapper,
   sources and executed binaries; this is context, not build attestation.
+- PR #2's Devin analysis fails with an explicit diff-size-limit message after
+  regeneration. The full vendored import exceeds its supported input. Record
+  that analysis as unavailable, retain independent native reviews and require
+  the owned CI gates before merging. Do not falsify the status or change review,
+  monitoring or branch-protection settings to manufacture a pass.
