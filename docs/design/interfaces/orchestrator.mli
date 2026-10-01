@@ -86,7 +86,7 @@ end
 module Make
     (Tracker : Tracker.PURE with type Issue.t = Issue.t)
     (Clock : Clock.PURE)
-    (Workspace : Workspace_manager.PURE with module Issue = Tracker.Issue)
+    (Workspace : Workspace_manager.PURE)
     (Agent : Agent_runner.PURE
        with module Issue = Tracker.Issue
         and module Path = Workspace.Path

@@ -226,10 +226,10 @@ at `/private/tmp/symphony-protocol-audit/{stable,experimental}` for comparison.
 
 The OCaml 5.5 [module/manual chapter](https://ocaml.org/manual/5.5/moduleexamples.html)
 was read, including functors and sharing constraints. The original unversioned URLs
-were unavailable. For Algebra-Driven Design, the publisher's
-[official free sample](https://leanpub.com/algebra-driven-design) was available and
-read (preface, overview, Tiles); the full book was not read. The requested site was
-unavailable. The interfaces use the user's explicit algebra rules as requirements.
+were unavailable. The user supplied the [full Algebra-Driven Design manuscript](https://github.com/isovector/algebra-driven-design/tree/118aa81a48fb46255dfe4503cbcdee6d893098c9/prose),
+replacing the initial sample-only reference. The main prose chapters have been read;
+[coverage and concrete corrections](design/book-review.md) distinguish that review
+from building the book or companion code. The user's algebra rules remain requirements.
 
 ## Toolchain and dependencies
 

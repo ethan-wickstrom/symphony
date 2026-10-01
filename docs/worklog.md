@@ -47,6 +47,7 @@ Codex review found no major issues. Slice 2 starts on `ethan/ocaml-workspaces`.
 Checked keys are implemented and independently reviewed. Live directory ownership,
 hooks and workspace inspection remain pending. The Eio group-custody source patch
 is under host testing and is not yet installed into the application switch.
+Frozen references and pure hook policy now pass their independent model/fake suite.
 
 ## Verified locally
 
@@ -88,15 +89,27 @@ opam build sandbox after bwrap failed, so this is no build-isolation claim.
 
 ## Next action
 
-Refine slice 2 signatures before implementation: created/reused acquisition,
-non-creating cleanup lookup, deletion under the acquired lease, and observed
-process exit. Preserve Workspace/Agent/Transport path and reference equalities.
-Keys, ownership and hooks use independent filesystem/process models.
+Finish the Eio group custody gate before live directory/hook implementation.
+Quiet stress found both a SIGCHLD waiter hang and Darwin transitional EPERM.
+Refine custody to Held/Reaping/Reaped: only one finalizer may reap, outside the
+short mutex in an Eio system thread. Preserve uncertain permission errors as
+explicit cleanup results; retain the final group KILL sweep. No user decision is
+pending. Frozen references and pure hook policy have passed independently; live
+directory/hook work still waits on this gate.
 
-Installed Eio immediately reaps process leaders. A raw group signal after an
-exit-status check races with identifier reuse; it cannot implement the promised
-safe group lifetime. Evaluate a minimal scoped Eio group capability that observes
-exit without reaping until group cleanup. No user decision is pending.
+The result-valued prototype passed its first 5,000-scenario campaign and separate
+public-close cancellation/concurrent-close controls. Its second campaign hung in
+exit observation with a retained zombie, before close. Replace that remaining
+SIGCHLD dependency with a custody-owned blocking WNOWAIT producer; cancellation
+may send only short owned KILL requests, then cleanup joins a started producer and
+reaps once. This refinement is under host stress, not installed or approved as green.
+
+Review the full Algebra-Driven Design manuscript at source commit
+`118aa81a48fb46255dfe4503cbcdee6d893098c9`. The main prose manuscript has been read:
+introduction, both design/implementation examples, good-algebras, QuickCheck,
+QuickSpec, common-algebras and glossary. The review corrected observation/carrier
+overclaims and unused Issue sharing; coverage is in docs/design/book-review.md.
+Do not equate a delivered termination request with a closed OS process group.
 
 ## Slice 2 evidence
 
@@ -122,3 +135,15 @@ new protocol audit; 0.159.2 supersedes 0.153.4 evidence. Acceptance selected all
 recommendations, Linear and the macOS/Linux targets. "Proceed. I accept all
 recommendations" approved the complete signature/design package and authorized
 implementation. No slice 1 approval gate remains.
+
+The user supplied the full Algebra-Driven Design GitHub manuscript. It replaces
+the sample-only source and its unavailable-site note, without changing the active
+workspace slice or the approved build order.
+
+The manuscript audit refined the workspace contract before live instantiation:
+remove unused Issue sharing, equate the required Path.t brand, and return a checked
+path result. A 57-interface assembly witness passes on OCaml 5.5 after temporary
+blueprint doc normalization. Reference/policy tests are integrated: the complete
+local check passes 89 tests, 27,500 sampled cases, 114 paired source files, 19 CLI
+scenarios normally/optimized, 34 source and 16 corruption controls. The new fake
+tests establish policy traces and value freezing, not real filesystem/process safety.

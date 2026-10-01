@@ -1,7 +1,7 @@
 # OCaml conformance
 
-Status: slice 1 is merged. Slice 2 keys are tested; live workspaces/hooks and the
-full service are pending.
+Status: slice 1 is merged. Slice 2 keys, frozen references and hook policy are
+tested; live workspaces/hooks and the full service are pending.
 The upstream Elixir implementation is reference material, not evidence for this port.
 Requirements refer to SPEC.md at `be10a1b79df723d6d7612b5651c8522704dafb2e`.
 Current protocol fixture: Codex 0.159.2. Stable core and experimental tool
@@ -19,7 +19,7 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | Single-authority polling orchestrator | 4 | — | Pending |
 | State-list and ID-refresh tracker reads | 3 | — | Pending |
 | Sanitized collision-resistant workspaces | 2 | `workspace_key.ml`; `workspace_key_model.ml`, `workspace_key_test.ml` policy model/hash vectors/laws; Crowbar key image/bounds | Key boundary passed; ownership/containment pending |
-| Four workspace lifecycle hooks | 2 | — | Pending |
+| Four workspace lifecycle hooks | 2 | `workspace_manager.ml`; `workspace_policy_model.ml`, `workspace_policy_test.ml` ordered traces, rollback, cancellation, primary-result preservation | Fake-driver policy passed; live execution pending |
 | Configurable hook timeouts | 1, 2 | `workspace_settings.ml`; `config_test.ml` default/invalid/explicit timeout cases | Config passed; subprocess behavior pending |
 | App-server subprocess transport/framing | 5 | — | Pending |
 | Configurable Codex launch command | 1, 5 | `agent_settings.ml`; `config_test.ml` verbatim/empty/NUL validation | Config passed; launch pending |
@@ -55,5 +55,11 @@ and optimized, with 16 corrupted-fixture controls.
 
 With slice 2 keys: 77 tests, 21,500 model cases, 102 paired source files and 140,000
 Crowbar invocations pass. These add no live workspace-safety evidence yet.
+
+With frozen references and hook policy: 89 tests, 27,500 sampled model/law cases,
+114 paired source files, all CLI/source/format/protocol/corruption gates pass locally.
+The policy also checks 100 explicit fault/cancellation scenarios, a full rollback
+trace and persistent-driver operation sequences. These are fake-driver effects,
+not physical locks, filesystem identity, hook subprocesses or cancellation shielding.
 
 Real integration results will be reported independently as passed, failed, or skipped.

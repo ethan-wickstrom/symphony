@@ -10,7 +10,6 @@ type error =
   | Hook_timeout of Diagnostic.t
 
 module type PURE = sig
-  module Issue : Issue.S
   module Path : Workspace_path.S
   type reference
   val reference : settings:Workspace_settings.t -> env:Environment.child ->
@@ -28,7 +27,7 @@ module type PURE = sig
 end
 
 module type DRIVER = sig
-  module Contract : PURE with type Issue.t = Issue.t
+  module Contract : PURE
   type t
   type lease
   type origin = Created | Reused
@@ -47,7 +46,9 @@ module type DRIVER = sig
       Release on normal, error and cancellation paths. Released handles reject use:
       OCaml cannot prevent a callback from retaining a non-linear value. *)
 
-  val path : lease -> Contract.Path.t
+  val path : lease -> (Contract.Path.t, error) result
+  (** A released or displaced lease is an expected error, never a hidden exception.
+      Every later effect revalidates the returned non-linear capability. *)
   val hook : t -> lease -> Workspace_settings.hook -> (unit, error) result
   (** Trusted bash -lc script; bounded output/time; reference's immutable environment. *)
 
@@ -57,10 +58,15 @@ module type DRIVER = sig
       lookup absent. Stale leases fail without touching a replacement directory.
       The lock file survives removal, preventing lock-inode ABA. *)
 
+  val cleanup_scope : t -> (unit -> 'a) -> 'a
+  (** Fresh hook scope shields outer cancellation; actual POSIX reap has no bound. *)
+  val report : t -> error -> unit
+  (** Observe ignored cleanup errors without changing the primary result. *)
+
 end
 
 module type S = sig
-  module Contract : PURE with type Issue.t = Issue.t
+  module Contract : PURE
   type t
   val with_workspace : t -> Contract.reference ->
     (Contract.Path.t -> ('a, error) result) -> ('a, error) result
@@ -69,8 +75,10 @@ module type S = sig
       propagates after cleanup. No launcher may use an escaped/released Path.t. *)
 
   val cleanup : t -> Contract.cleanup -> (unit, error) result
-  (** Non-creating lookup, before_remove and deletion share one lease. Repeated
-      cleanup is idempotent in a stable filesystem; a delayed stale command must
+  (** Non-creating lookup, before_remove and deletion share one lease. After a
+      successful removal without recreation, another cleanup returns success and
+      preserves the filesystem projection, not the hook/log trace. Failed removal
+      has no idempotence guarantee. A delayed stale command must
       also be fenced by the owner before any effect, not merely at its reply. *)
 end
 

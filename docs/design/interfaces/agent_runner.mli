@@ -116,7 +116,8 @@ module type TRANSPORT = sig
   val with_session : t -> cwd:Path.t -> env:Environment.child -> settings:Agent_settings.t ->
     (session -> ('a, transport_error) result) -> ('a, transport_error) result
   (** Launch from the live directory capability, handshake, scoped child/group,
-      bounded TERM/KILL/reap/stream drain on every exit. Preserve cancellation. *)
+      bounded TERM/KILL grace/stream drain and direct-child reap on every exit.
+      POSIX has no finite actual reap bound. Preserve cancellation. *)
 
   val turn : session -> prompt:string -> emit:(event -> unit) ->
     (turn_outcome, transport_error) result
@@ -140,10 +141,11 @@ module type S = sig
 end
 
 module Make
+    (Issue : Issue.S with type t = Issue.t)
     (Workspace : Workspace_manager.S)
     (Transport : TRANSPORT with module Path = Workspace.Contract.Path) : sig
   include S with module Contract.Path = Workspace.Contract.Path
-             and module Contract.Issue = Workspace.Contract.Issue
+             and module Contract.Issue = Issue
              and type Contract.workspace = Workspace.Contract.reference
   val create : workspace:Workspace.t -> transport:Transport.t -> t
 end

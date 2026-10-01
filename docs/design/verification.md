@@ -191,10 +191,12 @@ shell. Codex's selected sandbox needs separate real-host validation. Trusted log
 initialization must not restore excluded environment secrets.
 
 Eio ties a child to a switch and signals that child on release. Explicit process
-groups, bounded TERM/KILL/reap/stream draining, and cancellation tests are needed
-for descendants. A descendant that leaves its group is outside that guarantee.
+groups, bounded TERM/KILL grace periods and stream draining, direct-child reap,
+and cancellation tests are needed. POSIX gives no finite actual reap duration.
+A descendant that leaves its group is outside that guarantee.
 Reliable hostile process-tree containment belongs to later platform isolation.
-Cleanup runs in its own bounded scope; release handlers cannot attach new resources
+Cleanup hooks and drains run in a fresh scope with named time bounds; release handlers
+cannot attach new resources
 to the released switch. Cancellation must survive cleanup rather than become a
 retry failure. [Process](https://ocaml-multicore.github.io/eio/eio/Eio/Process/index.html),
 [Unix process control](https://ocaml-multicore.github.io/eio/eio/Eio_unix/Process/index.html),
@@ -221,7 +223,8 @@ Wall-time projection is display-only and returns absence outside its supported r
 
 Byte streams need bounded read-to-chunk-or-EOF, ordered write-all, and idempotent
 close, with explicit failures and caller cancellation. Child control needs stable
-awaited exit status and bounded stop/reap/drain. Expose no raw PID, descriptor,
+awaited exit status, bounded stop grace/drain, and switch-owned direct-child reap
+without a finite kernel completion guarantee. Expose no raw PID, descriptor,
 unchecked cwd constructor, raw environment, or global clock. POSIX process groups
 and backend-specific directory operations stay inside the driver. The protocol
 client composes these ports with its injected clock; simulator drivers implement

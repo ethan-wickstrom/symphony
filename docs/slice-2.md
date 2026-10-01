@@ -1,7 +1,8 @@
 # Slice 2: owned workspaces and hooks
 
-Status: key boundary implemented and tested; directory ownership/hooks remain
-pending. No workspace containment or host-safety claim yet. Slice 1 is merged at
+Status: keys, frozen references and hook policy implemented and tested against
+independent models; directory ownership/live hooks remain pending. No workspace
+containment or host-safety claim yet. Slice 1 is merged at
 `f56a66c`.
 
 ## Contracts and intentional equalities
@@ -42,8 +43,9 @@ after deletion so an old and a new lock cannot protect the same key independentl
   must publish that choice and test fixtures rather than assume identical keys."
 - Filesystem model: entry-to-directory identity map plus an ownership map. Reject
   foreign ownership, symlink/non-directory entries, case aliases and literal/hash
-  aliases before hooks. Missing cleanup is an identity operation. Repeated cleanup
-  is idempotent in a stable filesystem; delayed commands require owner fencing
+  aliases before hooks. Missing cleanup is an identity operation. After successful
+  removal without recreation, another cleanup preserves the filesystem projection
+  and returns success; hook/log traces differ. Delayed commands require owner fencing
   before effects, since a recreated directory is a new generation.
 - Lease model: acquisition adds one resource; every callback exit releases it
   exactly once. A stale handle cannot launch, hook or delete a replacement.
@@ -68,7 +70,8 @@ Eio 1.6's POSIX process implementation immediately reaps a leader. Its protected
 positive-PID signaling does not protect a later raw negative-PGID signal. Such a
 check-then-signal race can target a recycled process group. Use a small pinned
 Eio_posix Group extension: abstract handle, closed exit/signal types, exit observed
-without reaping, and switch-owned KILL-before-reap under one private mutex. Reuse
+without reaping, and switch-owned KILL-before-reap with private custody. Only the
+short authority transition holds the mutex; kernel waits run outside it. Reuse
 the library's C fork actions; never execute OCaml between fork and exec. Group.spawn
 takes descriptor cwd, stdin/stdout/stderr, executable, argv and environment;
 it constructs the fixed action sequence itself. An arbitrary action list could
@@ -116,5 +119,12 @@ ownership boundary; stronger same-user containment is a later isolation extensio
 Key gate: the full local check passes with 77 tests and 21,500 model/law cases;
 the 14-group seed `20260930` campaign passes 140,000 invocations. The key module's
 13 independent hash vectors, length/alias examples and four properties are
-included. Interface assembly type-checks separately; no live directory driver
-has passed yet.
+included. Frozen references and policy add seven examples and five properties,
+bringing the suite to 89 tests and 27,500 sampled cases. They compare complete
+fake-driver traces, primary outcomes, directory presence and release multiplicity;
+sequence properties retain one driver across operations. A same-diagnostic,
+changed-error-variant control failed before the oracle was corrected.
+The full check passes with 114 paired source files, 19 CLI scenarios normally and
+optimized, 34 source and 16 corruption controls. Revised 56 blueprints plus an
+assembly witness type-check on 5.5 after temporary doc normalization. No physical
+directory/lock/hook behavior is established by those tests.

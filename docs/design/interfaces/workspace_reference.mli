@@ -3,4 +3,4 @@
     environment. No current configuration is consulted at cleanup. *)
 
 module Make (Path : Workspace_path.S) :
-  Workspace_manager.PURE with module Issue = Issue and module Path = Path
+  Workspace_manager.PURE with type Path.t = Path.t
