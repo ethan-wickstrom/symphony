@@ -4,9 +4,9 @@ Use Eio 1.6's public filesystem and descriptor APIs. The missing kernel operatio
 is a nonblocking exclusive `flock`; directory opening, anchored traversal, exact
 identity, bounded IO and descriptor lifetime already have suitable APIs.
 
-This is a mechanism sketch for the private native modules. The public Store,
-Contract and display-only Path signatures remain unchanged. No production
-filesystem code has been added.
+This is the implemented boundary in `ocaml/lib/native`. Store supplies ownership
+policy; Directory supplies descriptor operations. Display labels grant no
+filesystem authority and need not be canonical physical paths.
 
 ## Acquiring directory authority
 
@@ -65,14 +65,14 @@ The smallest new private kernel interface is:
 
 ```ocaml
 type status = Acquired | Busy
-type error = Host of Unix.error | Worker_unavailable of string
+type error = Host of Unix.error
 
 val acquire : Eio_unix.Fd.t -> (status, error) result
 (** Acquired locks belong to this open file description until its final close.
     Repeating acquisition on that description is idempotent. Separate opens of
     the same lock file cannot both acquire it. Busy grants no authority.
-    Cancellation and defects propagate; only the scheduler's typed admission
-    failure becomes Worker_unavailable. Worker callback defects are unchanged. *)
+    Cancellation and defects propagate; scheduler admission errors remain typed
+    Eio IO failures handled at the directory boundary. *)
 ```
 
 Implement one fixed-operation stub using `<sys/file.h>`, called inside
@@ -113,7 +113,12 @@ Publish canonical owner bytes through a temporary regular file in the protected
 key directory, then atomically rename under the lock. A partial write never
 replaces the last complete record. Handle write/publication failure as a value;
 never reinterpret an unknown existing directory as a newly owned one. This
-protocol makes no untested crash-durability claim.
+protocol makes no untested crash-durability claim. Creation returns a separate
+abstract fresh-directory capability. Failed publication may discard only that
+exact unowned directory; an existing directory never receives this capability.
+If opening/statting a newly created directory fails before identity is acquired,
+preserve the unidentified entry and report recovery instructions. POSIX has no
+atomic mkdir-and-open operation.
 
 The private directory mechanism needs only abstract root, key-guard and directory
 handles, identity observations, and operations for root/key brackets, existing
@@ -168,13 +173,20 @@ Keep the owner record after partial failure. Clear it only after successful
 workspace removal, under the same persistent key lock. A missing target never
 authorizes removing a replacement entry.
 
+Enumeration collects at most 128 entries with the public scoped Eio iterator,
+closes the cursor, removes that batch, then enumerates again. Recursive directory
+depth is limited to 128; exhaustion is an actionable error retaining ownership.
+Reject workspace and descendant directories on another device before traversal.
+These bounds limit memory independently of directory width. Same-device bind
+mounts require host policy; device equality alone cannot detect them.
+
 POSIX has no inode-conditional `unlinkat`/`rmdir`. The final name operation still
 depends on the protected parent and cooperating host after revalidation. Directory
 FDs prevent symlink traversal and descriptor reuse; they cannot make an external
 rename race unrepresentable. Stronger same-user isolation remains a separate host
 extension.
 
-## Behavioral gates before implementation acceptance
+## Behavioral gates
 
 - Separate opens in one process and a second process contend for the same lock;
   cancellation releases it after all child loans close.

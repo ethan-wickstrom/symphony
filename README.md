@@ -1,47 +1,38 @@
 # Symphony
 
-Symphony turns project work into isolated, autonomous implementation runs, allowing teams to manage
-work instead of supervising coding agents.
+An OCaml 5/Eio implementation of Symphony: tracker issues, isolated workspaces,
+and coding agents, governed by explicit module contracts and executable models.
+Development and pull requests belong to `ethan-wickstrom/symphony`.
 
-[![Symphony demo video preview](.github/media/symphony-demo-poster.jpg)](https://player.vimeo.com/video/1186371009?h=5626e4b899)
+Workflow loading, strict templates, last-good reload, owned workspaces and hooks
+are implemented. The CLI validates workflows, renders local issue fixtures and
+inspects workspace ownership. Tracker polling and agent dispatch are next.
 
-_In this [demo video](https://player.vimeo.com/video/1186371009?h=5626e4b899), Symphony monitors a Linear board for work and spawns agents to handle the tasks. The agents complete the tasks and provide proof of work: CI status, PR review feedback, complexity analysis, and walkthrough videos. When accepted, the agents land the PR safely. Engineers do not need to supervise Codex; they can manage the work at a higher level._
+```sh
+git clone https://github.com/ethan-wickstrom/symphony.git
+cd symphony/ocaml
+```
 
-> [!WARNING]
-> Symphony is a low-key engineering preview for testing in trusted environments.
+Follow the [locked build instructions](ocaml/README.md#build), then:
 
-## Running Symphony
+```sh
+LINEAR_API_KEY=fixture _build/default/bin/main.exe doctor examples/WORKFLOW.md
+LINEAR_API_KEY=fixture _build/default/bin/main.exe dry-run examples/WORKFLOW.md --issue examples/issue.json
+LINEAR_API_KEY=fixture _build/default/bin/main.exe workspace examples/WORKFLOW.md --issue examples/issue.json
+just check
+just fuzz
+```
 
-### Requirements
+Workspace inspection creates nothing and runs no hooks. Native ownership tests
+exercise filesystem identities, permanent locks, process closure and cancellation;
+seeded models and fuzz campaigns complement those tests.
 
-Symphony works best in codebases that have adopted
-[harness engineering](https://openai.com/index/harness-engineering/). Symphony is the next step --
-moving from managing coding agents to managing work that needs to get done.
+[Conformance](CONFORMANCE.md) records working behavior and remaining requirements.
+[Design](docs/design/README.md), [decisions](docs/decisions.md) and
+[slice evidence](docs/slice-2.md) explain the contracts, laws and validation.
+Linux musl/static releases and the complete service remain delivery targets.
 
-### Option 1. Make your own
+The [specification](SPEC.md) and [Elixir reference](elixir/README.md) retain source
+provenance; they are not evidence that this OCaml port conforms.
 
-Tell your favorite coding agent to build Symphony in a programming language of your choice:
-
-> Implement Symphony according to the following spec:
-> https://github.com/openai/symphony/blob/main/SPEC.md
-
-### Option 2. Use our experimental reference implementation
-
-Check out [elixir/README.md](elixir/README.md) for instructions on how to set up your environment
-and run the Elixir-based Symphony implementation. You can also ask your favorite coding agent to
-help with the setup:
-
-> Set up Symphony for my repository based on
-> https://github.com/openai/symphony/blob/main/elixir/README.md
-
-### OCaml implementation
-
-[ocaml/README.md](ocaml/README.md) covers the OCaml 5 build and offline
-`doctor`/`dry-run` commands. Workflow loading, configuration and strict templates
-are implemented; issue dispatch and agent execution are planned in later slices.
-
----
-
-## License
-
-This project is licensed under the [Apache License 2.0](LICENSE).
+[Apache License 2.0](LICENSE).

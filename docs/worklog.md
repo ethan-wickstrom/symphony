@@ -1,182 +1,108 @@
 # OCaml implementation worklog
 
-## Goal and success criteria
+## Goal
 
-Readable OCaml 5 Symphony: one static Linux release binary, Section 17 core
-conformance, a portable black-box conformance package, and a pure orchestrator
-checked against an executable model, seeded Eio simulation and parser fuzzers.
-Deliver the operator API, doctor/dry-run, module laws and a 1,000-session benchmark.
+Readable OCaml 5/Eio Symphony: a static Linux musl release, macOS deployment,
+Section 17 conformance, portable black-box harness, immutable orchestrator checked
+against an independent model, replayable simulation, parser fuzzing and measured
+1,000-session capacity. Operator API, doctor/dry-run and module laws are deliverables.
 
-## Active constraints
+## Constraints
 
-- Spec RFC 2119 requirements; generated Codex schema wins wire details.
-- Approved P01–P08/D01–D13, component contracts, laws, dependency choices and build order.
-- Linear first; macOS development/deployment and Linux musl static release.
-- Immutable pure core, one state owner, Eio capabilities/structured concurrency at edges.
-- Every application `.ml` has an `.mli`; fatal enabled warnings, no objects/Lwt/Async/casts.
-- Untrusted tracker/repository data; trusted verbatim hook/agent command configuration.
-- Small green slices, independent models, matching Section 17 examples and conformance map.
-- Development targets only `ethan-wickstrom/symphony`; specification links are provenance.
+- Approved P01–P08/D01–D13, signatures, policies and vertical-slice build order.
+- Linear first; spec RFC 2119 requirements; generated Codex schema wins wire details.
+- One scheduling owner; explicit Eio capabilities; checked identifiers and shared Path brand.
+- Every `.ml` has an `.mli`; fatal enabled warnings; no objects/Lwt/Async/casts.
+- Tracker/repository data is untrusted. Only trusted configuration enters Bash.
+- Develop/publish only to `ethan-wickstrom/symphony`; browser means in-app Browser.
+- Finish, review and merge each green slice before starting the next.
 
 ## Completed
 
-- Read all 2,312 specification lines at upstream commit
-  `be10a1b79df723d6d7612b5651c8522704dafb2e`, both READMEs and authoritative design sources.
-- Audited every implementation-defined occurrence and recorded accepted policies/gaps.
-- Regenerated Codex 0.159.2 stable/experimental schemas after the user's update;
-  inspected all 754 JSON files/references and the complete delta from 0.153.4.
-  Retained selected policy schemas, hashes and a drift check in the repository.
-- Original 55 interfaces and assembly witness type-checked on OCaml 5.5/5.3.
-- Created an isolated OCaml 5.5.0 project switch, installed the slice 1 dependency stack,
-  generated the transitive opam lock and pinned ocamlformat 0.28.1.
-- Implemented bounded YAML/workflow loading, typed configuration/environment/path
-  resolution, strict bounded templates, pure last-good reload and offline CLI.
-- Refined pure `Tracker.CONFIG` before implementation; live `Tracker.S` extends it.
-  Typed registry equality preserves credentials without exposing or reparsing them.
-- Patched native YAML scope/NUL defects with retained source provenance/regressions.
-- Added independent parser/config/template/numeric/registry models, examples,
-  actual CLI/file IO checks, fuzz targets and Linux/macOS CI definitions.
-- Independent review found failing path/coercion/policy/diagnostic cases before fixes.
-  Corrected the mistaken YAML underscore oracle against the YAML 1.2 core schema.
+- Read the full spec at `be10a1b79df723d6d7612b5651c8522704dafb2e`, READMEs,
+  authoritative OCaml sources and the full Algebra-Driven Design manuscript.
+- Regenerated/audited Codex 0.159.2 stable and experimental schemas (754 JSON files);
+  retained selected definitions, provenance/digests and normal/optimized drift controls.
+- Slice 1 merged as PR #1 at `f56a66c906925f050edd055d09226d29c8e2ed91`.
+  Workflow/config/template/reload and offline commands passed hosted Linux/macOS gates.
+- Slice 2 keys, frozen references, opaque issue-ID ownership and strict bounded
+  owner codec; independent models, hash vectors and parser fuzz targets.
+- Frozen Eio custody/admission extension and worker controls passed local macOS and
+  hosted Linux/glibc/macOS. All nine hosted source hashes matched the frozen manifest.
+- Native anchored Directory, permanent flock, exact owner fencing and bounded
+  removal. Fresh directory authority enables safe failed-publication rollback.
+- One lifetime gate revokes, cancels and joins workspace loans/process operations.
+  Captured primary outcomes stay outside Eio's IO exception aggregation.
+- Native Process, four hooks and the public Host. Host hides raw lease/remove
+  authority, eliminating public self-join. Store retirement attempts safe removal
+  after join defects; physical outcome is cached before reporting/propagation.
+- Shared native IO classifier preserves worker defects and original backtraces.
+- `workspace` CLI validates existing ownership without creation or hook execution.
+- Cleanup PR ownership now verifies repository/owner as well as branch name.
 
 ## Current focus
 
-Slice 1 merged as PR #1 at `f56a66c906925f050edd055d09226d29c8e2ed91`.
-Final head `b35370e` passed hosted Linux/macOS builds, models, CLI/source/format
-gates, seeded fuzzing and Elixir. Every review thread is resolved; the final
-Codex review found no major issues. Slice 2 starts on `ethan/ocaml-workspaces`.
-Keys, frozen references, strict ownership codec and manager policy pass independent
-models. Ownership includes opaque issue IDs to reject historical identifier reuse.
-The frozen Eio group-custody source passes its local macOS gate, independent review
-and hosted Linux glibc/macOS gates at `91788b4`;
-both Eio packages are pinned/installed. The application selects the POSIX backend
-explicitly. Store/Hooks ports and Driver composition pass real Eio cancellation
-tests. Live directory ownership, hook execution and inspection remain pending.
-No physical directory acquisition/ownership claim yet. Musl/static remains unverified.
+Branch `ethan/ocaml-workspaces`; open PR #2 is attached (currently not a draft). Main remains `f56a66c`.
+Published pre-integration head was `f07175c`; current local commits include
+`77073ae` (cleanup ownership), `daf839c` (clock/hook policy), `a6d7118` (native
+ownership) and `48770fb` (inspection CLI). Publication and final hosted evidence
+are next. No user decision or approval is pending.
 
-## Verified locally
+Independent review is complete for native Directory/Path/Gate/Store/Process/Host.
+Remaining work: publish the reviewed delivery, verify both hosts and retained
+artifacts, then merge slice 2. Do not begin the tracker adapter before that.
+
+## Current local evidence
 
 - macOS arm64; OCaml 5.5.0, Dune 3.24.0, ocamlformat 0.28.1.
-- `just check` passed: build, fatal enabled warnings, formatting and all checks below.
-- Current application gate: 99 Alcotest cases, 66 examples and 33 properties,
-  29,500 generated model/law cases. Log: `/private/tmp/symphony-runtime-check.log`.
-- 19 CLI scenarios: workflow paths/default/anchoring, strict rendering/attempts,
-  literal issue text, metadata, actionable errors, redaction and bounded file reads.
-- Generated policy snapshot/digest check passed.
-- Compiler-AST source gate checked 128 application source/interface files;
-  all 34 positive/negative controls passed.
-- Crowbar seed `20260930`: 15 groups × 10,000 = 150,000 invocations passed,
-  including ownership JSON and combined issue-fixture parsing/rendering.
-  Log: `/private/tmp/symphony-runtime-fuzz.log`. These are random/curated cases,
-  not an instrumented AFL coverage result.
-- Both Eio runtime pins installed; dependency lock regenerated without local URLs
-  or eio_main. YAML/Crowbar remain pinned. Only the project switch was changed.
-- Final independent review fixed malformed URI acceptance, substituted credential
-  leakage in tracker-kind errors, missing attempt diagnostics and oversized JSON
-  composition allocation. Each had a failing regression before its fix.
-- ast-grep has no OCaml grammar; the compiler parses/type-checks OCaml source.
-- PR review reproduced Python optimization bypasses in both verification scripts
-  and a delimiter-prefix parsing failure before fixes. Real CLI/schema checks now
-  run normally and optimized; 16 broken fixtures verify the gates still reject,
-  including missing/extra manifest entries and malformed digests.
-  Signed radix strings remain strings under YAML 1.2 Core, with explicit cases.
-- Assigned/unassigned metadata roundtrips and renders through the actual CLI.
-  All 15 normalized issue fields are covered; missing/malformed fixture eligibility
-  fails instead of inventing dispatchability. Both defects failed before correction.
-- The live PR badge validates only with one ordered complete marker pair; orphan,
-  reversed and repeated markers fail. The Elixir gauntlet
-  passed with Elixir 1.19.5/OTP 28: 301 tests, six skipped, 100% coverage and no
-  lint/type errors. An unchanged retry-timing test failed once, then passed on rerun.
+- Build and formatting pass; core: 122 cases, 39 properties and 41,500 samples.
+- 27 real CLI scenarios pass normally and optimized, including workspace ownership,
+  absence, contention, scope/ID conflicts, symlinks, redaction and terminal escaping.
+- Source gate: 178 source/interface files; 34 positive/negative controls pass.
+- Protocol snapshot/digests pass normally and optimized; 16 corrupted controls reject.
+- Crowbar seed `20260930`: 15 groups × 10,000 = 150,000 invocations pass.
+  This is a random/curated campaign, not an instrumented AFL coverage result.
+- Focused native gates: Directory17, Store11, Process8, lifetime7, IO classifier4,
+  public Host7. Lifetime checks 1,000 Eio mock seeds and explicit seed619 replay.
+  Complete watchdog runs pass normally and optimized (47 kernel + seven Host).
+  Eight timeout/INT/TERM/admission/normal-exit/signal controls pass; hosted gates remain pending.
+- Full `just check` passes; final isolated-bootstrap changes passed both native
+  runners and complete watchdog controls again in both optimization modes.
+- Pinned Elixir 1.19.5/OTP28 gate: 302 tests, six skipped, measured100% coverage,
+  formatting, lint and Dialyzer pass. No unrelated compiler/library upgrade.
+- mtime/cstruct are direct imports already present through Eio. Lock regenerated;
+  no global opam switch changed and no machine-specific URLs entered the lock.
 
-Sampled laws are evidence, not machine-checked proofs. Native YAML scope tests do
-not prove native leak freedom. AFL coverage, static linkage, live tracker/agent
-integration, simulation and benchmarks remain unverified. Hosted
-Linux/macOS checks passed at `c7cc6ff`; the Ubuntu setup action disabled its own
-opam build sandbox after bwrap failed, so this is no build-isolation claim.
+## Retained evidence
 
-## Next action
+- `/private/tmp/symphony-workspace-pure-check.log`
+- `/private/tmp/symphony-workspace-{build,source,fuzz}-final.log`
+- `/private/tmp/symphony-store-close-defect-{red,green}.log`
+- `/private/tmp/symphony-native-io-sys-error-{red,green}.log`
+- `/private/tmp/symphony-native-process-lifetime-{red,green}.log`
+- `/private/tmp/symphony-owner-filter-all.log`
+- `/private/tmp/symphony-native-delivery-normal-6ycsgo62/manifest.json`
+- `/private/tmp/symphony-native-delivery-optimized-js58hbqy/manifest.json`
+- `/private/tmp/symphony-workspace-check-final.log`
+- `/private/tmp/symphony-watchdog-controls-delivery-{normal,optimized}.log`
+- Frozen process evidence/provenance: `vendor/eio/PATCHES.md`.
 
-Implement native directory/hook integration after the verified hosted process gate.
-Review caught and fixed a CI switch-location mismatch before push. Both runners
-accept an explicit switch; another 5,000-case campaign and all normal/optimized
-controls pass with that argument. CI selects its workspace-root switch.
-The user explicitly approved publication to github.com/ethan-wickstrom/symphony.
-Branch pushed; draft PR #2 is open and attached, with live body validation passed.
-The sole remote and GitHub CLI default are `ethan-wickstrom/symphony`; every
-GitHub operation also names this repository explicitly. Hosted native checks
-passed on `91788b4`; local implementation commits are 953de28 and 4375b9e.
-The user detached GitHub's fork relationship; the API confirms `isFork=false`,
-`parent=null`, and preserved main/working-branch commit tips. PR #2 and the nightly
-release still exist. Clone hooks, cleanup and package metadata target only our
-repository; cleanup rejects repository overrides. Specification links remain
-source provenance. Browser work uses the in-app browser.
-The changed Elixir tree passes the full pinned gate: 301 tests, six skipped,
-100% coverage, formatting, lint and Dialyzer. Both opam metadata files pass lint.
-Logs: `/private/tmp/symphony-repo-destination-{red,green,all-pinned}.log`.
-Then implement the anchored directory Store and private Path/child-loan bracket,
-followed by Process and Hooks over the shared ports. Eio already supplies managed
-nofollow openat/stat/directory iteration; the smallest native gap is nonblocking
-flock. No design decision is pending. Do not start tracker slice 3 before slice 2 is
-complete, reviewed, green and merged.
+## Boundaries
 
-Review the full Algebra-Driven Design manuscript at source commit
-`118aa81a48fb46255dfe4503cbcdee6d893098c9`. The main prose manuscript has been read:
-introduction, both design/implementation examples, good-algebras, QuickCheck,
-QuickSpec, common-algebras and glossary. The review corrected observation/carrier
-overclaims and unused Issue sharing; coverage is in docs/design/book-review.md.
-Do not equate a delivered termination request with a closed OS process group.
+Sampled laws are not proofs. The seeded lifetime test is not yet whole-service
+simulation. Descriptor APIs and protected metadata assume a cooperating host;
+POSIX final unlink/rmdir cannot condition on inode, and same-device bind mounts
+need host policy. Escaped process groups/credentials require stronger isolation.
+POSIX provides no finite kernel reap bound. Eio1.6 release-hook backtraces may be
+empty; primary exception traces are preserved. Static linkage, live tracker/agent,
+HTTP API, orchestrator simulation, benchmarks and portable harness remain unverified.
 
-## Slice 2 evidence
+## Steering
 
-- Key construction follows its interface and independent byte-list policy model.
-  Thirteen separately generated Python SHA-256 whole-output vectors match.
-- The current complete check/fuzz counts are recorded above. Keys include exact
-  changed/unchanged length boundaries; owner tests cover record/escaped-encoding
-  bounds, canonical int64 bits, strict fields/version and changed issue identity.
-- Refined 56 component/support sketches plus assembly witness type-check on 5.5.
-  Temporary copies normalize pre-existing blueprint doc attachment; live source
-  interfaces pass the normal fatal-warning/format gate without that normalization.
-- Frozen process source: 15,000 macOS cases plus public-close cancellation,
-  concurrent close, injected permission/reap errors, actual signal normalization,
-  failed-exec cleanup and reporter-defect controls. Independent normal/optimized
-  controls prove zero-fork admission failure, same-switch reuse, original
-  backtraces/finalizers and unchanged worker defect categories. Full hashes and
-  retained logs are in vendor/eio/PATCHES.md. Preserve uncertain Darwin EPERM as a
-  result; retain final group KILL before sole reap. No finite kernel reap bound.
-- Hosted native evidence at `91788b4d31834af7123253fd633860d8a736adbd`:
-  [push run 36804685419](https://github.com/ethan-wickstrom/symphony/actions/runs/36804685419)
-  and [PR run 36804908655](https://github.com/ethan-wickstrom/symphony/actions/runs/36804908655)
-  passed Linux 6.17.0-1022-azure x86-64/glibc 2.39 and macOS 26.6.2 arm64.
-  Each host/run passed 5,000 scenarios, focused custody controls and
-  normal/optimized acquisition controls. All four manifests match the nine frozen
-  hashes in vendor/eio/PATCHES.md. Linux retained no permission errors; macOS
-  retained 37/70 repeated-signal errors on push/PR, with zero cleanup errors.
-  Artifacts: `/private/tmp/symphony-group-hosted-linux`,
-  `/private/tmp/symphony-group-hosted-macos`, and
-  `/private/tmp/symphony-group-hosted-pr`. This verifies the POSIX backend on glibc,
-  not musl/static linkage or workspace containment.
-- Three Driver composition tests use actual Eio cancellation: after_run gets a
-  fresh protected switch, joins its child, reports error and preserves the
-  original cancellation before fake-lease release. Native leases remain pending.
-
-These are key and interface results, not workspace containment or hook conformance.
-
-## Steering and superseded instructions
-
-The initial before-code approval gates were explicit. The CLI update requested a
-new protocol audit; 0.159.2 supersedes 0.153.4 evidence. Acceptance selected all
-recommendations, Linear and the macOS/Linux targets. "Proceed. I accept all
-recommendations" approved the complete signature/design package and authorized
-implementation. No slice 1 approval gate remains.
-
-The user supplied the full Algebra-Driven Design GitHub manuscript. It replaces
-the sample-only source and its unavailable-site note, without changing the active
-workspace slice or the approved build order.
-
-The manuscript audit removed unused Issue sharing, equated the required Path.t
-brand, and made path access checked. The 57-interface assembly witness passed on
-OCaml 5.5 after temporary blueprint doc normalization. The identity review added
-opaque issue IDs to references and ownership records; it does not restore unused
-Issue module sharing. Fake/model tests establish policy and codec observations,
-not real filesystem/process safety. The latest acceptance continues the approved
-build order without another approval gate.
+Repeated acceptance approved recommendations, signatures and implementation.
+CLI0.159.2 supersedes the previous0.153.4 audit. The full book repository supersedes
+sample-only research. GitHub detachment is verified (`isFork=false`, `parent=null`);
+only origin/default repository `ethan-wickstrom/symphony` remains. Specification
+links retain provenance. Latest autonomy instruction authorizes architectural
+repairs and rapid iteration, superseding needless permission stops while preserving
+safety boundaries, verification and green vertical-slice delivery.

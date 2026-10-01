@@ -278,9 +278,9 @@ running hooks, or launching the agent. Tests assert those absent effects. Real
 authentication probes are explicit; automated tests use fake credentials.
 
 Run CLI startup, signal shutdown, invalid reload, and resource-draining tests on
-both targets. Eio_main selects an OS backend; Linux native and POSIX backend paths
-are tested where supported. Record the selected backend in diagnostic metadata.
-[Eio_main](https://ocaml-multicore.github.io/eio/eio_main/Eio_main/index.html)
+both targets. Select the pinned Eio POSIX backend explicitly on Linux and macOS:
+descriptor launch/custody uses its low-level effects. Record that backend in
+diagnostic metadata; unused Linux/Eio_main paths provide no coverage evidence.
 
 The macOS deliverable is one native executable using platform system libraries.
 Each published Linux musl artifact must have no ELF interpreter or dynamic-library

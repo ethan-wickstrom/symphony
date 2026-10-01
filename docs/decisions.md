@@ -56,7 +56,7 @@ entries, the population heading, and the repeated failure description.
 | P03 | Turn sandbox default: §5.3.6 line 484; §6.4 line 630 | `workspaceWrite`, current issue workspace as the sole additional writable root, network off, both temporary-root exclusions on. Explicit workflow overrides remain schema-validated. |
 | P04 | Workspace preparation: §9.2 line 886; population heading/body: §9.3 lines 888, 892; population failure: §14.1 line 1646 | Hooks own VCS/bootstrap; no built-in checkout or destructive reset. Remove an owned newly created directory after failed preparation, using the cleanup hook contract. Preserve reused workspaces. |
 | P05 | Approval/sandbox/user input behavior: §10.5 line 1067 | Apply P01–P03. User-input and elicitation requests immediately end the attempt with an explicit reason. Cancel elicitation using its valid response, including experimental device-verification requests; never fabricate answers or proofs. Unsupported tools return protocol-valid failure and the session continues. No extra indefinitely blocked claim state. |
-| P06 | In-memory timestamp type: §11.3 line 1272 | Abstract UTC instants backed by Ptime; separate monotonic instants and duration units. Wall time never schedules retries or measures elapsed runtime. Package feasibility remains to be checked. |
+| P06 | In-memory timestamp type: §11.3 line 1272 | Abstract UTC instants backed by locked Ptime 1.2.0; separate monotonic instants and duration units. Wall time never schedules retries or measures elapsed runtime. Clock/UTC builds, examples and independent models pass. |
 | P07 | Human-readable status: §13.4 line 1414 | Minimal server-rendered `/` in the requested HTTP slice, using the same snapshot as JSON. No separate TUI or compiled browser application in core. |
 | P08 | Human-readable rate limits: §13.5 line 1448 | Preserve the latest protocol payload, including nullable model/quota metadata; show bounded formatted JSON initially. Do not infer recovery from reset times or percentages. Account-read permission fields remain distinct from notification data. |
 
@@ -263,6 +263,8 @@ Approved direct runtime package families:
 | Package | Purpose / why a smaller substitute is insufficient |
 | --- | --- |
 | `eio`, `eio_posix` | Structured direct-style concurrency with one POSIX backend on both hosts. Pin both 1.6 sources: worker-admission errors resume the caller; process identity survives exit observation until cleanup/reap. `eio.mock` ships in `eio`; no second scheduler or mock package. See `vendor/eio/PATCHES.md` for the narrow delta and host evidence. |
+| `mtime` | Exact unsigned native nanosecond observations and spans for the injected Eio monotonic clock. Already an Eio dependency; named directly because the adapter imports its API. Logical deadlines remain unbounded naturals, with explicit native-horizon errors. |
+| `cstruct` | Bounded buffers for public Eio POSIX vectored ownership-record IO. Already installed through Eio; direct import, without a new parser or framing layer. |
 | `yaml` | Existing parser with positioned event/scalar access and vendored static libyaml archive. Audited 3.2.0; wrap events to preserve kinds/precision and validate complete input, duplicates and bounded aliases. |
 | `jingoo` | Existing template parser/interpreter, behind one bounded strict Jinja wrapper. Audited 1.5.4. No full Liquid claim; see the template choice below. |
 | `re` | Direct import of Jingoo's existing dependency for literal replacement at the template boundary. Use `Re.str` only; no user regular expressions or regex core logic. Pinned 1.14.0. |
@@ -400,3 +402,37 @@ URLs are excluded from the portable lock; setup and CI pin checked-in sources be
 locked installation. No global opam switch is modified. The Elixir PR-description
 validator accepts the review bot's complete badge region; all other HTML comments
 and incomplete/repeated markers remain invalid.
+
+## Slice 2 native choices
+
+- Public Host exports the policy Workspace manager, never raw lease/removal
+  authority. This makes joining one's own admitted process scope unexpressible.
+- One private lifetime gate owns workspace loans and pending process operations.
+  Held admits; Closing revokes/cancels/joins; Released admits nothing. Captured
+  primary outcomes stay outside Eio's exception aggregation. Release-hook traces
+  may be empty under pinned Eio 1.6; primary traces retain their original frames.
+- Store receives one mandatory private close-path capability. Its law requires
+  revocation and every loan join before return or exception. This isolates removal
+  policy from authority discharge and permits exact-source faults without private
+  Eio APIs or a public test hook. The public host always supplies native Path.close.
+- Native process reads use 4,096-byte chunks. Cleanup grants TERM 1,000 ms, then
+  KILL; independent stream draining is bounded to 100 ms. Kernel reaping has no
+  finite POSIX bound. All timings use the injected monotonic clock.
+- Directory deletion takes batches of at most 128 entries and depth at most 128.
+  Reject other-device directories before traversal. Protected parents and a
+  cooperating host govern final name-based unlink/rmdir; neither inode checks nor
+  device equality exclude same-user rename races or same-device bind mounts.
+- Fresh directory authority is distinct from reused authority. Publication rollback
+  can delete only the exact fresh unowned directory. A mkdir/open failure before
+  acquiring identity preserves the entry and gives recovery instructions.
+- Native tests are executables run by a 90 s watchdog, rather than Dune test
+  aliases that could block before the watchdog. Every exit path retains the
+  unreaped leader through final owned-group KILL, then reaps once. A tiny exec
+  wrapper forks a live sentinel that ignores INT/TERM until that KILL. This
+  preserves Darwin group signal permission even after the test leader exits;
+  no ambiguous EPERM normalization or process-table parser is needed. The wrapper
+  preserves the target PID and normal subprocess signal defaults. Tests must
+  leave the sentinel, group and credentials intact; separate groups/sessions
+  and an unhandleable watchdog SIGKILL require host supervision. Controls run
+  normally and with Python optimization enabled. Manifests hash the wrapper,
+  sources and executed binaries; this is context, not build attestation.

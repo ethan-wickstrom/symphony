@@ -2,3 +2,5 @@ ocaml/_opam/
 ocaml/_build/
 _build/
 *.merlin
+__pycache__/
+ocaml/compile_commands.json

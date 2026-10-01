@@ -1,8 +1,9 @@
 # Slice 2: owned workspaces and hooks
 
-Status: keys, references, ownership codec and hook policy tested against
-independent models; protected Driver composition and macOS process custody pass.
-Directory ownership/live hooks remain pending. No workspace containment claim.
+Status: native owned workspaces, hooks, process custody and non-creating
+inspection are implemented. Independent models and complete macOS native gates
+pass normally and optimized. Current-head hosted workspace gates are pending; the complete service
+and Linux musl/static release remain later slices.
 Slice 1 is merged at
 `f56a66c`.
 
@@ -91,7 +92,8 @@ errors, signal normalization and failed-exec cleanup controls. Exact-source
 normal/optimized worker-admission tests preserve finalizers, original backtraces
 and defect categories; rejected admission forks no child and leaves the same
 switch usable. One reserved native worker observes and reaps; cleanup allocates
-no new worker. Independent custody review passed. Linux host evidence is pending.
+no new worker. Independent custody review passed. Hosted Linux/glibc and macOS evidence is
+recorded in vendor/eio/PATCHES.md; all nine frozen hashes matched.
 
 Darwin's zombie-only process group can report EPERM for a group signal. Modern
 killpg has the same behavior; its legacy variant also hides live permission
@@ -121,7 +123,7 @@ Fresh protected cleanup scopes run before the lease enters Closing. Store/Hooks
 port signatures and Driver delegation are implemented; three actual Eio tests
 cover path rejection, protected after_run child joining/reporting and original
 cancellation/defect propagation. The broader agent assembly type-checks on 5.5;
-native registration remains work.
+native registration and public-host tests now exercise real resources.
 
 1. Checked keys and independent model/golden vectors.
 2. Frozen reference and refined manager signatures, type-checked with shared paths.
@@ -132,17 +134,17 @@ native registration remains work.
    CONFORMANCE.md only after actual passes. Green Linux/macOS CI and review precede
    merge and tracker work.
 
-The current full local check passes 99 tests and 29,500 model/law cases;
+The current core suite passes 122 tests and 41,500 model/law samples;
 the 15-group seed `20260930` campaign passes 150,000 invocations. The key module's
 13 independent hash vectors, length/alias examples and four properties are included.
 Reference/policy models compare complete fake-driver traces, primary outcomes,
 directory presence and release multiplicity;
 sequence properties retain one driver across operations. A same-diagnostic,
 changed-error-variant control failed before the oracle was corrected.
-The full check passes with 128 paired source files, 19 CLI scenarios normally and
+The source gate checks 178 source/interface files; 27 CLI scenarios pass normally and
 optimized, 34 source and 16 corruption controls. Revised 56 blueprints plus an
-assembly witness type-check on 5.5 after temporary doc normalization. No physical
-directory/lock/hook behavior is established by those tests.
+assembly witness type-check on 5.5 after temporary doc normalization. Those
+interface/model results are distinct from the native cases below.
 
 ## Ownership record boundary
 
@@ -166,3 +168,43 @@ read metadata only while holding the lock, and reject unknown existing directori
 Clear ownership after successful removal under that lock. POSIX cannot atomically
 remove only an inode-matching name; final name-based removal relies on the protected
 parent/cooperating-host boundary and revalidates identity after before_remove.
+
+
+## Native integration
+
+`Workspace_host_posix.Make(Clock)` seals one Path brand shared by Contract,
+Workspace and Process. The public host exports Workspace policy; raw Store,
+lease/remove and descriptor authority remain private. Public callbacks therefore
+cannot join their own admitted scope. Inspection returns only a display label.
+
+The native kernel target compiles copies of the exact private production files;
+a separate target exercises the actual public library. This tests private
+mechanisms without exporting their constructors or relying on hidden CMI paths.
+The focused groups pass: Directory17, Store11, Process8, lifetime7, IO classifier4,
+and public Host7. The lifetime group runs 1,000 replayable Eio mock seeds; an
+explicit seed619 replay also passes. Whole-service simulation remains slice4.
+
+Retained failing regressions cover unpublished-directory leakage, escaped pending
+pipe reads, primary failure aggregation, dropped secondary IO errors, cleanup
+faults masking removal and worker defects becoming expected errors. The fixes
+change representations or one hidden boundary: fresh-directory capability,
+shared scope ownership, separate primary result, retired physical outcome and
+one native expected-error classifier. Secondary release traces may be empty under
+Eio1.6; primary traces retain their original frames.
+
+Real CLI tests independently construct the published metadata profile. They check
+missing/owned/busy/foreign/symlinked entries, no hook invocation, unchanged
+filesystem projection, redaction and terminal-control escaping.
+
+Native executables run under a 90s watchdog. Logs and manifests record platform,
+source hashes, executed binary hashes and outcomes; this identifies artifacts,
+not a source-to-binary attestation. Complete normal/optimized runs pass 47 kernel
+and seven public-host cases. Timeout, interruption, admission and normal-exit
+controls retain the group through KILL-before-reap. The exec wrapper retains one
+live sentinel until final KILL, avoiding Darwin's zombie-only EPERM without
+normalizing a possible permission failure. The wrapper is hashed in each manifest.
+Eight real watchdog scenarios cover timeout, INT/TERM, launch admission, leftover
+descendants, an empty exiting group and native signal dispositions. The latter
+failed before resetting Python's ignored pipe/file-size signals before exec.
+Bootstrap isolation ignores Python environment/site customization. Exec retains
+the target PID; no wait-status protocol or build attestation is introduced.

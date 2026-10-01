@@ -1,16 +1,14 @@
-# Live workspace composition draft
+# Live workspace composition
 
-Store/Hooks ports and the Driver adapter are implemented and tested. Native host,
-Process and hook interpretation remain pending. The existing manager remains policy.
+Store, native host, Process, hooks and the Driver adapter are implemented. The
+existing manager remains policy.
 Directory ownership and subprocess custody are separate lower ports. Their public
 parent seals one Path brand before the agent/protocol layers are instantiated.
 
-The four interfaces and a generic/native agent composition witness
-type-check with fatal warnings on OCaml 5.5.0 against the previously compiled
-approved blueprints and installed Eio 1.6. Temporary files are in
-/private/tmp/symphony-native-composition. This is signature evidence only; private
-lease registration and native workspace IO are not implemented or proved. Process
-custody has separate macOS evidence in vendor/eio/PATCHES.md.
+The actual public host is exercised separately from tests of private native
+mechanisms. Agent/protocol composition remains interface evidence until slice 5.
+Process custody has Linux/glibc and macOS evidence in vendor/eio/PATCHES.md;
+musl/static linkage remains unverified.
 
 ## workspace_store.mli
 
@@ -118,7 +116,7 @@ module Make (Clock : Clock.S) : sig
   module Path : Workspace_path.S
   module Contract : Workspace_manager.PURE with module Path = Path
   module Process : Agent_process.S with module Path = Path
-  module Driver : Workspace_manager.DRIVER with module Contract = Contract
+  module Workspace : Workspace_manager.S with module Contract = Contract
 
   type t
   val create :
@@ -128,7 +126,7 @@ module Make (Clock : Clock.S) : sig
     report:(Workspace_manager.error -> unit) -> t
 
   val process : t -> Process.t
-  val driver : t -> Driver.t
+  val workspace : t -> Workspace.t
 end
 ```
 
@@ -147,6 +145,7 @@ module Store = Workspace_store_posix
 module Process = Workspace_process_posix.Make (Clock)
 module Hooks = Workspace_hooks.Make (Contract) (Process) (Clock)
 module Driver = Workspace_driver.Make (Store) (Hooks)
+module Workspace = Workspace_manager.Make (Driver)
 ```
 
 Contract is the single private application of Workspace_reference.Make(Path).
@@ -167,9 +166,21 @@ semantic lease loan through the entire child lifecycle, including closure.
 
 The private operation has the shape with_child : path -> (child scope -> cwd fd
 -> result) -> result. Its descriptor/scope types never appear in the public parent.
-Do not settle the private representation until the Eio cancellation/registration
-mechanism has been checked. A reference count protects an FD number, not semantic
-ownership or process closure.
+One private Native_lifetime gate owns admitted scopes for both workspace and
+process operations. A persistent Map tracks their completion promises. Closing
+atomically revokes admission, cancels every scope, joins them, then publishes
+Released. Pending reads/writes cannot retain pipes after process closure.
+
+Callbacks return explicit results. Their value or captured exception/backtrace
+stays outside Switch exception aggregation; a private failure marker cancels
+children. Secondary release defects are reported independently. This avoids
+guessing exception identity after Eio merges IO failures. Eio 1.6 does not retain
+release-hook backtraces; secondary traces are forwarded as supplied, possibly
+empty. The original primary trace is retained.
+
+Raw Driver/remove operations remain private. A public process callback receives
+only a Path, so it cannot close and join its own admitted scope. Concurrent public
+cleanup instead acquires another lock and returns Busy.
 
 Installed Eio 1.6 evidence: Fd.use delegates to Rcfd.use; Rcfd.use retains the FD
 until its callback returns or raises (unix/rcfd.ml:166-175). Close marks Closing and
@@ -195,7 +206,7 @@ metadata. Native open jobs remain inside the switch owning their descriptors.
 
 ```ocaml
 module Host = Workspace_host_posix.Make (Clock)
-module Workspace = Workspace_manager.Make (Host.Driver)
+module Workspace = Host.Workspace
 module Transport = App_server.Make (Host.Process) (Clock)
 module Agent = Agent_runner.Make (Issue) (Workspace) (Transport)
 ```
