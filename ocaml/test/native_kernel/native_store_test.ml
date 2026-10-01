@@ -24,7 +24,11 @@ let rejected = function
 let reference root ?(scope = "native-test") ?(id = "opaque-1")
     ?(identifier = "SYM-2") () =
   let base = checked (Absolute_path.parse root) in
-  let env = checked (Environment.of_bindings ~temp_dir:base []) in
+  let env =
+    Environment.public
+      (checked (Environment.of_bindings ~temp_dir:base []))
+      ~deny:[] ~secrets:[]
+  in
   let workflow_file = checked (Workflow_path.resolve ~base "WORKFLOW.md") in
   let config =
     checked
@@ -42,7 +46,7 @@ let reference root ?(scope = "native-test") ?(id = "opaque-1")
   in
   acquired
     (Contract.reference ~settings
-       ~env:(Environment.child env ~allow:[] ~deny:[])
+       ~env:(Environment.child env ~allow:[])
        ~scope:(checked (Tracker_scope.parse scope))
        ~issue_id:(checked (Issue_id.parse id))
        ~identifier:(checked (Issue_identifier.parse identifier)))

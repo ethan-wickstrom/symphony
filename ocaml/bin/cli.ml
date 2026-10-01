@@ -1,4 +1,4 @@
-module Config = Config_layer.Make (Tracker_config)
+module Config = Tracker_runtime.Config
 module Loader = Workflow_loader.Make (Workflow_file)
 
 let ( let* ) = Result.bind
@@ -28,15 +28,16 @@ let read_issue io ~cwd filename =
       ^ ": " ^ Text.escape message ^ "; fix the normalized issue JSON")
     (Prompt_fixture.parse text)
 
-let run ~fs ~clock ~cwd ~env ~argv ~out ~err =
+let run ~fs ~net ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out ~err =
   let io = Workflow_file.make fs in
-  let load filename =
+  let load ?(ca_bundle = default_ca_bundle) filename =
     let* file = Workflow_path.resolve ~base:cwd filename in
     let* document = Result.map_error loader_error (Loader.load io ~file) in
     let* registry =
       Result.map_error
         (fun e -> Diagnostic.render (Tracker_error.diagnostic e))
-        (Tracker_config.make [ Tracker_config.Entry (module Linear_settings) ])
+        (Tracker_runtime.registry ~fs ~net ~clock ~runtime ~cwd ~ca_bundle
+           ~warning:(fun text -> Format.fprintf err "%s\n%!" text))
     in
     let* config =
       Result.map_error config_error (Config.resolve registry ~env ~document)
@@ -92,13 +93,30 @@ let run ~fs ~clock ~cwd ~env ~argv ~out ~err =
           ^ ": issue " ^ identifier ^ ": " ^ Workspace_cli.error error)
         (Workspace_cli.inspect ~fs ~clock ~settings:(Config.workspace config)
            ~env:(Config.child_env config)
-           ~scope:(Tracker_config.Contract.scope (Config.tracker config))
+           ~scope:(Tracker_registry.Contract.scope (Config.tracker config))
            ~issue)
     in
     out
       (match found with
       | None -> "Workspace missing: " ^ identifier ^ "\n"
       | Some label -> "Workspace: " ^ Text.escape label ^ "\n");
+    Ok ()
+  in
+  let tracker filename ca_bundle =
+    let* config, _ = load ~ca_bundle filename in
+    let* batch =
+      Result.map_error
+        (fun e -> Diagnostic.render (Tracker_error.diagnostic e))
+        (Tracker_runtime.inspect config)
+    in
+    (* Emit only after the entire read succeeds; the batch preserves page order. *)
+    out "[";
+    List.iteri
+      (fun index issue ->
+        if index > 0 then out ",";
+        out (Json.encode (Issue.to_json issue)))
+      (Issue_batch.ordered batch);
+    out "]\n";
     Ok ()
   in
   let file_arg =
@@ -119,6 +137,19 @@ let run ~fs ~clock ~cwd ~env ~argv ~out ~err =
       & opt (some string) None
       & info [ "attempt" ] ~docv:"N"
           ~doc:"Positive retry attempt; omitted for the first attempt.")
+  in
+  let ca_arg =
+    Cmdliner.Arg.(
+      value
+      & opt string default_ca_bundle
+      & info [ "ca-bundle" ] ~docv:"CA.pem"
+          ~doc:"Explicit PEM trust anchors for authenticated tracker HTTPS.")
+  in
+  let tracker =
+    Cmdliner.Cmd.v
+      (Cmdliner.Cmd.info "tracker"
+         ~doc:"Fetch configured active issues as ordered normalized JSON.")
+      Cmdliner.Term.(const tracker $ file_arg $ ca_arg)
   in
   let doctor =
     Cmdliner.Cmd.v
@@ -144,7 +175,6 @@ let run ~fs ~clock ~cwd ~env ~argv ~out ~err =
     Cmdliner.Cmd.group
       (Cmdliner.Cmd.info "symphony" ~version:"0.1.0"
          ~doc:"Symphony OCaml workflow and workspace inspection.")
-      [ doctor; dry; workspace ]
+      [ doctor; dry; workspace; tracker ]
   in
-  Cmdliner.Cmd.eval_result ~catch:false ~env:(Environment.lookup env) ~argv ~err
-    command
+  Cmdliner.Cmd.eval_result ~catch:false ~env:(fun _ -> None) ~argv ~err command

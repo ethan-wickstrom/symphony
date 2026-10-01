@@ -12,18 +12,30 @@ module Provider = struct
 
   (* The fixture observes the entire adapter-owned tree through semantic JSON.
      It performs no provider operation and retains no raw production credentials. *)
-  let parse ~env:_ ~active:_ ~terminal:_ provider =
-    Result.map_error
-      (fun message ->
-        Tracker_error.make Tracker_error.Invalid_tracker_config
-          (Fields.diagnostic ~key:"tracker.provider" message))
-      (Fields.json provider)
+  let parse ~env provider =
+    let public = Environment.public env ~deny:[] ~secrets:[] in
+    Result.map
+      (fun settings -> (settings, public))
+      (Result.map_error
+         (fun message ->
+           Tracker_error.make Tracker_error.Invalid_tracker_config
+             (Fields.diagnostic ~key:"tracker.provider" message))
+         (Fields.json public provider))
+
+  type io = unit
+
+  let states () _ ~policy:_ _ =
+    Alcotest.fail "offline registry fixture read states"
+
+  let ids () _ ~policy:_ _ = Alcotest.fail "offline registry fixture read IDs"
 end
 
-module Config = Config_layer.Make (Tracker_config)
+module Config = Config_layer.Make (Tracker_registry)
 
 let registry =
-  match Tracker_config.make [ Tracker_config.Entry (module Provider) ] with
+  match
+    Tracker_registry.make [ Tracker_registry.Entry ((module Provider), ()) ]
+  with
   | Ok registry -> registry
   | Error error ->
       Alcotest.fail (Diagnostic.render (Tracker_error.diagnostic error))
@@ -87,10 +99,10 @@ let forwarding () =
 
 let duplicate_kind () =
   match
-    Tracker_config.make
+    Tracker_registry.make
       [
-        Tracker_config.Entry (module Provider);
-        Tracker_config.Entry (module Provider);
+        Tracker_registry.Entry ((module Provider), ());
+        Tracker_registry.Entry ((module Provider), ());
       ]
   with
   | Error _ -> ()

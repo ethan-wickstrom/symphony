@@ -183,6 +183,7 @@ let reference config bindings =
   let base = checked (Absolute_path.parse "/tmp/symphony-hook-tests") in
   let workflow_file = checked (Workflow_path.resolve ~base "WORKFLOW.md") in
   let env = checked (Environment.of_bindings ~temp_dir:base bindings) in
+  let env = Environment.public env ~deny:[ "LINEAR_API_KEY" ] ~secrets:[] in
   let settings =
     match
       Workspace_settings.parse ~env ~workflow_file
@@ -196,10 +197,7 @@ let reference config bindings =
   in
   match
     Contract.reference ~settings
-      ~env:
-        (Environment.child env
-           ~allow:[ "MARKER"; "LINEAR_API_KEY" ]
-           ~deny:[ "LINEAR_API_KEY" ])
+      ~env:(Environment.child env ~allow:[ "MARKER"; "LINEAR_API_KEY" ])
       ~scope:(checked (Tracker_scope.parse "hook-fixture"))
       ~issue_id:(checked (Issue_id.parse "opaque-hook-id"))
       ~identifier:(checked (Issue_identifier.parse "SYM-2; $(touch UNTRUSTED)"))

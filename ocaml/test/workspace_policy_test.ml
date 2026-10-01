@@ -195,6 +195,7 @@ let reference =
   let base = checked (Absolute_path.parse "/tmp/symphony-policy-tests") in
   let workflow_file = checked (Workflow_path.resolve ~base "WORKFLOW.md") in
   let env = checked (Environment.of_bindings ~temp_dir:base []) in
+  let env = Environment.public env ~deny:[] ~secrets:[] in
   let settings =
     match
       Workspace_settings.parse ~env ~workflow_file
@@ -209,7 +210,7 @@ let reference =
   checked
     (Result.map_error diagnostic
        (Reference.reference ~settings
-          ~env:(Environment.child env ~allow:[] ~deny:[])
+          ~env:(Environment.child env ~allow:[])
           ~scope:(checked (Tracker_scope.parse "fixture"))
           ~issue_id:(checked (Issue_id.parse "opaque-fixture-id"))
           ~identifier:(checked (Issue_identifier.parse "SYM-1"))))

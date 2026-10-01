@@ -120,14 +120,6 @@ module Make (Tracker : Tracker.CONFIG) = struct
         (List.map check_section
            [ "tracker"; "polling"; "workspace"; "hooks"; "agent"; "codex" ])
     in
-    let* scheduling =
-      Result.map_error fields (Scheduling_policy.parse ~env config)
-    in
-    let* agent = Result.map_error fields (Agent_settings.parse ~env config) in
-    let* workspace =
-      Result.map_error fields
-        (Workspace_settings.parse ~env ~workflow_file:file config)
-    in
     let* kind =
       match Fields.get config [ "tracker"; "kind" ] with
       | None ->
@@ -136,13 +128,7 @@ module Make (Tracker : Tracker.CONFIG) = struct
                (Nonempty_list.singleton
                   (Fields.diagnostic ~key:"tracker.kind"
                      "tracker kind is required")))
-      | Some v ->
-          Result.map_error
-            (fun e ->
-              fields
-                (Nonempty_list.singleton
-                   (Fields.diagnostic ~key:"tracker.kind" e)))
-            (Fields.text env v)
+      | Some v -> Ok v
     in
     let* provider =
       match Fields.get config [ "tracker"; "provider" ] with
@@ -155,7 +141,8 @@ module Make (Tracker : Tracker.CONFIG) = struct
                    (Fields.diagnostic ~key:"tracker.provider" e)))
             (Config_value.parse "{}")
     in
-    let* tracker =
+    (* Bootstrap credentials first; public fields receive only restricted authority. *)
+    let* tracker, env =
       Result.map_error
         (fun e ->
           Tracker
@@ -163,20 +150,18 @@ module Make (Tracker : Tracker.CONFIG) = struct
                (Diagnostic.at_file
                   (Workflow_path.display file)
                   (Tracker_error.diagnostic e))))
-        (Tracker.configure registry ~env ~kind
-           ~active:
-             (Scheduling_policy.Names.elements
-                (Scheduling_policy.active scheduling))
-           ~terminal:
-             (Scheduling_policy.Names.elements
-                (Scheduling_policy.terminal scheduling))
-           ~provider)
+        (Tracker.configure registry ~env ~kind ~provider)
+    in
+    let* scheduling =
+      Result.map_error fields (Scheduling_policy.parse ~env config)
+    in
+    let* agent = Result.map_error fields (Agent_settings.parse ~env config) in
+    let* workspace =
+      Result.map_error fields
+        (Workspace_settings.parse ~env ~workflow_file:file config)
     in
     let prompt = Workflow_document.prompt document in
     let prompt = if prompt = "" then fallback else prompt in
-    let child =
-      Environment.child env ~allow:allow_env
-        ~deny:(Tracker.Contract.secret_names tracker)
-    in
+    let child = Environment.child env ~allow:allow_env in
     Ok { scheduling; agent; workspace; tracker; prompt; file; child }
 end

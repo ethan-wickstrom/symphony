@@ -273,9 +273,9 @@ Approved direct runtime package families:
 | `zarith` | Exact natural token/runtime totals, preserving monoid laws beyond machine integer range. Locked 1.14; its GMP static archive must pass Linux artifact checks. Avoid saturation or hand-written big integers. |
 | `digestif` | SHA-256 workspace suffix/ownership digest, not Stdlib MD5. Slice 2 pins 1.3.1; eqaf 0.10 is its transitive equality helper. The selected certificate/TLS stack also requires it. |
 | `uucp` | Unicode lowercase/property tables for states/labels. Locked 17.0.0; already required by Jingoo. Normalization cases are tested. |
-| `cohttp-eio`, `uri` | One existing HTTP client/server stack for Linear and the operator listener. Uri 4.4.0 is needed now to validate HTTPS endpoints; cohttp-eio 6.3.0 remains planned. No hand-written HTTP or GraphQL framework. |
+| `h1`, `bstr`, `uri` | H1's maintained public incremental HTTP/1.1 codec over an Eio TLS flow, with bounded input and exact failure handling. Bstr is its existing buffer dependency, imported by the pump. Uri4.4.0 validates HTTPS endpoints. Audited H1 1.1.1 is pinned to `vendor/h1`; see its source/patch manifests and independent framing controls. |
 | `angstrom` | Direct use of Uri's existing parser dependency for full-input URI/IPv6 parsing. A small raw-syntax guard rejects the malformed input that Uri canonicalizes. Locked 0.16.1; no HTTP implementation. |
-| `tls-eio`, `tls`, `x509`, `mirage-crypto-rng` | Eio TLS flow, configuration, verified peer certificates/trust anchors and explicit seeded crypto runtime. Named direct imports even where transitively required. Candidate tls-eio/tls 2.1.3. Fail closed on trust/hostname errors; destination-bound credentials never redirect across origins. |
+| `tls-eio`, `tls`, `x509`, `mirage-crypto-rng`, `domain-name`, `ipaddr` | Eio TLS flow, configuration, checked peer identity/trust and supported Getentropy activation. Named direct imports even where transitively required. tls-eio/tls2.1.3, X5091.2.0, RNG1.2.0, domain-name0.5.0 and ipaddr5.6.2. Fail closed on trust/hostname errors; destination-bound credentials never redirect. Hostnames/IPs are checked once at the boundary. |
 | `cmdliner` | Existing argument parsing, help and exit handling for run/doctor/dry-run; locked 2.1.1. |
 
 Do not call `ca-certs`' ambient helpers: its
@@ -292,7 +292,7 @@ The TLS family is the largest dependency cost; preserving HTTPS verification is 
 to replacing it with custom cryptography or a shell network helper. The driver alone
 sees these types. Stdlib handles UTF-8 validation/decoding; do not add `uutf` solely
 for that. Scalars remain exact through parsing and JSON output.
-[Cohttp Eio API](https://mirage.github.io/ocaml-cohttp/cohttp-eio/Cohttp_eio/Client/index.html),
+[H1 codec](https://github.com/robur-coop/ocaml-h1/blob/d5fff216c28fe379c3abaa355b679ffb35d98d07/lib/h1.mli),
 [TLS package](https://opam.ocaml.org/packages/tls-eio/),
 [Certificate validation](https://mirleft.github.io/ocaml-x509/doc/),
 [Zarith](https://opam.ocaml.org/packages/zarith/),
@@ -441,3 +441,45 @@ and incomplete/repeated markers remain invalid.
   that analysis as unavailable, retain independent native reviews and require
   the owned CI gates before merging. Do not falsify the status or change review,
   monitoring or branch-protection settings to manufacture a pass.
+
+## Slice 3 tracker choices
+
+The CLI's default trust file comes from Dune's compiler target: macOS uses
+`/etc/ssl/cert.pem`, Linux uses `/etc/ssl/certs/ca-certificates.crt`. The host
+composition passes this constant to the CLI. Explicit `--ca-bundle` overrides
+remain available; absent files fail closed. There is no runtime platform probe
+or filesystem search. A real Ubuntu regression exposed the previous macOS-only
+default; the same scenario passes on macOS.
+
+D14: provider scope is `linear:` plus SHA256 of the length-prefixed endpoint and
+project bytes. API keys are excluded. Each component is encoded as decimal byte
+length, colon, exact bytes; concatenation is unambiguous. Credentials may rotate
+without changing ownership, while endpoint/project changes fence old workspaces.
+This prevents operator URL query secrets from entering owner files. No pre-release
+owner migration or compatibility path is retained.
+
+The explicit HTTPS host uses the compiler-target trust file described above;
+`--ca-bundle` selects another bounded PEM file. Missing or invalid trust fails
+closed and names the path. Trust is never inferred from global proxy/TLS environment
+variables. All registries share one host-owned deferred crypto runtime. First use
+adopts an existing global generator or installs supported stateless Getentropy
+when absent. No per-client RNG claim. Repeated reads cannot replace one another's
+runtime; a foreign replacement still produces an explicit failure.
+
+H1 replaces the planned Cohttp client after a source and behavior audit. H1's
+chunk-length and closed-reader errors needed three narrow parser corrections;
+the independent red/green evidence and upstream hashes are retained under
+`vendor/h1`. Chunk extensions/trailers remain unsupported and fail closed.
+No custom HTTP framing, cryptography or certificate verifier is introduced.
+
+Credential bootstrap precedes public config parsing. An abstract public environment
+denies declared sources, exact credential values and value-equal aliases; only
+credential/bootstrap parsers receive the raw environment. Canonical public fields
+and child bindings preserve that quarantine. Trusted commands/hooks remain literal.
+This removes secret reuse across routing/core/agent settings without exposing a
+credential getter; it does not claim arbitrary substring taint tracking.
+
+Frozen tracker bindings contain authentication, source/scope and IO. A separate
+checked read policy carries current terminal membership in each request. Reload
+thus updates future eligibility decisions while retaining a running session's
+original credentials. Request/config generation fences belong to the owner.

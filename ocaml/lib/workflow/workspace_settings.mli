@@ -2,7 +2,7 @@ type t
 type hook = After_create | Before_run | After_run | Before_remove
 
 val parse :
-  env:Environment.t ->
+  env:Environment.public ->
   workflow_file:Workflow_path.t ->
   Config_value.t ->
   (t, Diagnostic.t Nonempty_list.t) result

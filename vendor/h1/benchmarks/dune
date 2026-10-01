@@ -1,0 +1,9 @@
+(executable
+ (name wrk_lwt_benchmark)
+ (modules Wrk_lwt_benchmark)
+ (optional true)
+ (libraries h1 h1_examples h1-lwt-unix lwt.unix base))
+
+(alias
+ (name benchmarks)
+ (deps (glob_files *.exe)))

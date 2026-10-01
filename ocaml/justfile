@@ -1,14 +1,16 @@
 build:
-    opam exec --switch . -- dune build @all
+    opam exec --switch . -- dune build @all @test/native-http-inputs
 
 test: build
     opam exec --switch . -- dune runtest
     python3 test/native_check_test.py
     PYTHONOPTIMIZE=1 python3 test/native_check_test.py
-    python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --out _build/native-evidence
-    PYTHONOPTIMIZE=1 python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --out _build/native-evidence-optimized
+    python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --out _build/native-evidence
+    PYTHONOPTIMIZE=1 python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --out _build/native-evidence-optimized
     python3 test/cli_check.py _build/default/bin/main.exe
     PYTHONOPTIMIZE=1 python3 test/cli_check.py _build/default/bin/main.exe
+    python3 test/tracker_cli_check.py _build/default/bin/main.exe
+    PYTHONOPTIMIZE=1 python3 test/tracker_cli_check.py _build/default/bin/main.exe
 
 format:
     opam exec --switch . -- dune fmt
@@ -22,6 +24,8 @@ check: test check-format
     python3 tools/check_protocol.py .
     PYTHONOPTIMIZE=1 python3 tools/check_protocol.py .
     python3 test/verification_check.py .
+    python3 tools/check_h1.py ../vendor/h1
+    PYTHONOPTIMIZE=1 python3 tools/check_h1.py ../vendor/h1
 
 fuzz: build
     opam exec --switch . -- dune exec fuzz/boundaries.exe -- --repeat 10000 --seed 20260930

@@ -1,0 +1,6 @@
+(library
+ (name        h1)
+ (public_name h1)
+ (libraries
+   angstrom faraday base64 bstr httpun-types)
+ (flags (:standard -safe-string)))

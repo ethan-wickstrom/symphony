@@ -1,3 +1,10 @@
+(rule
+ (target build_target.ml)
+ (action
+  (with-stdout-to
+   %{target}
+   (echo "let system = \"%{ocaml-config:system}\""))))
+
 (executable
  (name main)
  (public_name symphony)
@@ -7,6 +14,7 @@
   symphony_io
   symphony_workflow
   symphony_domain
+  symphony_tracker
   cmdliner
   eio_posix
   unix))

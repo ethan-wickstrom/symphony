@@ -40,11 +40,8 @@ let arguments (expected : Model.input) =
          (("SECRET", "fixture-excluded-credential")
          :: expected.Model.environment))
   in
-  let env =
-    Environment.child raw_env
-      ~allow:[ "KEEP"; "SAFE"; "SECRET" ]
-      ~deny:[ "SECRET" ]
-  in
+  let raw_env = Environment.public raw_env ~deny:[ "SECRET" ] ~secrets:[] in
+  let env = Environment.child raw_env ~allow:[ "KEEP"; "SAFE"; "SECRET" ] in
   let script = function
     | None -> `Null
     | Some text -> `String text

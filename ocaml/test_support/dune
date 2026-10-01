@@ -1,0 +1,4 @@
+(library
+ (name symphony_test_support)
+ (wrapped false)
+ (libraries symphony_workflow symphony_io symphony_tracker symphony_native))

@@ -2,6 +2,7 @@
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -57,7 +58,10 @@ def owned(root: Path, issue: dict, endpoint: str, project: str) -> Path:
     status = workspace.stat()
     owner = {
         "version": OWNER_VERSION,
-        "scope": f"{len(endpoint.encode('utf-8'))}:{endpoint}{project}",
+        "scope": "linear:" + hashlib.sha256(
+            (f"{len(endpoint.encode('utf-8'))}:{endpoint}"
+             f"{len(project.encode('utf-8'))}:{project}").encode("utf-8")
+        ).hexdigest(),
         "issue_id": issue["id"],
         "identifier": issue["identifier"],
         "device": f"{status.st_dev & UINT64_MASK:016x}",

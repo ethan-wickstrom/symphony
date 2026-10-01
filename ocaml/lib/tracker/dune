@@ -1,0 +1,4 @@
+(library
+ (name symphony_tracker)
+ (wrapped false)
+ (libraries symphony_workflow symphony_io symphony_domain eio))

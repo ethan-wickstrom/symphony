@@ -48,6 +48,35 @@ let rec raw (V v) : Yojson.Raw.t =
 
 let encode v = Yojson.Raw.to_string (raw v)
 
+let quoted_bytes text =
+  String.fold_left
+    (fun size -> function
+      | '"' | '\\' | '\b' | '\012' | '\n' | '\r' | '\t' -> size + 2
+      | '\000' .. '\031' | '\127' -> size + 6
+      | _ -> size + 1)
+    2 text
+
+let wire_list size = function
+  | [] -> 2
+  | first :: rest ->
+      List.fold_left
+        (fun total value -> total + 1 + size value)
+        (2 + size first)
+        rest
+
+let rec encoded_bytes (V json) =
+  match json with
+  | Null -> 4
+  | Bool true -> 4
+  | Bool false -> 5
+  | Number text -> String.length text
+  | String text -> quoted_bytes text
+  | Array values -> wire_list encoded_bytes values
+  | Object fields ->
+      wire_list
+        (fun (key, value) -> quoted_bytes key + 1 + encoded_bytes value)
+        fields
+
 let numeric_key s =
   let minus = String.starts_with ~prefix:"-" s in
   let s = if minus then String.sub s 1 (String.length s - 1) else s in
@@ -100,6 +129,22 @@ let rec equal (V a) (V b) =
         (List.sort order a) (List.sort order b)
   | ( (Null | Bool _ | Number _ | String _ | Array _ | Object _),
       (Null | Bool _ | Number _ | String _ | Array _ | Object _) ) -> false
+
+let to_int (V json) =
+  match json with
+  | Number lexeme ->
+      let minus, digits, exponent = numeric_key lexeme in
+      let max_digits = String.length (string_of_int max_int) in
+      let room = max_digits - String.length digits in
+      if
+        room < 0
+        || Z.sign exponent < 0
+        || Z.compare exponent (Z.of_int room) > 0
+      then None
+      else
+        let magnitude = digits ^ String.make (Z.to_int exponent) '0' in
+        int_of_string_opt (if minus then "-" ^ magnitude else magnitude)
+  | Null | Bool _ | String _ | Array _ | Object _ -> None
 
 let of_view v =
   let nodes = ref 0 in

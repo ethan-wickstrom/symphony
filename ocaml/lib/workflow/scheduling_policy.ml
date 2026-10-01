@@ -17,6 +17,10 @@ type t = {
 let ( let* ) = Result.bind
 
 let parse ~env config =
+  let normalize value =
+    let* value = Environment.check env value in
+    Environment.check env (Text.normalize value)
+  in
   let field keys default parse =
     match Fields.get config keys with
     | None -> Ok default
@@ -55,7 +59,13 @@ let parse ~env config =
                 (Fields.diagnostic ~key:("tracker." ^ key) e))
             (Fields.strings env v)
         in
-        let xs = List.map Text.normalize xs in
+        let* xs =
+          Result.map_error
+            (fun e ->
+              Nonempty_list.singleton
+                (Fields.diagnostic ~key:("tracker." ^ key) e))
+            (Fields.sequence (List.map normalize xs))
+        in
         if List.exists (( = ) "") xs then
           Error
             (Nonempty_list.singleton
@@ -73,9 +83,9 @@ let parse ~env config =
   else
     let* labels =
       field [ "tracker"; "required_labels" ] Names.empty (fun v ->
-          Result.map
-            (fun xs -> Names.of_list (List.map Text.normalize xs))
-            (Fields.strings env v))
+          let* xs = Fields.strings env v in
+          let* xs = Fields.sequence (List.map normalize xs) in
+          Ok (Names.of_list xs))
     in
     let* poll = duration [ "polling"; "interval_ms" ] "30000" in
     let* retry = duration [ "agent"; "max_retry_backoff_ms" ] "300000" in
@@ -92,7 +102,7 @@ let parse ~env config =
           let rec add limits = function
             | [] -> Ok limits
             | (name, v) :: rest -> (
-                let key = Text.normalize name in
+                let* key = normalize name in
                 match Fields.integer env v with
                 | Error _ -> add limits rest
                 | Ok n when Z.sign n <= 0 || (not (Z.fits_int n)) || key = "" ->
