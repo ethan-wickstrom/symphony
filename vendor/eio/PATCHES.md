@@ -2,7 +2,8 @@
 
 This directory retains the full Eio 1.6 source baseline from the installed,
 opam-verified `eio_posix.1.6` archive. Symphony pins both `eio` and `eio_posix`
-to this copy. The macOS custody gate passes; Linux host behavior remains unverified.
+to this copy. Hosted Linux glibc and macOS custody gates pass; musl/static remains
+unverified.
 
 - Upstream: <https://github.com/ocaml-multicore/eio>
 - Release: <https://github.com/ocaml-multicore/eio/releases/download/v1.6/eio-1.6.tbz>
@@ -82,6 +83,26 @@ recovery from corrupted native synchronization or arbitrary memory exhaustion.
 No actual thread exhaustion is attempted. Independent final custody review found
 no remaining concrete blocker in the frozen source.
 
+At head `91788b4d31834af7123253fd633860d8a736adbd`, both the
+[push workflow](https://github.com/ethan-wickstrom/symphony/actions/runs/36804685419)
+and [PR workflow](https://github.com/ethan-wickstrom/symphony/actions/runs/36804908655)
+passed on Linux 6.17.0-1022-azure x86-64/glibc 2.39 and macOS 26.6.2 arm64,
+using OCaml 5.5.0. Each host/run passed 5,000 quiet scenarios, the focused custody
+controls, and normal/optimized acquisition controls. All four artifact manifests
+match all nine frozen hashes below. Each campaign returned 2,000 successful
+explicit closes and zero cleanup permission errors. Repeated-signal permission
+errors remained visible: zero on Linux, 37 on the push macOS run and 70 on the PR
+macOS run. The restored uncaught acquisition branch still reproduces missing
+caller finalization/switch release on both hosts and in both Python modes.
+
+Downloaded hosted artifacts:
+`/private/tmp/symphony-group-hosted-linux`,
+`/private/tmp/symphony-group-hosted-macos`, and
+`/private/tmp/symphony-group-hosted-pr`.
+Each contains the uploaded gate logs and `symphony-custody/provenance.json`;
+the PR download groups files under `custody-ubuntu-latest` and
+`custody-macos-latest`.
+
 Frozen SHA-256 values:
 
 | File | SHA-256 |
@@ -126,4 +147,5 @@ Relevant primary sources:
 - [Linux `waitid`](https://man7.org/linux/man-pages/man2/waitid.2.html)
 
 The implementation requires the Eio POSIX backend. It does not add handlers to
-Eio's separate Linux io_uring backend. Linux host behavior remains unverified.
+Eio's separate Linux io_uring backend. The hosted Linux result covers glibc
+x86-64; musl/static release behavior remains unverified.
