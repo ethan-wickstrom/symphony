@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "date": "2026-10-01",
+  "scope": "Development dependency refresh and regression evidence; not static release qualification or source-to-binary attestation.",
+  "family_version": "2.4.1",
+  "tls_version": "2.1.3",
+  "x509_version": "1.2.0",
+  "upstream_archive_sha256": "332886c365c6035077e3ce676a63da8f7500c15a1628b3c07e139b0e551f1f6f",
+  "upstream_commit": "1712bcb7b0b42ec3b67b3948d0e34b20beaf349b",
+  "old_failures": {
+    "crypto_unchecked_exceptions": 12,
+    "crypto_valid_controls_passed": 3,
+    "tls_unchecked_exceptions": 2,
+    "tls_valid_control_passed": 1,
+    "classifier_false_positive": 1
+  },
+  "gates": {
+    "core_tests": 256,
+    "properties": 61,
+    "native_cases_per_mode": 83,
+    "native_breakdown": {
+      "kernel": 51,
+      "host": 7,
+      "https_registry": 25
+    },
+    "native_source_files": 160,
+    "source_interface_files": 239,
+    "source_controls": 39,
+    "cli_scenarios_per_mode": 63,
+    "fuzz_groups": 26,
+    "fuzz_invocations_per_group": 10000,
+    "fuzz_seed": 20260930,
+    "protocol_corruption_controls": 16,
+    "release_materializer_controls_per_mode": 22,
+    "elixir_tests": 302,
+    "elixir_skips": 6
+  },
+  "law_correction": "Pinned upstream classifies short compressed encodings as Invalid_format; initial Invalid_length assertion corrected from inspected source. Initial undersized scalar fixture corrected before accepted old-version RED record.",
+  "pending": [
+    "Hosted exact-head Linux/macOS checks and merge",
+    "Fresh static qualification of2.4.1 graph",
+    "Clean/minimum-host qualification",
+    "Full service/orchestrator/agent integration",
+    "Constant-time machine-checked proof"
+  ],
+  "records": {
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/crypto-1.2.0-red-corrected.log": "a105430076007e51dd57d01e0454a3b2c84ca97622ccbed4c561534bf8310b36",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/native-http-1.2.0-red.log": "1518af424ae3dc55041bedc7a8b69ee5c3176708c2d51928001ef48727a07d29",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/crypto-2.4.1-green-corrected.log": "cd2725ead285ec801902ade7304182ab8f5736b03c6f69d0ba8165bbb441ad3e",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/tls-classifier-red.log": "06cd88b11d69758158eb5b21ef588c7e27f0558b281c1d5d8f1b8dafe70db176",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/tls-classifier-eof-green.log": "8b15879be3b281e8d2f69bc0a1980c2a11daea65ae17863a4185813955cc146c",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/upgrade.log": "89dea39f1b6c049fcbf6627fc573612de5a0d3096eae8fe66016b3321a7edfd5",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/lock-final.log": "f89db4c4892401e5d4ed2a7a9e06744795e2b4072d215f164a21d67923f1aa52",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/full-check.log": "e816f831543f22e0cc2b3816ecc042c095044782390dc3f861b3e2c0d93a378f",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/final-target-build-corrected.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/fuzz-final.log": "f2506f8f7861a9ded24023fe41c1843006fa82661895d9e58818083a743a0d98",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/source-final.log": "db9c5c6cea72ebcb512f2522c4461bb6b70f3a88d5fe3f7aeae32fd7f2284a4a",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/opam-lint.log": "b5795cafcc1fdf19f8d77c06273b6c0506def3ec1b986c0ffbdd744979ac2462",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/elixir-all.log": "701c3b1ba9e294fe7acf83226a09d2f79063a232aa0da80a62c1ee12a1ccebbc",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/native-final-0/manifest.json": "78f9873e37e74b77c07577f5afca78959f5a63261a58b939d65e558edbc5b69e",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/native-final-1/manifest.json": "5726feb7c35b2688469f86da3dfc242ad18d1072949d3271fde699ebd72d9be5",
+    "/Users/ethanwickstrom/symphony/_build/release-evidence/crypto-security/root/fuzz-final-prefix.log": "f2506f8f7861a9ded24023fe41c1843006fa82661895d9e58818083a743a0d98"
+  },
+  "source_context_sha256": {
+    "ocaml/symphony.opam": "ae793b275d794ded9fb72ca41bd3fa0b162188b33c2e39e5c9b6ad0ea6f3c497",
+    "ocaml/symphony.opam.locked": "1341132e25123afa29ec1e5d2883ac0b9683a2c914c2360734d033cec580ed3a",
+    "ocaml/test/crypto_boundary_test.ml": "339e35af9b30c6fdc631db7f8a95d0fb33d3fe159c3c0a4bcfbefcc31fac935a",
+    "ocaml/test/crypto_boundary_test.mli": "cda1ac2dbae5bb34509921477dcf06b6f057fa5d4b21febcdaf93307abfd0d17",
+    "ocaml/test/native_http_test.ml": "f8556f87ea252587cbd0f07a0329998f922e53f50e4e6492cc4469f802e6ffec",
+    "ocaml/fuzz/crypto_boundaries.ml": "37d1958f19bab5688ba66a363eab1ebfc6cff5aecded4454d8a82bf90ba535ff",
+    "ocaml/fuzz/crypto_boundaries.mli": "272394a2609afea98f716e40dd2f5d8be96b421d641213200f10968d34b3b864",
+    "ocaml/release/materialize.py": "3c7313d6930fdbe9821c4b57edc5857537c1a5ee2408196e64d40238d7a581df"
+  }
+}

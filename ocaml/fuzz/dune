@@ -1,6 +1,6 @@
 (executable
  (name boundaries)
- (modules boundaries native_boundaries)
+ (modules boundaries native_boundaries crypto_boundaries)
  (libraries
   symphony_workflow
   symphony_workspace
@@ -10,4 +10,8 @@
   h1
   bstr
   re
+  mirage-crypto-ec
+  mirage-crypto-pk
+  digestif
+  zarith
   crowbar))

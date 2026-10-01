@@ -38,7 +38,7 @@ class Materialization(unittest.TestCase):
 
     def run_materializer(self, output):
         return subprocess.run(
-            [sys.executable, str(RELEASE / "materialize.py"), "--output", str(output)],
+            [sys.executable, str(RELEASE / "materialize.py"), "--purpose", "historical-replay", "--output", str(output)],
             capture_output=True, text=True, timeout=RUN_TIMEOUT,
         )
 
@@ -47,6 +47,34 @@ class Materialization(unittest.TestCase):
         tools = destination.parent / "tools"
         tools.mkdir(exist_ok=True)
         shutil.copyfile(RELEASE.parent / "tools/bounded_process.py", tools / "bounded_process.py")
+
+    def test_archival_intent_required(self):
+        for purpose in ([], ["--purpose", "current-release"]):
+            output = self.base / ("missing" if not purpose else "invalid")
+            with self.subTest(purpose=purpose):
+                result = subprocess.run(
+                    [sys.executable, str(RELEASE / "materialize.py"),
+                     "--output", str(output), *purpose],
+                    capture_output=True, text=True, timeout=RUN_TIMEOUT,
+                )
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("--purpose", result.stderr)
+                self.assertFalse(output.exists())
+
+    def test_archival_labels(self):
+        help_result = subprocess.run(
+            [sys.executable, str(RELEASE / "materialize.py"), "--help"],
+            capture_output=True, text=True, timeout=RUN_TIMEOUT,
+        )
+        self.assertEqual(help_result.returncode, 0, help_result.stderr)
+        result = self.run_materializer(self.output)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads((self.output / "materialization.json").read_text())
+        self.assertEqual(receipt.get("purpose"), "historical-replay")
+        for output in (help_result.stdout, result.stdout, receipt.get("security_notice", "")):
+            with self.subTest(output=output):
+                self.assertIn("Security-affected Mirage Crypto 1.2.0 archival inputs", output)
+                self.assertIn("not current release qualification", output)
 
     def test_fresh_inputs(self):
         result = self.run_materializer(self.output)
@@ -153,7 +181,8 @@ class Materialization(unittest.TestCase):
         try:
             with mock.patch.dict(os.environ, {"PATH": str(tools)}):
                 with mock.patch.object(MATERIALIZE._PROCESS.subprocess, "Popen", side_effect=spawn):
-                    with mock.patch.object(sys, "argv", ["materialize.py", "--output", str(self.output)]):
+                    with mock.patch.object(sys, "argv", ["materialize.py", "--purpose", "historical-replay",
+                                                         "--output", str(self.output)]):
                         with contextlib.redirect_stderr(output):
                             status = MATERIALIZE.main()
             self.assertEqual(status, 2)
@@ -217,7 +246,7 @@ class Materialization(unittest.TestCase):
                 (copied / MATERIALIZE.PROFILE).write_text(json.dumps(profile))
                 output = self.base / f"published-{index}"
                 result = subprocess.run(
-                    [sys.executable, str(copied / "materialize.py"), "--output", str(output)],
+                    [sys.executable, str(copied / "materialize.py"), "--purpose", "historical-replay", "--output", str(output)],
                     capture_output=True, text=True, timeout=RUN_TIMEOUT,
                 )
                 self.assertEqual(result.returncode, 2, result.stderr)
@@ -239,7 +268,7 @@ class Materialization(unittest.TestCase):
         )
         profile_path.write_text(text)
         result = subprocess.run(
-            [sys.executable, str(copied / "materialize.py"), "--output", str(self.output)],
+            [sys.executable, str(copied / "materialize.py"), "--purpose", "historical-replay", "--output", str(self.output)],
             capture_output=True, text=True, timeout=RUN_TIMEOUT,
         )
         self.assertEqual(result.returncode, 2, result.stderr)
@@ -258,7 +287,7 @@ class Materialization(unittest.TestCase):
         text = text.replace("@TARGET@", r"\u0040TARGET\u0040")
         profile_path.write_text(text)
         result = subprocess.run(
-            [sys.executable, str(copied / "materialize.py"), "--output", str(self.output)],
+            [sys.executable, str(copied / "materialize.py"), "--purpose", "historical-replay", "--output", str(self.output)],
             capture_output=True, text=True, timeout=RUN_TIMEOUT,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -399,7 +428,7 @@ class Materialization(unittest.TestCase):
         copied = shallow / "ocaml/release"
         self.copy_release(copied)
         result = subprocess.run(
-            [sys.executable, str(copied / "materialize.py"), "--output", str(self.output)],
+            [sys.executable, str(copied / "materialize.py"), "--purpose", "historical-replay", "--output", str(self.output)],
             capture_output=True, text=True, timeout=RUN_TIMEOUT,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -446,7 +475,7 @@ class Materialization(unittest.TestCase):
                 (copied / MATERIALIZE.PROFILE).write_text(json.dumps(value))
                 output = self.base / f"out-{name}"
                 result = subprocess.run(
-                    [sys.executable, str(copied / "materialize.py"), "--output", str(output)],
+                    [sys.executable, str(copied / "materialize.py"), "--purpose", "historical-replay", "--output", str(output)],
                     capture_output=True, text=True, timeout=RUN_TIMEOUT,
                 )
                 self.assertEqual(result.returncode, 2, result.stderr)
@@ -464,7 +493,7 @@ class Materialization(unittest.TestCase):
                 (copied / MATERIALIZE.PROFILE).write_bytes(data)
                 output = self.base / f"out-{name}"
                 result = subprocess.run(
-                    [sys.executable, str(copied / "materialize.py"), "--output", str(output)],
+                    [sys.executable, str(copied / "materialize.py"), "--purpose", "historical-replay", "--output", str(output)],
                     capture_output=True, text=True, timeout=RUN_TIMEOUT,
                 )
                 self.assertEqual(result.returncode, 2, result.stderr)

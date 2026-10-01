@@ -3,8 +3,9 @@
 Status: slices 1–3 are merged. Native owned workspaces, hooks, scoped process
 custody, Linear reads and verified HTTPS inspection pass local and hosted
 macOS/Linux-glibc gates in normal and optimized modes. Slice 3 merged as `98833b3`
-from tested head `06ce6c5`. The isolated macOS release-profile build now passes
-local physical closure/link checks and available CLI/native tests. Clean-host
+from tested head `06ce6c5`. The historical macOS release-profile build passed
+local physical closure/link checks and available CLI/native tests with affected
+Crypto1.2.0. Current2.4.1 requires fresh release qualification. Clean-host
 macOS deployment, Linux musl and the full service remain pending.
 The upstream Elixir implementation is reference material, not evidence for this port.
 Requirements refer to SPEC.md at `be10a1b79df723d6d7612b5651c8522704dafb2e`.
@@ -52,16 +53,20 @@ Seeded whole-service Eio simulation, orchestrator model agreement, static releas
 1,000-session benchmarks, HTTP API and portable harness remain pending their slices.
 Crowbar random campaigns are distinct from instrumented AFL coverage.
 
-Current local and hosted application gate: 241 example/property tests (61 properties),
-235 source/interface files, 63 CLI scenarios, 39 source-gate controls, and 220,000
-Crowbar invocations in 22 groups at seed `20260930` pass.
+Current local crypto refresh gate:256 example/property tests (61 properties),
+239 source/interface files,63 CLI scenarios,39 source-gate controls and260,000
+Crowbar invocations in26 groups at seed `20260930` pass. Hosted refresh is pending.
+`crypto_boundary_test.ml/.mli` states RSA and NIST rejection laws; bounded crypto
+fuzz targets preserve checked errors. RSA-signed loopback controls verify exact TLS
+diagnostics, no credential disclosure and socket EOF. Old-version failures precede
+the dependency refresh; see [security evidence](docs/design/crypto-security-plan.md).
 Build, formatting, interface pairing and protocol snapshot checks pass, normally
 and optimized, with 16 corrupted-fixture controls.
 
 The policy also checks 100 explicit fault/cancellation scenarios, a full rollback
 trace and persistent-driver operation sequences. Separate native tests exercise
 physical locks, filesystem identities, exact-source ownership/retirement and
-actual hook subprocesses through the public host: 50 kernel, seven Host and 21 HTTPS cases
+actual hook subprocesses through the public host:51 kernel, seven Host and25 HTTPS/registry cases
 pass under the watchdog in both modes. The lifetime gate checks 1,000
 seeded real Eio mock scenarios, including rejected callbacks and release/reporter
 defects; this is not yet the whole-service simulator. Retained frozen process

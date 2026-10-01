@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-01",
-  "scope": "Observed local foundation build; not a published release or source-to-binary attestation.",
+  "scope": "Historical local foundation build with security-affected Mirage Crypto1.2.0; not current2.4.1 qualification, a published release or source-to-binary attestation.",
   "profile": "macos-arm64-26.0-sdk26.5",
   "host": "macOS26.5.1 arm64",
   "application": {

@@ -8,6 +8,7 @@
   workflow_parser_test
   template_test
   domain_test
+  crypto_boundary_test
   issue_batch_model
   issue_batch_test
   linear_boundary_model
@@ -49,6 +50,9 @@
   mtime
   ptime
   zarith
+  mirage-crypto-pk
+  mirage-crypto-ec
+  digestif
   eio_posix))
 
 (copy_files# ../bin/tracker_runtime.ml*)

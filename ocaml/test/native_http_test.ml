@@ -32,12 +32,36 @@ let rejected = function
   | Error _ -> ()
   | Ok _ -> Alcotest.fail "Expected a checked HTTP failure"
 
+let tls_rejection = function
+  | Ok _ -> false
+  | Error error ->
+      let expected =
+        Diagnostic.make ~site:(Diagnostic.Host "tracker.http")
+          ~message:"Tracker TLS authentication or protocol failed"
+          ~remedy:
+            "Check the endpoint host, server certificate and explicit CA bundle"
+      in
+      String.equal (Diagnostic.render expected) (Diagnostic.render error)
+
+let rejection_classifier () =
+  List.iter
+    (fun message ->
+      let error =
+        Diagnostic.make ~site:(Diagnostic.Host "tracker.http") ~message
+          ~remedy:"Fixture control"
+      in
+      Alcotest.(check bool)
+        "unrelated failure is not TLS rejection" false
+        (tls_rejection (Error error)))
+    [ "Tracker HTTP deadline exceeded"; "Tracker connection failed" ]
+
 let body = checked (Json.parse "{}")
 let request_bound = 4096
 let header_bound = 4096
 let body_bound = 4096
 let wire_bound = 8192
 let fixture_timeout = "1000"
+let close_timeout_seconds = 5.
 let fixture_buffer = 4096
 let request_capture_bound = 16384
 
@@ -48,7 +72,7 @@ let limits ?(request_bytes = request_bound) ?(header_bytes = header_bound)
     (Http.limits ~request_bytes ~header_bytes ~body_bytes ~wire_bytes
        ~timeout:(checked (Milliseconds.parse timeout)))
 
-type identity = Matching | Wrong_name
+type identity = Matching | Wrong_name | Rsa_signed | Rsa_zero | Rsa_one
 type closure = Close_reply | Await_close
 type reply = Wire of string list * closure | Silent
 
@@ -56,13 +80,14 @@ let pem cwd name =
   let directory = Eio.Path.( / ) cwd "fixtures/tls" in
   Eio.Path.load (Eio.Path.( / ) directory name)
 
-type anchors = Trusted | Unrelated
+type anchors = Trusted | Unrelated | Rsa_trusted
 
 let trust cwd anchors =
   let name =
     match anchors with
     | Trusted -> "ca.pem"
     | Unrelated -> "other-ca.pem"
+    | Rsa_trusted -> "rsa-ca.pem"
   in
   succeeded (Http.trust ~pem:(pem cwd name))
 
@@ -71,6 +96,9 @@ let server_config cwd identity =
     match identity with
     | Matching -> ("server.pem", "server.key")
     | Wrong_name -> ("wrong-host.pem", "wrong-host.key")
+    | Rsa_signed -> ("rsa-signed.pem", "server.key")
+    | Rsa_zero -> ("rsa-signature-0.pem", "server.key")
+    | Rsa_one -> ("rsa-signature-1.pem", "server.key")
   in
   let chain =
     match X509.Certificate.decode_pem_multiple (pem cwd certificate) with
@@ -170,20 +198,37 @@ let with_server runtime ~identity ~anchors ~limits ~reply run =
                           | Await_close ->
                               await_close flow;
                               client_closed := true))
-                  | exception
-                      (Tls_eio.Tls_alert _ | Tls_eio.Tls_failure _ | End_of_file)
-                    -> ()))
+                  | exception (Tls_eio.Tls_alert _ | Tls_eio.Tls_failure _) -> (
+                      match identity with
+                      | Matching | Wrong_name | Rsa_signed -> ()
+                      | Rsa_zero | Rsa_one ->
+                          (* Observe EOF before the server's own switch closes. *)
+                          Eio.Time.with_timeout_exn (Eio.Stdenv.clock host)
+                            close_timeout_seconds (fun () -> await_close socket);
+                          client_closed := true)
+                  | exception End_of_file -> client_closed := true))
             (fun () ->
               run ~post:(fun () -> Http.post http credential ~body) ~ready);
           match (identity, anchors, !captured) with
-          | Matching, Trusted, None ->
+          | Matching, Trusted, None | Rsa_signed, Rsa_trusted, None ->
               Alcotest.fail "Trusted fixture did not receive the request"
-          | Wrong_name, (Trusted | Unrelated), Some _
-          | Matching, Unrelated, Some _ ->
-              Alcotest.fail "Credential reached an unauthenticated server"
-          | Wrong_name, (Trusted | Unrelated), None | Matching, Unrelated, None
-            -> ()
-          | Matching, Trusted, Some request -> (
+          | ( (Wrong_name | Rsa_zero | Rsa_one),
+              (Trusted | Unrelated | Rsa_trusted),
+              captured )
+          | Matching, (Unrelated | Rsa_trusted), captured
+          | Rsa_signed, (Trusted | Unrelated), captured -> (
+              match captured with
+              | None -> (
+                  match identity with
+                  | Matching | Wrong_name | Rsa_signed -> ()
+                  | Rsa_zero | Rsa_one ->
+                      Alcotest.(check bool)
+                        "rejected client socket reached EOF" true !client_closed
+                  )
+              | Some _ ->
+                  Alcotest.fail "Credential reached an unauthenticated server")
+          | Matching, Trusted, Some request
+          | Rsa_signed, Rsa_trusted, Some request -> (
               Alcotest.(check bool)
                 "literal request target" true
                 (String.starts_with ~prefix:"POST /graphql HTTP/1.1\r\n" request);
@@ -232,6 +277,22 @@ let wrong_ca runtime () =
 let wrong_name runtime () =
   with_server runtime ~identity:Wrong_name ~anchors:Trusted ~limits:(limits ())
     ~reply:Silent (fun ~post ~ready:_ -> rejected (post ()))
+
+let rsa_trusted runtime () =
+  with_server runtime ~identity:Rsa_signed ~anchors:Rsa_trusted
+    ~limits:(limits ())
+    ~reply:(Wire ([ fixed "trusted RSA issuer" ], Close_reply))
+    (fun ~post ~ready:_ ->
+      let response = succeeded (post ()) in
+      Alcotest.(check string)
+        "authenticated body" "trusted RSA issuer" response.Http_transport.body)
+
+let rsa_rejected identity runtime () =
+  with_server runtime ~identity ~anchors:Rsa_trusted ~limits:(limits ())
+    ~reply:Silent (fun ~post ~ready:_ ->
+      Alcotest.(check bool)
+        "checked TLS rejection" true
+        (tls_rejection (post ())))
 
 let truncated runtime () =
   with_server runtime ~identity:Matching ~anchors:Trusted ~limits:(limits ())
@@ -457,6 +518,11 @@ let () =
           case "fragmented chunk body" fragmented;
           case "wrong CA rejected" wrong_ca;
           case "wrong hostname rejected" wrong_name;
+          case "trusted RSA issuer" rsa_trusted;
+          case "RSA certificate signature zero rejected" (rsa_rejected Rsa_zero);
+          case "RSA certificate signature one rejected" (rsa_rejected Rsa_one);
+          Alcotest.test_case "TLS rejection excludes other failures" `Quick
+            rejection_classifier;
           case "truncated fixed body rejected" truncated;
           case "malformed status rejected" malformed;
           case "redirect rejected" redirect;

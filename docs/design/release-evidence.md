@@ -155,6 +155,11 @@ downloadable from their recorded GitHub Actions runs.
 
 ## Observed Symphony build
 
+This observation used Mirage Crypto1.2.0, now covered by OSEC-2026-14/15/17.
+It is historical evidence and cannot qualify the current2.4.1 dependency graph.
+The archived materializer requires explicit historical replay and labels affected
+inputs. See the [security refresh](crypto-security-plan.md).
+
 The isolated arm64 build uses fresh OCaml 5.5.0, GMP 6.3.0 and locked application
 dependencies. Its compiler saves minimum 26.0/SDK 26.5 flags in the C driver;
 compiler cloning and compression are disabled. Every vendor archive reproduces
