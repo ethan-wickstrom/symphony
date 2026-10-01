@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import ssl
 import subprocess
+import sys
 import tempfile
 import threading
 
@@ -166,7 +167,7 @@ def run(binary: Path) -> None:
                    HTTPS_PROXY="http://127.0.0.1:1", SSL_CERT_FILE="/missing/ambient-ca.pem")
         public_cases = public_config_cases(binary, root, env)
 
-        def invoke(port: int, ca: str = "ca.pem", command: str = "tracker"):
+        def invoke(port: int, ca: str | None = "ca.pem", command: str = "tracker"):
             endpoint = f"https://127.0.0.1:{port}/graphql?private={ENDPOINT_SECRET}"
             workflow.write_text(
                 "---\ntracker:\n  kind: linear\n  active_states: [Todo, Doing]\n"
@@ -175,7 +176,7 @@ def run(binary: Path) -> None:
                 "{{ issue.identifier }}\n"
             )
             arguments = [str(binary), command, str(workflow)]
-            if command == "tracker":
+            if command == "tracker" and ca is not None:
                 arguments += ["--ca-bundle", str(FIXTURES / ca)]
             result = subprocess.run(arguments, cwd=root, env=env, capture_output=True,
                                     text=True, timeout=15)
@@ -272,6 +273,20 @@ def run(binary: Path) -> None:
                     "missing.pem" in result.stderr and "--ca-bundle" in result.stderr,
                     f"missing explicit trust lacks its remedy: {result.stderr!r}")
         scenarios += 2
+
+        # The normal host trust must be usable before an operator supplies an override.
+        trust_file = "/etc/ssl/cert.pem" if sys.platform == "darwin" else "/etc/ssl/certs/ca-certificates.crt"
+        help_result = subprocess.run([str(binary), "tracker", "--help=plain"],
+                                     cwd=root, env=env, capture_output=True, text=True, timeout=15)
+        require(help_result.returncode == 0 and f"absent={trust_file}" in help_result.stdout,
+                f"wrong host trust default: {help_result.stdout!r}")
+        require(Path(trust_file).is_file(), "CI host has no expected system trust bundle")
+        with provider([]) as (port, requests, defects):
+            result = invoke(port, ca=None)
+            require(result.returncode != 0 and not result.stdout and not requests and not defects
+                    and "TLS" in result.stderr and "CA bundle is missing" not in result.stderr,
+                    f"default trust did not reach peer validation: {result.stderr!r}")
+        scenarios += 1
 
     print(f"Tracker CLI: {scenarios} HTTPS scenarios passed")
     print(f"Tracker CLI: {public_cases} public-config scenarios passed")
