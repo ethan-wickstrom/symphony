@@ -37,7 +37,8 @@ end
 
 Instantiate Core with `Tracker.Contract`, `Clock.Pure`, `Workspace.Contract`,
 `Agent.Contract`, `Log.Contract` and `Config`. Instantiate Issue_lifecycle with
-those SAME pure modules; Ownership's instant equals Clock.Pure.instant. The
+`Tracker.Contract`, `Clock.Pure`, `Workspace.Contract` and `Agent.Contract`;
+Ownership's instant equals Clock.Pure.instant. The
 Owner adapter is a projection of Lifecycle.owned, not a second owner datatype
 with copied issue fields. Its `issue` and `role` supply Ownership.Make.
 
@@ -158,6 +159,51 @@ request already freezes workspace reference, child environment, agent settings,
 prompt source and attempt. Scope is derived from the binding/reference; no copied
 scope or credential printer belongs in the owner.
 
+The current Lifecycle draft cannot carry this relationship: its functor takes
+Issue rather than Tracker, and start/resume receive no binding. Refine it before
+implementation:
+
+```ocaml
+module Make
+    (Tracker : Tracker.PURE with type Issue.t = Issue.t)
+    (Clock : Clock.PURE)
+    (Workspace : Workspace_manager.PURE)
+    (Agent : Agent_runner.PURE
+       with module Issue = Tracker.Issue
+        and module Path = Workspace.Path
+        and type workspace = Workspace.reference) : sig
+  (* Existing phase types and source-state transitions. *)
+  val start : unclaimed -> binding:Tracker.binding ->
+    request:Agent.request -> now:Clock.instant -> (starting run, string) result
+  val resume : refreshing retry -> binding:Tracker.binding ->
+    request:Agent.request -> now:Clock.instant -> (starting run, string) result
+  val binding : 'phase run -> Tracker.binding
+end
+```
+
+Store that binding inside the run, alongside its Agent.request; the Owner adapter
+still projects Lifecycle.owned. start/resume check issue/reference identity and
+binding/reference scope once because OCaml cannot prove equal runtime IDs/scopes.
+Continuation reads obtain their original authority through binding, with fresh
+Tracker_read_policy from Config.scheduling. Converting a closed run into a retry
+retains its original workspace reference without retaining obsolete launch auth.
+
+Remove `policy:Scheduling_policy.t` from Agent.PURE.request. The implemented
+Agent_settings already owns max_turns and protocol timeouts; the owner owns
+current eligibility, stall and retry policy. Freezing the whole scheduling policy
+inside an agent request supplies stale, unnecessary authority.
+
+The current Lifecycle draft also cannot ingest retained Agent.progress: it has
+neither observation transitions nor observers for sequence/session/usage/event
+time. Put a closed checked observation carrier inside its run values. Keep those
+facts once in the canonical owner payload and derive snapshot phases and totals;
+do not add a progress map. Show that carrier's signature/algebra before code.
+Its transition boundary checks run/sequence/thread/turn/phase causality. Duplicate
+or older valid reports leave observations unchanged; invalid current observations
+preserve them with a bounded diagnostic. Usage joins absolute watermarks, so
+duplicates contribute zero. The independent list model retains reports to derive
+the same watermark; production retains only the current accepted facts.
+
 Running continuation/reconciliation uses original adapter/auth/io with CURRENT
 checked tracker-read policy. A retry has no live agent auth obligation: for a
 same-scope retry refresh use the current valid binding. Keep the last closed
@@ -263,8 +309,10 @@ for old owners and old request acknowledgements; timer/watcher/listener custody
 still belongs to Host.drain.
 
 Actual Tracker.S.execute accepts only its captured request. Remove obsolete
-`tracker:Tracker.t` from proposed Service.Run.run. Registry authority belongs to
-workflow resolution, not request execution.
+`tracker:Tracker.t` from proposed Service.Run.run. That type exists via CONFIG:
+it is the registry capability, not a request-execution context. Its removal is an
+authority correction, not a fix for an unbound type. Registry authority belongs
+to workflow resolution, not request execution.
 
 ## Time and snapshot gap
 
@@ -437,6 +485,24 @@ Set CI regression thresholds only after measured Linux/macOS baselines; this aud
 does not establish performance numbers.
 
 ## Small vertical slices and required interface gates
+
+The existing .mli blueprints have not yet incorporated this plan. Align Lifecycle's
+binding and monotonic stamps, Agent.request, Ownership's single-PSQ algebra,
+Core's time/snapshot outcomes and Service's post-drain jobs/host failures BEFORE
+implementation. retry_queue.mli does not exist; Ownership is the one keyed owner
+collection, not a second retry container.
+
+Source-external check: copied planning interfaces and a paired compile-only client
+compiled against current domain/workflow/io/workspace CMIs, without casts or
+representation access. The client instantiates Core, Lifecycle and Ownership and
+builds an Ids request from an explicitly supplied binding plus current checked
+read policy. This verifies the existing sharing equalities; it does not verify
+queue behavior, resource closure or conformance. A second temporary client also
+compiled the proposed binding input/observer, removed frozen scheduling argument,
+monotonic Core/lifecycle stamps and host result shapes. It creates a run with its
+binding and builds continuation reads from that run's binding plus current policy.
+This is type evidence for the proposed relationship, not its runtime laws; no
+observation carrier or service implementation was compiled.
 
 1. Token comparators; comparator/backoff/usage algebras and independent models.
    First vertical capability: one startup cleanup barrier, one poll read and one
