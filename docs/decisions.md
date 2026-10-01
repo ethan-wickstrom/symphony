@@ -444,6 +444,13 @@ and incomplete/repeated markers remain invalid.
 
 ## Slice 3 tracker choices
 
+The CLI's default trust file comes from Dune's compiler target: macOS uses
+`/etc/ssl/cert.pem`, Linux uses `/etc/ssl/certs/ca-certificates.crt`. The host
+composition passes this constant to the CLI. Explicit `--ca-bundle` overrides
+remain available; absent files fail closed. There is no runtime platform probe
+or filesystem search. A real Ubuntu regression exposed the previous macOS-only
+default; the same scenario passes on macOS.
+
 D14: provider scope is `linear:` plus SHA256 of the length-prefixed endpoint and
 project bytes. API keys are excluded. Each component is encoded as decimal byte
 length, colon, exact bytes; concatenation is unambiguous. Credentials may rotate
@@ -451,11 +458,13 @@ without changing ownership, while endpoint/project changes fence old workspaces.
 This prevents operator URL query secrets from entering owner files. No pre-release
 owner migration or compatibility path is retained.
 
-The explicit HTTPS host reads `/etc/ssl/cert.pem` by default on macOS and Linux
-musl; `--ca-bundle` selects another bounded PEM file. Missing or invalid trust fails
+The explicit HTTPS host uses the compiler-target trust file described above;
+`--ca-bundle` selects another bounded PEM file. Missing or invalid trust fails
 closed and names the path. Trust is never inferred from global proxy/TLS environment
-variables. TLS's global RNG is activated once, explicitly, using the supported
-stateless Getentropy generator; no per-client RNG claim.
+variables. All registries share one host-owned deferred crypto runtime. First use
+adopts an existing global generator or installs supported stateless Getentropy
+when absent. No per-client RNG claim. Repeated reads cannot replace one another's
+runtime; a foreign replacement still produces an explicit failure.
 
 H1 replaces the planned Cohttp client after a source and behavior audit. H1's
 chunk-length and closed-reader errors needed three narrow parser corrections;

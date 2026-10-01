@@ -6,10 +6,25 @@ interprets `native_ref`. Provider tools, issue writes and OAuth inference are ab
 | Setting | Meaning |
 | --- | --- |
 | `tracker.kind` | `linear` |
-| `tracker.endpoint` | HTTPS GraphQL URL; default `https://api.linear.app/graphql`. Reject userinfo, fragment, malformed host/port and unsafe request-target bytes. |
-| `tracker.project_slug` | Required nonempty Linear project slug ID; exact provider-side filter, verified on returned records. |
-| `tracker.api_key` | Personal API key, literal or `$VAR`; absent uses `LINEAR_API_KEY`. Seal as destination-bound Authorization value. |
-| `tracker.active_states`, `terminal_states` | Explicit nonempty disjoint lists required by D01; normalized Unicode lowercase names. |
+| `tracker.provider.endpoint` | HTTPS GraphQL URL; default `https://api.linear.app/graphql`. Reject userinfo, fragment, malformed host/port and unsafe request-target bytes. |
+| `tracker.provider.project_slug` | Required nonempty Linear project slug ID; exact provider-side filter, verified on returned records. |
+| `tracker.provider.api_key` | Personal API key, literal or `$VAR`; absent uses `LINEAR_API_KEY`. Seal as destination-bound Authorization value. |
+| `tracker.active_states`, `tracker.terminal_states` | Explicit nonempty disjoint lists required by D01; normalized Unicode lowercase names. |
+
+Minimal workflow, with the credential supplied through the environment:
+
+```markdown
+---
+tracker:
+  kind: linear
+  active_states: [Todo, In Progress]
+  terminal_states: [Done, Canceled]
+  provider:
+    api_key: $LINEAR_API_KEY
+    project_slug: your-project-slug
+---
+Work on {{ issue.identifier }}: {{ issue.title }}.
+```
 
 Configuration is pure: no clock sample, trust read, RNG initialization or request.
 The adapter declares `LINEAR_API_KEY` and any referenced credential variable as
@@ -89,8 +104,9 @@ JSON/envelopes or GraphQL errors reject the whole read. No partial-data acceptan
 hidden retries or cooldown mutation occurs inside the adapter. Errors use §11.4
 categories with redacted remedies; cancellation and defects keep identity/backtrace.
 
-The host supplies network, clock, trust and crypto capabilities. The selected macOS
-and Linux musl profile defaults to `/etc/ssl/cert.pem`; `tracker --ca-bundle FILE`
+The host supplies network, clock, trust and crypto capabilities. The compiler's
+macOS target defaults to `/etc/ssl/cert.pem`; its Linux target defaults to
+`/etc/ssl/certs/ca-certificates.crt`. `tracker --ca-bundle FILE`
 uses a different bounded PEM bundle, including the portable fake's CA. A missing
 bundle names the file and fails closed. The bundle supplies explicit certificate
 trust anchors; parsing checks certificate encoding, not anchor self-signature,
@@ -102,7 +118,9 @@ trust-all path, ambient proxy, redirect following or raw wire log.
 Maintained H1 handles HTTP/1.1 framing. Its pinned parser fixes and independent
 controls are documented in [patch provenance](../../vendor/h1/SYMPHONY_PATCHES.md).
 Chunk extensions and trailers are unsupported and fail closed. TLS uses the library
-global RNG; host activation installs supported stateless Getentropy once per process.
+global RNG. One host-owned deferred runtime is shared across reads and registry
+reloads; first use adopts an existing generator or installs supported stateless
+Getentropy when absent. Workflow/workspace inspection performs no activation.
 This is explicit initialization, not per-client RNG isolation.
 
 The driver preserves defects and the backtrace it receives at dependency boundaries.

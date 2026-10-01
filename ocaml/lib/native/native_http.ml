@@ -1,3 +1,13 @@
+type runtime = Mirage_crypto_rng.g Eio.Lazy.t
+
+let defer () =
+  Eio.Lazy.from_fun ~cancel:`Protect (fun () ->
+      match Mirage_crypto_rng.default_generator () with
+      | installed -> installed
+      | exception Mirage_crypto_rng.No_default_generator ->
+          Mirage_crypto_rng_unix.use_default ();
+          Mirage_crypto_rng.default_generator ())
+
 module Make (Clock : Clock.S) = struct
   module Deadline = Deadline.Make (Clock)
 
@@ -15,7 +25,7 @@ module Make (Clock : Clock.S) = struct
   type credential = { destination : endpoint; authorization : string }
   type response = Http_transport.response
   type trust = X509.Certificate.t list
-  type runtime = Runtime of Mirage_crypto_rng.g
+  type nonrec runtime = runtime
 
   type limits = {
     request_bytes : int;
@@ -232,10 +242,6 @@ module Make (Clock : Clock.S) = struct
         (diagnostic "Invalid tracker HTTP limits"
            "Set positive request, header, body, wire and timeout limits")
     else Ok { request_bytes; header_bytes; body_bytes; wire_bytes; timeout }
-
-  let activate () =
-    Mirage_crypto_rng_unix.use_default ();
-    Runtime (Mirage_crypto_rng.default_generator ())
 
   let create ~net ~clock ~trust ~runtime ~limits =
     {
@@ -624,12 +630,7 @@ module Make (Clock : Clock.S) = struct
         exchange flow t.limits credential headers body)
 
   let post t credential ~body =
-    let (Runtime installed) = t.runtime in
-    if Mirage_crypto_rng.default_generator () != installed then
-      Error
-        (diagnostic "Tracker crypto runtime was replaced"
-           "Activate one crypto runtime for the host process")
-    else if Json.encoded_bytes body > t.limits.request_bytes then
+    if Json.encoded_bytes body > t.limits.request_bytes then
       Error (budget "request")
     else
       Result.bind
@@ -640,5 +641,16 @@ module Make (Clock : Clock.S) = struct
             ~on_timeout:(fun () ->
               diagnostic "Tracker HTTP deadline exceeded"
                 "Check tracker availability or increase the documented timeout")
-            (fun () -> request t credential headers body))
+            (fun () ->
+              let installed = Eio.Lazy.force t.runtime in
+              let current =
+                match Mirage_crypto_rng.default_generator () with
+                | current -> current == installed
+                | exception Mirage_crypto_rng.No_default_generator -> false
+              in
+              if current then request t credential headers body
+              else
+                Error
+                  (diagnostic "Tracker crypto runtime was replaced"
+                     "Keep one crypto runtime for the host process")))
 end

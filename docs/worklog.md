@@ -51,12 +51,16 @@ tested through the actual adapter against a loopback HTTPS fake with an explicit
 Implemented ordered issue batches, frozen registry bindings, Linear envelope/record/
 page parsing and atomic pagination. Independent list/query models cover these paths.
 A generic exact deadline joins losing work before converting its outcome.
-Native HTTPS passes 17 controls; the real inspection binary passes 18 loopback HTTPS
+Native HTTPS passes 21 controls; the real inspection binary passes 19 loopback HTTPS
 scenarios, including peer verification, pagination, redaction and atomic failures.
 The existing 27 workflow/workspace CLI scenarios remain green. Four independent
 pagination budgets now have precise boundary controls. H1's narrow framing repairs
 pass eleven examples and 1,000 property samples; its frozen-source gate passes.
 Configuration and IO capture remain pure; explicit reads activate network/trust/crypto.
+Every registry shares one deferred host crypto witness. Overlapping paginated
+reads no longer replace the process RNG. Compiler-target CA defaults select the
+macOS or Linux system bundle; explicit overrides retain their precedence.
+Both review repairs have real failing controls before their fixes.
 
 An abstract public environment now eliminates exact credential reuse through
 ordinary config fields, JSON assembly, diagnostics and child aliases. Deferred
@@ -65,12 +69,18 @@ Fresh checked read policy is separate from frozen provider/auth settings; termin
 reloads update blocker decisions without rotating an existing run's credentials.
 Independent review found no remaining blocker in these contracts.
 
-Full local gates pass: 241 core cases (61 properties), 62 real CLI scenarios,
-74 native cases normally/optimized, 39 source controls, 16 protocol corruption
-controls and 22 Crowbar groups × 10,000 seeded invocations. The sandbox blocks
-PID-specific `ps` controls; the complete gate passed outside it. Framing provenance
-passes six corruption controls in both Python modes. Pinned Elixir's 302 tests,
-coverage, lint and Dialyzer also pass. Hosted CI/publication/merge are next.
+Final serial gates pass: 241 core cases (61 properties), 63 CLI scenarios,
+78 native cases per mode, 235 source/interface files, 39 source controls,
+16 protocol corruption controls and 22 Crowbar groups × 10,000 invocations.
+Both native manifests bind 156 selected source hashes and the runner/sentinel.
+An overlapping gate run failed child publication and an Elixir response timeout;
+its cause remains unproven. A deliberate startup delay reproduced the watchdog
+fixture race. Bounded READY admission fixes that control without changing the
+production timeout or PID probes. Normal/optimized full controls now pass.
+Pinned Elixir passes alone: 302 tests, six skips, coverage/lint/Dialyzer green.
+The sandbox blocks PID-specific `ps` probes, so native validation runs outside it.
+Framing provenance passes six corruption controls in both Python modes.
+PR #3 is open; final hosted CI/publication/merge remain next.
 Final review found that the first native manifests predated the source-inventory
 expansion. Both native modes were rerun successfully with the final runner;
 the new evidence binds the expanded domain/IO/workflow source inventory.
@@ -147,6 +157,13 @@ analysis was unavailable at its diff-size limit; Sourcery exceeded its file limi
 - `/private/tmp/symphony-slice3-elixir-pinned-gate.log`
 - `/private/tmp/symphony-slice3-final-native/manifest.json`
 - `/private/tmp/symphony-slice3-final-native-optimized/manifest.json`
+- `/private/tmp/symphony-slice3-reviewed-serial-check.log`
+- `/private/tmp/symphony-slice3-reviewed-fuzz.log`
+- `/private/tmp/symphony-slice3-reviewed-elixir-isolated.log`
+- `/private/tmp/symphony-watchdog-admission-red-receipt.json`
+- `/private/tmp/symphony-watchdog-admission-green-optimized.log`
+- `/private/tmp/symphony-ca-default-linux-red.log`
+- `/private/tmp/symphony-registry-crypto-red.log`
 
 ## Boundaries
 

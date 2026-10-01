@@ -28,9 +28,7 @@ let read_issue io ~cwd filename =
       ^ ": " ^ Text.escape message ^ "; fix the normalized issue JSON")
     (Prompt_fixture.parse text)
 
-let default_ca_bundle = "/etc/ssl/cert.pem"
-
-let run ~fs ~net ~clock ~cwd ~env ~argv ~out ~err =
+let run ~fs ~net ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out ~err =
   let io = Workflow_file.make fs in
   let load ?(ca_bundle = default_ca_bundle) filename =
     let* file = Workflow_path.resolve ~base:cwd filename in
@@ -38,7 +36,7 @@ let run ~fs ~net ~clock ~cwd ~env ~argv ~out ~err =
     let* registry =
       Result.map_error
         (fun e -> Diagnostic.render (Tracker_error.diagnostic e))
-        (Tracker_runtime.registry ~fs ~net ~clock ~cwd ~ca_bundle
+        (Tracker_runtime.registry ~fs ~net ~clock ~runtime ~cwd ~ca_bundle
            ~warning:(fun text -> Format.fprintf err "%s\n%!" text))
     in
     let* config =

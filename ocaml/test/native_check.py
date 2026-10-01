@@ -171,6 +171,8 @@ def main():
     sources += sorted((root / "test/native_kernel").glob("*.ml*"))
     sources += sorted((root / "test/native_host").glob("*.ml*"))
     sources += sorted((root / "test").glob("native_http_test.ml*"))
+    sources += sorted((root / "test").glob("tracker_runtime_test.ml*"))
+    sources += sorted((root / "bin").glob("tracker_runtime.ml*"))
     sources += sorted((root / "test/fixtures/tls").glob("*"))
     hashes = {
         str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()

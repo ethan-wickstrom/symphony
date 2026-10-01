@@ -67,8 +67,10 @@ _build/default/bin/main.exe tracker /path/to/WORKFLOW.md
 _build/default/bin/main.exe tracker /path/to/WORKFLOW.md --ca-bundle /path/to/anchors.pem
 ```
 
-The default explicit trust file is `/etc/ssl/cert.pem`. Results are an ordered JSON
-array emitted only after every page succeeds. Missing required records produce
+The default trust file is `/etc/ssl/cert.pem` on macOS and
+`/etc/ssl/certs/ca-certificates.crt` on Linux, selected by the compiler target.
+Results are an ordered JSON array emitted only after every page succeeds.
+Missing required records produce
 bounded warnings on stderr; malformed envelopes, pagination, TLS or limits fail
 the read. No workflow/workspace inspection triggers networking. See the published
 [Linear profile](../docs/adapters/linear.md) for scope, eligibility, errors and bounds.

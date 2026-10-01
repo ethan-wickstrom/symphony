@@ -185,10 +185,13 @@ no detached flow or initial connection pool. Credentials remain destination-boun
 TLS Eio requires an installed library RNG; its client configuration does not offer
 a per-client RNG argument. Confine that library-global initialization to the explicit
 host crypto-runtime bracket and document the limitation. Do not claim per-client
-RNG isolation or move initialization into pure adapter parsing. Use the supported
-stateless Getentropy generator once at host activation; it owns no background fiber
-or descriptor. A runtime witness records initialization, not protection from another
-library changing the global.
+RNG isolation or move initialization into pure adapter parsing. Share one deferred
+runtime from host composition through every registry/read and clock instantiation.
+First admitted use adopts an existing default or installs supported stateless
+Getentropy when absent. The bootstrap owns no background fiber or descriptor.
+A runtime witness records initialization, not protection from another library
+changing the global. The actual overlapping-registry regression must complete
+both reads without a replacement failure.
 [TLS client configuration](https://raw.githubusercontent.com/mirleft/ocaml-tls/v2.1.3/lib/config.mli).
 
 The portable fake serves HTTPS on loopback, with a test certificate for the declared

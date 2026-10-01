@@ -1,11 +1,32 @@
 (** Native HTTPS mechanism over H1's public one-shot connection codec. Tracker
     policy and pagination remain above this port. *)
 
+type runtime
+(** One host-owned, deferred process crypto bootstrap, shared by every registry
+    and clock instantiation. Its representation contains no client transport. *)
+
+val defer : unit -> runtime
+(** Pure capture: does not query or change the global RNG. The first admitted
+    [post] lazily adopts an existing default generator, or installs the
+    supported Getentropy default if none exists. Concurrent forces initialize
+    once through [Eio.Lazy] and retain the same witness for this host's
+    lifetime.
+
+    Initialization is short and cancellation-protected. A cancellation already
+    observed by the read deadline prevents initialization; cancellation after
+    admission is delivered by the enclosing read scope after initialization.
+    Unknown bootstrap defects retain identity/backtrace and are memoized.
+
+    TLS uses Mirage's process-global default. The host must pass this same value
+    to all clients and retain any preexisting generator's owner. No background
+    fiber, descriptor, reset, or guarantee against a foreign global replacement.
+*)
+
 module Make (Clock : Clock.S) : sig
   include Http_transport.S
 
   type trust
-  type runtime
+  type nonrec runtime = runtime
   type limits
 
   val trust : pem:string -> (trust, Diagnostic.t) result
@@ -32,17 +53,6 @@ module Make (Clock : Clock.S) : sig
       distinguishes EOF from excess data; excess is rejected without reaching
       the codec or retained response. Response headers stay fail-closed. *)
 
-  val activate : unit -> runtime
-  (** Privileged host bootstrap: install Mirage_crypto_rng_unix.use_default once
-      for this process, only when activating tracker reads. The supported
-      Getentropy generator has no background fiber or owned descriptor.
-
-      TLS uses the library's process-global default generator. The host owns
-      this single installation for its process lifetime; clients do not replace
-      or reset it. This witness records initialization, not a scoped RNG or a
-      guarantee against another library mutating that global. No private unset
-      API or deprecated RNG wrapper is used. *)
-
   val create :
     net:_ Eio.Net.t ->
     clock:Clock.t ->
@@ -50,9 +60,12 @@ module Make (Clock : Clock.S) : sig
     runtime:runtime ->
     limits:limits ->
     t
-  (** Pure capability capture. [post] alone samples the supplied clock and uses
-      the network. TLS checks the credential's destination host/IP against the
-      explicit anchors, with a checked wall sample and HTTP/1.1 ALPN.
+  (** Pure capability capture. [post] alone forces the shared runtime, samples
+      the supplied clock and uses the network. Failed request/header preflight
+      does not force crypto. A foreign replacement or removal of the witnessed
+      generator is a redacted diagnostic before network use. TLS checks the
+      credential's destination host/IP against the explicit anchors, with a
+      checked wall sample and HTTP/1.1 ALPN.
 
       One child switch owns each socket, TLS flow and input/output pump. An
       exact monotonic post deadline spans DNS, connect, handshake and body. The

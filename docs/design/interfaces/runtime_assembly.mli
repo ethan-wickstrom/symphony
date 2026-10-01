@@ -17,9 +17,9 @@ module Config :
 
 val registry : Linear.io -> (Registry.t, Tracker_error.t) result
 (** One entry packages exactly Linear.settings and Linear.io. The host supplies
-    explicit net/fs/clock/trust capabilities to the deferred HTTP factory;
-    Linear.io only captures the closure. Crypto activation occurs only for an
-    explicit tracker read or service run. Offline Config.resolve cannot activate
+    explicit net/fs/clock/trust capabilities and one shared deferred crypto
+    runtime to every HTTP factory; Linear.io only captures the closure. Crypto
+    activation occurs only for an explicit tracker read. Offline Config.resolve cannot activate
     crypto or read trust.
 
     Keep the host capability scope open until all old binding work drains.

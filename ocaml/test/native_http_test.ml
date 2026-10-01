@@ -410,9 +410,44 @@ let constructors () =
     (Http.limits ~request_bytes:1 ~header_bytes:1 ~body_bytes:1 ~wire_bytes:1
        ~timeout:Milliseconds.zero)
 
+let adoption _runtime () =
+  let installed = Mirage_crypto_rng.default_generator () in
+  defect (Native_http.defer ()) ();
+  Alcotest.(check bool)
+    "preexisting generator retained" true
+    (Mirage_crypto_rng.default_generator () == installed)
+
+let replacement runtime () =
+  let installed = Mirage_crypto_rng.default_generator () in
+  Fun.protect
+    ~finally:(fun () -> Mirage_crypto_rng.set_default_generator installed)
+    (fun () ->
+      (* A foreign owner changes the process global after this runtime was used. *)
+      Mirage_crypto_rng_unix.use_default ();
+      Eio_posix.run (fun host ->
+          let clock =
+            Test_clock.Defective
+              ( Clock_posix.create
+                  ~mono:(Eio.Stdenv.mono_clock host)
+                  ~wall:(Eio.Stdenv.clock host),
+                Sample_defect )
+          in
+          let endpoint = succeeded (Http.endpoint "https://localhost:1/") in
+          let credential =
+            succeeded
+              (Http.credential endpoint ~scheme:Http.Bearer
+                 ~token:"fixture-token")
+          in
+          let http =
+            Http.create ~net:(Eio.Stdenv.net host) ~clock
+              ~trust:(trust (Eio.Stdenv.cwd host) Trusted)
+              ~runtime ~limits:(limits ())
+          in
+          rejected (Http.post http credential ~body)))
+
 let () =
   Printexc.record_backtrace true;
-  let runtime = Http.activate () in
+  let runtime = Native_http.defer () in
   let case name run = Alcotest.test_case name `Quick (run runtime) in
   Alcotest.run "native HTTPS"
     [
@@ -431,9 +466,12 @@ let () =
           case "deadline closes socket" timeout;
           case "external cancellation closes socket" cancellation;
           case "clock defect identity and backtrace" defect;
+          case "preexisting RNG is adopted unchanged" adoption;
           case "request preflight" preflight;
           Alcotest.test_case "checked constructors" `Quick constructors;
           case "close-delimited exact wire limit" wire_exact;
           case "close-delimited extra byte rejected" wire_excess;
+          case "foreign RNG replacement precedes TLS" replacement;
         ] );
+      ("registry runtime", Tracker_runtime_test.tests);
     ]

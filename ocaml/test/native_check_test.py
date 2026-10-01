@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 import native_check
@@ -19,6 +20,7 @@ READY_TIMEOUT = 5
 INTERRUPT_TIMEOUT = 8
 GATE_TIMEOUT = 1
 GATE_OUTER_TIMEOUT = 12
+ADMISSION_DELAY = GATE_TIMEOUT * 2
 
 
 class Stage(Enum):
@@ -40,7 +42,7 @@ def running(pid):
     return bool(state) and not state.startswith("Z")
 
 
-def group_fixture(base, finish):
+def group_fixture(base, finish, *, admission):
     helper = base / "helper"
     receipt = base / "group.pid"
     helper.write_text(
@@ -50,6 +52,7 @@ def group_fixture(base, finish):
         f"receipt = Path({str(receipt)!r})\n"
         f"ready = Path({str(base / 'ready')!r})\n"
         "signal.signal(signal.SIGTERM, lambda *_: os._exit(0))\n"
+        f"time.sleep({admission})\n"
         "child = os.fork()\n"
         "if child == 0:\n"
         "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
@@ -90,7 +93,7 @@ class NativeWatchdogTest(unittest.TestCase):
         # its independent owner and must finish after TERM/kill/sole reap.
         with tempfile.TemporaryDirectory(prefix="symphony-http-hang-") as base:
             base = Path(base)
-            helper, receipt = group_fixture(base, f"time.sleep({FIXTURE_LIFETIME})")
+            helper, receipt = group_fixture(base, f"time.sleep({FIXTURE_LIFETIME})", admission=0)
             try:
                 outcome = native_check.execute(helper, base / "run.log", GATE_TIMEOUT)
                 self.assertEqual("timeout", outcome["status"])
@@ -118,7 +121,7 @@ class NativeWatchdogTest(unittest.TestCase):
                 targets[name] = helper
             directory = base / "http"
             directory.mkdir()
-            helper, receipt = group_fixture(directory, f"time.sleep({FIXTURE_LIFETIME})")
+            helper, receipt = group_fixture(directory, f"time.sleep({FIXTURE_LIFETIME})", admission=0)
             out = base / "evidence"
             try:
                 probe = subprocess.run(
@@ -189,7 +192,7 @@ class NativeWatchdogTest(unittest.TestCase):
     def test_normal_closes_group(self):
         with tempfile.TemporaryDirectory(prefix="symphony-watchdog-normal-") as base:
             base = Path(base)
-            helper, receipt = group_fixture(base, "os._exit(0)")
+            helper, receipt = group_fixture(base, "os._exit(0)", admission=0)
             try:
                 outcome = native_check.execute(helper, base / "run.log", READY_TIMEOUT)
                 self.assertEqual(0, outcome["status"])
@@ -203,7 +206,7 @@ class NativeWatchdogTest(unittest.TestCase):
     def interrupt_group(self, requested, stage):
         with tempfile.TemporaryDirectory(prefix="symphony-watchdog-interrupt-") as base:
             base = Path(base)
-            helper, receipt = group_fixture(base, f"time.sleep({FIXTURE_LIFETIME})")
+            helper, receipt = group_fixture(base, f"time.sleep({FIXTURE_LIFETIME})", admission=0)
             runner_file = base / "runner.py"
             admission = base / "admission"
             release = base / "release"
@@ -291,35 +294,40 @@ class NativeWatchdogTest(unittest.TestCase):
     def test_term_leader_child(self):
         with tempfile.TemporaryDirectory(prefix="symphony-watchdog-") as base:
             base = Path(base)
-            child_file = base / "child.pid"
-            helper = base / "helper"
-            helper.write_text(
-                f"#!{sys.executable}\n"
-                "import os, signal, time\n"
-                "from pathlib import Path\n"
-                f"receipt = Path({str(child_file)!r})\n"
-                "signal.signal(signal.SIGTERM, lambda *_: os._exit(0))\n"
-                "child = os.fork()\n"
-                "if child == 0:\n"
-                "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
-                "    receipt.write_text(str(os.getpid()))\n"
-                "    time.sleep(20)\n"
-                "    os._exit(0)\n"
-                "time.sleep(20)\n"
+            helper, receipt = group_fixture(
+                base, f"time.sleep({FIXTURE_LIFETIME})", admission=ADMISSION_DELAY
             )
-            helper.chmod(0o700)
-            child = None
+            wait_exit = native_check.wait_exit
+
+            def ready_wait(child, timeout, observe):
+                # Admission is bounded separately; timeout tests an owned child
+                # whose TERM-ignore disposition and PID receipt already exist.
+                deadline = time.monotonic() + READY_TIMEOUT
+                while not receipt.is_file():
+                    observe()
+                    exited = os.waitid(
+                        os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT
+                    )
+                    if exited is not None:
+                        return wait_exit(child, timeout, observe)
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(child.args, READY_TIMEOUT)
+                    time.sleep(min(native_check.POLL_INTERVAL, remaining))
+                return wait_exit(child, timeout, observe)
+
             try:
-                outcome = native_check.execute(helper, base / "run.log", 1)
+                with patch.object(native_check, "wait_exit", ready_wait):
+                    outcome = native_check.execute(helper, base / "run.log", GATE_TIMEOUT)
                 self.assertEqual("timeout", outcome["status"])
-                self.assertTrue(child_file.is_file(), "helper did not publish its child")
-                child = int(child_file.read_text())
-                self.assertFalse(
-                    running(child),
-                    "TERM exited the leader but watchdog left its ignoring child alive",
-                )
+                self.assertTrue(receipt.is_file(), "helper did not publish its child")
+                for text in receipt.read_text().split():
+                    self.assertFalse(
+                        running(int(text)),
+                        "TERM exited the leader but watchdog left its ignoring child alive",
+                    )
             finally:
-                await_fixtures(child_file)
+                await_fixtures(receipt)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ let body_bytes = 1_048_576
 let wire_bytes = 2_097_152
 let timeout_ms = "10000"
 
-let transport ~fs ~net ~clock ~cwd ca_bundle () =
+let transport ~runtime ~fs ~net ~clock ~cwd ca_bundle () =
   let site =
     Diagnostic.Workflow { file = ca_bundle; key = None; line = None }
   in
@@ -37,11 +37,11 @@ let transport ~fs ~net ~clock ~cwd ca_bundle () =
   let* limits =
     Http.limits ~request_bytes ~header_bytes ~body_bytes ~wire_bytes ~timeout
   in
-  Ok (Http.create ~net ~clock ~trust ~runtime:(Http.activate ()) ~limits)
+  Ok (Http.create ~net ~clock ~trust ~runtime ~limits)
 
-let registry ~fs ~net ~clock ~cwd ~ca_bundle ~warning =
+let registry ~runtime ~fs ~net ~clock ~cwd ~ca_bundle ~warning =
   let io =
-    Linear.io ~clock ~http:(transport ~fs ~net ~clock ~cwd ca_bundle)
+    Linear.io ~clock ~http:(transport ~runtime ~fs ~net ~clock ~cwd ca_bundle)
       ~omitted:(fun omission ->
         warning (Diagnostic.render (Linear_omission.diagnostic omission));
         Ok ())

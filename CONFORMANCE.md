@@ -53,7 +53,7 @@ Seeded whole-service Eio simulation, orchestrator model agreement, static releas
 Crowbar random campaigns are distinct from instrumented AFL coverage.
 
 Current local application gate: 241 example/property tests (61 properties),
-232 source/interface files, 62 CLI scenarios, 39 source-gate controls, and 220,000
+235 source/interface files, 63 CLI scenarios, 39 source-gate controls, and 220,000
 Crowbar invocations in 22 groups at seed `20260930` pass.
 Build, formatting, interface pairing and protocol snapshot checks pass, normally
 and optimized, with 16 corrupted-fixture controls.
@@ -61,7 +61,7 @@ and optimized, with 16 corrupted-fixture controls.
 The policy also checks 100 explicit fault/cancellation scenarios, a full rollback
 trace and persistent-driver operation sequences. Separate native tests exercise
 physical locks, filesystem identities, exact-source ownership/retirement and
-actual hook subprocesses through the public host: 50 kernel, seven Host and 17 HTTPS cases
+actual hook subprocesses through the public host: 50 kernel, seven Host and 21 HTTPS cases
 pass under the watchdog in both modes. The lifetime gate checks 1,000
 seeded real Eio mock scenarios, including rejected callbacks and release/reporter
 defects; this is not yet the whole-service simulator. Retained frozen process
@@ -69,6 +69,10 @@ custody passes on Linux/glibc and macOS. Musl/static linkage remains unverified.
 The macOS development binary currently loads Homebrew GMP; a release must link
 that archive statically and pass a clean-host dependency check before claiming
 a single-file deployment.
+Compiler-target trust defaults and one shared deferred crypto runtime pass real
+CLI and overlapping registry controls. A delayed-start watchdog control separates
+bounded fixture readiness from the unchanged run timeout and retains actual PID
+probes after TERM/KILL cleanup.
 Hook-result regressions preserve timeout, exit and stream failures across cleanup
 errors; native cases check semantic identity, mapper suppression and conversion
 only after reap. The caller's error type passes directly through both brackets.

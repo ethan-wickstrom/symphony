@@ -51,10 +51,14 @@
   zarith
   eio_posix))
 
+(copy_files# ../bin/tracker_runtime.ml*)
+
 (executable
  (name native_http_test)
- (modules native_http_test)
+ (modules native_http_test tracker_runtime tracker_runtime_test)
  (libraries
+  symphony_workflow
+  symphony_tracker
   symphony_native
   symphony_io
   symphony_domain
@@ -63,6 +67,8 @@
   alcotest
   tls-eio
   x509
+  mirage-crypto-rng
+  mirage-crypto-rng.unix
   h1
   bstr
   unix))
