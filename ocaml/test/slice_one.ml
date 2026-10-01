@@ -14,6 +14,7 @@ let () =
     @ Tests.properties ~registry @ Domain_test.properties
     @ Registry_test.properties @ Workspace_key_test.properties
     @ Workspace_reference_test.properties @ Workspace_policy_test.properties
+    @ Workspace_owner_test.properties
   in
   let property_cases =
     List.mapi
@@ -31,6 +32,7 @@ let () =
       ("registry", Registry_test.tests);
       ("workspace keys", Workspace_key_test.tests);
       ("workspace references", Workspace_reference_test.tests);
+      ("workspace owners", Workspace_owner_test.tests);
       ("workspace policy", Workspace_policy_test.tests);
       ("properties", property_cases);
     ]

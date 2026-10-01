@@ -47,21 +47,24 @@ Codex review found no major issues. Slice 2 starts on `ethan/ocaml-workspaces`.
 Checked keys are implemented and independently reviewed. Live directory ownership,
 hooks and workspace inspection remain pending. The Eio group-custody source patch
 is under host testing and is not yet installed into the application switch.
-Frozen references and pure hook policy now pass their independent model/fake suite.
+Frozen references, the strict ownership codec and pure hook policy pass their
+independent model/fake suite. Ownership now includes opaque issue IDs to reject
+historical identifier reuse. No physical acquisition/ownership claim yet.
 
 ## Verified locally
 
 - macOS arm64; OCaml 5.5.0, Dune 3.24.0, ocamlformat 0.28.1.
 - `just check` passed: build, fatal enabled warnings, formatting and all checks below.
-- 70 Alcotest cases: 48 examples and 22 properties, 16,500 generated model/law cases.
+- Current application gate: 96 Alcotest cases, 63 examples and 33 properties,
+  29,500 generated model/law cases. Log: `/private/tmp/symphony-owner-check-final.log`.
 - 19 CLI scenarios: workflow paths/default/anchoring, strict rendering/attempts,
   literal issue text, metadata, actionable errors, redaction and bounded file reads.
 - Generated policy snapshot/digest check passed.
-- Compiler-AST source gate checked 96 application source/interface files;
+- Compiler-AST source gate checked 120 application source/interface files;
   all 34 positive/negative controls passed.
-- Crowbar seed `20260930`: 13 groups × 10,000 = 130,000 invocations passed
-  after all production fixes, including combined issue-fixture parsing/rendering.
-  A separate 12 × 1,000 smoke campaign passed. These are random/curated cases,
+- Crowbar seed `20260930`: 15 groups × 10,000 = 150,000 invocations passed,
+  including ownership JSON and combined issue-fixture parsing/rendering.
+  Log: `/private/tmp/symphony-owner-fuzz.log`. These are random/curated cases,
   not an instrumented AFL coverage result.
 - Locked dependency installation with both source pins completed with no changes.
 - Final independent review fixed malformed URI acceptance, substituted credential
@@ -90,19 +93,15 @@ opam build sandbox after bwrap failed, so this is no build-isolation claim.
 ## Next action
 
 Finish the Eio group custody gate before live directory/hook implementation.
-Quiet stress found both a SIGCHLD waiter hang and Darwin transitional EPERM.
-Refine custody to Held/Reaping/Reaped: only one finalizer may reap, outside the
-short mutex in an Eio system thread. Preserve uncertain permission errors as
-explicit cleanup results; retain the final group KILL sweep. No user decision is
-pending. Frozen references and pure hook policy have passed independently; live
-directory/hook work still waits on this gate.
-
-The result-valued prototype passed its first 5,000-scenario campaign and separate
-public-close cancellation/concurrent-close controls. Its second campaign hung in
-exit observation with a retained zombie, before close. Replace that remaining
-SIGCHLD dependency with a custody-owned blocking WNOWAIT producer; cancellation
-may send only short owned KILL requests, then cleanup joins a started producer and
-reaps once. This refinement is under host stress, not installed or approved as green.
+The blocking WNOWAIT observer removed the sampled SIGCHLD hang and passed repeated
+5,000-scenario campaigns plus deterministic queued-producer revocation. Review then
+reproduced Eio thread-creation failure escaping the suspended fiber's finalizers.
+An isolated scheduler correction resumes that continuation with its original error
+and preserves cleanup. Reserve one producer before fork, retain it through exit
+observation and sole reap, and fence cancellation during launch. This removes the
+post-fork thread-allocation failure class. Revised host stress/review is pending.
+Preserve uncertain Darwin EPERM as a result; retain the final group KILL sweep.
+No user decision is pending. The source patch is not installed or claimed green.
 
 Review the full Algebra-Driven Design manuscript at source commit
 `118aa81a48fb46255dfe4503cbcdee6d893098c9`. The main prose manuscript has been read:
@@ -115,10 +114,9 @@ Do not equate a delivered termination request with a closed OS process group.
 
 - Key construction follows its interface and independent byte-list policy model.
   Thirteen separately generated Python SHA-256 whole-output vectors match.
-- The combined check passes: 77 tests, 21,500 model/law cases, 19 CLI scenarios
-  normally/optimized, 102 paired source files, 34 source and 16 corruption controls.
-- Crowbar seed `20260930`: 14 × 10,000 = 140,000 invocations pass, including
-  exact changed/unchanged key length boundaries. Formatting and locked install pass.
+- The current complete check/fuzz counts are recorded above. Keys include exact
+  changed/unchanged length boundaries; owner tests cover record/escaped-encoding
+  bounds, canonical int64 bits, strict fields/version and changed issue identity.
 - Refined 56 component/support sketches plus assembly witness type-check on 5.5.
   Temporary copies normalize pre-existing blueprint doc attachment; live source
   interfaces pass the normal fatal-warning/format gate without that normalization.
@@ -140,10 +138,10 @@ The user supplied the full Algebra-Driven Design GitHub manuscript. It replaces
 the sample-only source and its unavailable-site note, without changing the active
 workspace slice or the approved build order.
 
-The manuscript audit refined the workspace contract before live instantiation:
-remove unused Issue sharing, equate the required Path.t brand, and return a checked
-path result. A 57-interface assembly witness passes on OCaml 5.5 after temporary
-blueprint doc normalization. Reference/policy tests are integrated: the complete
-local check passes 89 tests, 27,500 sampled cases, 114 paired source files, 19 CLI
-scenarios normally/optimized, 34 source and 16 corruption controls. The new fake
-tests establish policy traces and value freezing, not real filesystem/process safety.
+The manuscript audit removed unused Issue sharing, equated the required Path.t
+brand, and made path access checked. The 57-interface assembly witness passed on
+OCaml 5.5 after temporary blueprint doc normalization. The identity review added
+opaque issue IDs to references and ownership records; it does not restore unused
+Issue module sharing. Fake/model tests establish policy and codec observations,
+not real filesystem/process safety. The latest acceptance continues the approved
+build order without another approval gate.

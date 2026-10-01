@@ -29,6 +29,7 @@ let input tag identifier : Model.input =
     timeout_ms = "17";
     environment = [ ("KEEP", tag); ("SAFE", "literal $SECRET") ];
     scope = "tracker:" ^ tag;
+    issue_id = "opaque:" ^ tag;
     identifier;
   }
 
@@ -74,12 +75,13 @@ let arguments (expected : Model.input) =
              (List.map Diagnostic.render (Nonempty_list.to_list diagnostics)))
   in
   let scope = checked (Tracker_scope.parse expected.Model.scope) in
+  let issue_id = checked (Issue_id.parse expected.Model.issue_id) in
   let identifier = checked (Issue_identifier.parse expected.Model.identifier) in
-  (settings, env, scope, identifier)
+  (settings, env, scope, issue_id, identifier)
 
 let make expected =
-  let settings, env, scope, identifier = arguments expected in
-  Reference.reference ~settings ~env ~scope ~identifier
+  let settings, env, scope, issue_id, identifier = arguments expected in
+  Reference.reference ~settings ~env ~scope ~issue_id ~identifier
 
 let diagnostic = function
   | Workspace_manager.Invalid_key error
@@ -108,6 +110,7 @@ let observe reference : Model.input =
     timeout_ms = Milliseconds.decimal (Workspace_settings.timeout settings);
     environment = Environment.bindings (Reference.environment reference);
     scope = Tracker_scope.text (Reference.scope reference);
+    issue_id = Issue_id.text (Reference.issue_id reference);
     identifier = Issue_identifier.text (Reference.identifier reference);
   }
 
@@ -133,11 +136,11 @@ let agrees expected =
 
 let frozen () =
   let original = input "old" "SYM-1" in
-  let settings, env, scope, identifier = arguments original in
+  let settings, env, scope, issue_id, identifier = arguments original in
   let existing =
     checked
       (Result.map_error diagnostic
-         (Reference.reference ~settings ~env ~scope ~identifier))
+         (Reference.reference ~settings ~env ~scope ~issue_id ~identifier))
   in
   let changed =
     {
@@ -164,6 +167,9 @@ let frozen () =
     "checked identifier identity retained" true
     (Issue_identifier.equal identifier (Reference.identifier existing));
   Alcotest.(check bool)
+    "checked opaque ID identity retained" true
+    (Issue_id.equal issue_id (Reference.issue_id existing));
+  Alcotest.(check bool)
     "checked scope identity retained" true
     (Tracker_scope.equal scope (Reference.scope existing))
 
@@ -182,6 +188,16 @@ let identities () =
       String.make 256 'a';
       String.make 222 'a' ^ "/";
     ]
+
+let reused_identifier () =
+  let original = input "same-scope" "SYM-1" in
+  let later = { original with Model.issue_id = "different-opaque-id" } in
+  let first = reference original in
+  let second = reference later in
+  Alcotest.(check string) "same filesystem key" (key first) (key second);
+  Alcotest.(check bool)
+    "different issue ownership" false
+    (Issue_id.equal (Reference.issue_id first) (Reference.issue_id second))
 
 let errors () =
   let expected = input "error" "." in
@@ -212,6 +228,8 @@ let tests =
       `Quick frozen;
     Alcotest.test_case "constructor models changed and rejected key candidates"
       `Quick identities;
+    Alcotest.test_case "identifier reuse preserves distinct opaque owners"
+      `Quick reused_identifier;
     Alcotest.test_case "key failure diagnostic identifies input and remedy"
       `Quick errors;
   ]

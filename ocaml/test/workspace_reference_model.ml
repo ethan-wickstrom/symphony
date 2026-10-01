@@ -7,6 +7,7 @@ type input = {
   timeout_ms : string;
   environment : (string * string) list;
   scope : string;
+  issue_id : string;
   identifier : string;
 }
 
@@ -33,4 +34,5 @@ let equal_input a b =
   && String.equal a.timeout_ms b.timeout_ms
   && List.equal binding a.environment b.environment
   && String.equal a.scope b.scope
+  && String.equal a.issue_id b.issue_id
   && String.equal a.identifier b.identifier

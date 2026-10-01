@@ -205,6 +205,7 @@ let reference =
        (Reference.reference ~settings
           ~env:(Environment.child env ~allow:[] ~deny:[])
           ~scope:(checked (Tracker_scope.parse "fixture"))
+          ~issue_id:(checked (Issue_id.parse "opaque-fixture-id"))
           ~identifier:(checked (Issue_identifier.parse "SYM-1"))))
 
 let request =

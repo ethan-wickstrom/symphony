@@ -5,13 +5,15 @@ module Make (Path : Workspace_path.S) = struct
     settings : Workspace_settings.t;
     environment : Environment.child;
     scope : Tracker_scope.t;
+    issue_id : Issue_id.t;
     identifier : Issue_identifier.t;
     key : Workspace_key.t;
   }
 
-  let reference ~settings ~env ~scope ~identifier =
+  let reference ~settings ~env ~scope ~issue_id ~identifier =
     match Workspace_key.of_identifier identifier with
-    | Ok key -> Ok { settings; environment = env; scope; identifier; key }
+    | Ok key ->
+        Ok { settings; environment = env; scope; issue_id; identifier; key }
     | Error message ->
         let site =
           Diagnostic.Host
@@ -26,6 +28,7 @@ module Make (Path : Workspace_path.S) = struct
                 ~remedy:"Fix the tracker issue identifier."))
 
   let identifier reference = reference.identifier
+  let issue_id reference = reference.issue_id
   let scope reference = reference.scope
   let environment reference = reference.environment
   let key reference = reference.key

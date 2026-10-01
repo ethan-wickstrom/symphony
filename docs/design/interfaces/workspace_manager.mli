@@ -13,16 +13,19 @@ module type PURE = sig
   module Path : Workspace_path.S
   type reference
   val reference : settings:Workspace_settings.t -> env:Environment.child ->
-    scope:Tracker_scope.t -> identifier:Issue_identifier.t -> (reference, error) result
+    scope:Tracker_scope.t -> issue_id:Issue_id.t -> identifier:Issue_identifier.t ->
+    (reference, error) result
   (** Freeze root, hooks, environment and ownership. Physical safety is acquired later. *)
 
   val identifier : reference -> Issue_identifier.t
+  val issue_id : reference -> Issue_id.t
   val scope : reference -> Tracker_scope.t
   val environment : reference -> Environment.child
   val key : reference -> Workspace_key.t
   val settings : reference -> Workspace_settings.t
   (** Read the frozen inputs; drivers never reread current configuration.
-      key(reference s e scope id) agrees with Workspace_key.of_identifier id. *)
+      key(reference s e scope issue_id identifier) agrees with
+      Workspace_key.of_identifier identifier. *)
   type cleanup = { request_id : Request_id.t; workspace : reference }
 end
 
@@ -42,7 +45,7 @@ module type DRIVER = sig
       directory. In a stable filesystem, repeated absent lookup leaves it unchanged.
       Caller scope owns both brackets. Serialize under the ownership lock; atomically
       acquire the directory without following a symlink. Metadata binds original
-      identifier/scope. Lock, mkdir, metadata and open are not one OS transaction.
+      identifier/scope/opaque issue ID. Lock, mkdir, metadata and open are not one OS transaction.
       Release on normal, error and cancellation paths. Released handles reject use:
       OCaml cannot prevent a callback from retaining a non-linear value. *)
 

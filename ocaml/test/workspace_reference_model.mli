@@ -11,6 +11,7 @@ type input = {
   timeout_ms : string;
   environment : (string * string) list;
   scope : string;
+  issue_id : string;
   identifier : string;
 }
 

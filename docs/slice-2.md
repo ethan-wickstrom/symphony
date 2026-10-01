@@ -1,6 +1,6 @@
 # Slice 2: owned workspaces and hooks
 
-Status: keys, frozen references and hook policy implemented and tested against
+Status: keys, references, ownership codec and hook policy tested against
 independent models; directory ownership/live hooks remain pending. No workspace
 containment or host-safety claim yet. Slice 1 is merged at
 `f56a66c`.
@@ -9,7 +9,7 @@ containment or host-safety claim yet. Slice 1 is merged at
 
 [Workspace keys](../ocaml/lib/domain/workspace_key.mli) are checked ASCII directory
 components. [References](design/interfaces/workspace_reference.mli) freeze settings,
-scope, original identifier and sanitized child environment. The
+scope, opaque issue ID, original identifier and sanitized child environment. The
 [manager](design/interfaces/workspace_manager.mli) acquires live leases; the
 [process driver](design/interfaces/agent_process.mli) accepts only their path type.
 
@@ -116,15 +116,37 @@ ownership boundary; stronger same-user containment is a later isolation extensio
    CONFORMANCE.md only after actual passes. Green Linux/macOS CI and review precede
    merge and tracker work.
 
-Key gate: the full local check passes with 77 tests and 21,500 model/law cases;
-the 14-group seed `20260930` campaign passes 140,000 invocations. The key module's
-13 independent hash vectors, length/alias examples and four properties are
-included. Frozen references and policy add seven examples and five properties,
-bringing the suite to 89 tests and 27,500 sampled cases. They compare complete
-fake-driver traces, primary outcomes, directory presence and release multiplicity;
+The current full local check passes 96 tests and 29,500 model/law cases;
+the 15-group seed `20260930` campaign passes 150,000 invocations. The key module's
+13 independent hash vectors, length/alias examples and four properties are included.
+Reference/policy models compare complete fake-driver traces, primary outcomes,
+directory presence and release multiplicity;
 sequence properties retain one driver across operations. A same-diagnostic,
 changed-error-variant control failed before the oracle was corrected.
-The full check passes with 114 paired source files, 19 CLI scenarios normally and
+The full check passes with 120 paired source files, 19 CLI scenarios normally and
 optimized, 34 source and 16 corruption controls. Revised 56 blueprints plus an
 assembly witness type-check on 5.5 after temporary doc normalization. No physical
 directory/lock/hook behavior is established by those tests.
+
+## Ownership record boundary
+
+The spec requires identifiers to be unique within a tracker scope (§4.1.1), but
+does not promise permanent identifier-to-ID binding. Frozen references now retain
+the opaque issue ID. Reuse compares scope, ID and original identifier, plus the
+acquired directory's device/inode; key equality alone grants no ownership.
+
+[Workspace_owner](../ocaml/lib/workspace/workspace_owner.mli) defines the protected
+record format: exactly six JSON fields, version token `1`, checked scope/ID/
+identifier, and device/inode as 16 lowercase hex digits preserving all int64 bits.
+Its 16,384-byte limit accommodates the Linear identity profile while bounding
+corrupted-file reads. The format stores no key, path or credential. Canonical
+encoding roundtrips; equality is componentwise. The independent model observes
+strings and validates structured JSON without calling the owner parser.
+
+Place per-key lock and owner entries under `@symphony` in the same filesystem
+namespace as workspace keys, preserving case aliases and 255-byte key support.
+Never unlink persistent lock files. Check opened lock identity after acquisition,
+read metadata only while holding the lock, and reject unknown existing directories.
+Clear ownership after successful removal under that lock. POSIX cannot atomically
+remove only an inode-matching name; final name-based removal relies on the protected
+parent/cooperating-host boundary and revalidates identity after before_remove.

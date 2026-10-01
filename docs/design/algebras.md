@@ -122,7 +122,8 @@ normalized; partial success cannot masquerade as an atomic ID refresh. The same
 remote data/settings produce the same normalization; repeated network calls need not
 produce the same remote data. The fake HTTP driver models page/error traces.
 
-A workspace reference freezes root, hooks, identifier, scope and sanitized environment.
+A workspace reference freezes root, hooks, opaque issue ID, identifier, scope and
+sanitized environment.
 Its acquisition bracket has a resource-ledger model: each acquired lease releases once
 on success, error or cancellation. If removal succeeds and no directory is recreated,
 another cleanup returns success and preserves the resulting filesystem projection.
@@ -131,6 +132,13 @@ need not be idempotent. Preparation distinguishes new and reused
 directories. Cleanup cannot reconstruct its target from current reload settings.
 OS mutation and non-linear lifetimes require the hidden driver checks documented in
 [verification](verification.md#5-safety-by-construction-and-host-limits).
+
+The protected ownership record models a five-component tuple: scope, opaque ID,
+original identifier, device and inode. Equality is the conjunction of component
+equalities, hence an equivalence relation. Its canonical codec satisfies
+`parse(encode(owner)) = Ok owner`; canonicalization is idempotent. Versioned
+records have exact fields and bounded encodings. Record equality grants no live
+directory authority; acquisition must compare it under the key lock.
 
 Process exit observation and process custody are separate axes. Observing a terminal
 leader does not release its reserved identifier or certify group emptiness. Cleanup

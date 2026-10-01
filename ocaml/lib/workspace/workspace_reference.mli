@@ -10,6 +10,7 @@ module Make (Path : Workspace_path.S) : sig
     settings:Workspace_settings.t ->
     env:Environment.child ->
     scope:Tracker_scope.t ->
+    issue_id:Issue_id.t ->
     identifier:Issue_identifier.t ->
     (reference, Workspace_manager.error) result
   (** Check the key once and retain immutable inputs. Equal inputs give equal
@@ -21,6 +22,11 @@ module Make (Path : Workspace_path.S) : sig
   val identifier : reference -> Issue_identifier.t
   (** [identifier r] equals the constructor's identifier under
       [Issue_identifier.equal]. *)
+
+  val issue_id : reference -> Issue_id.t
+  (** [issue_id r] equals the constructor's opaque ID under [Issue_id.equal].
+      Ownership compares it as well as scope and original identifier, so a
+      recreated issue cannot inherit a prior issue's directory. *)
 
   val scope : reference -> Tracker_scope.t
   (** [scope r] equals the constructor's scope under [Tracker_scope.equal]. *)

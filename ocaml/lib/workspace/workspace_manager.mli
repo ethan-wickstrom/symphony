@@ -17,12 +17,14 @@ module type PURE = sig
     settings:Workspace_settings.t ->
     env:Environment.child ->
     scope:Tracker_scope.t ->
+    issue_id:Issue_id.t ->
     identifier:Issue_identifier.t ->
     (reference, error) result
   (** Freeze settings and identity. Constructing a reference never acquires a
       path. *)
 
   val identifier : reference -> Issue_identifier.t
+  val issue_id : reference -> Issue_id.t
   val scope : reference -> Tracker_scope.t
   val environment : reference -> Environment.child
   val key : reference -> Workspace_key.t

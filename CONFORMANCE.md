@@ -1,6 +1,6 @@
 # OCaml conformance
 
-Status: slice 1 is merged. Slice 2 keys, frozen references and hook policy are
+Status: slice 1 is merged. Slice 2 keys, references, ownership codec and hook policy are
 tested; live workspaces/hooks and the full service are pending.
 The upstream Elixir implementation is reference material, not evidence for this port.
 Requirements refer to SPEC.md at `be10a1b79df723d6d7612b5651c8522704dafb2e`.
@@ -18,7 +18,7 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | Dynamic workflow reload/re-apply | 1, 4 | `Config_layer.Make.apply`; `config_model.ml`, `config_test.ml` reload histories | Pure laws passed; watch/owner application pending |
 | Single-authority polling orchestrator | 4 | — | Pending |
 | State-list and ID-refresh tracker reads | 3 | — | Pending |
-| Sanitized collision-resistant workspaces | 2 | `workspace_key.ml`; `workspace_key_model.ml`, `workspace_key_test.ml` policy model/hash vectors/laws; Crowbar key image/bounds | Key boundary passed; ownership/containment pending |
+| Sanitized collision-resistant workspaces | 2 | `workspace_key.ml`, `workspace_reference.ml`, `workspace_owner.ml`; independent key/reference/owner model tests, hash vectors, strict bounded metadata and Crowbar targets | Key/identity/codec boundaries passed; physical ownership/containment pending |
 | Four workspace lifecycle hooks | 2 | `workspace_manager.ml`; `workspace_policy_model.ml`, `workspace_policy_test.ml` ordered traces, rollback, cancellation, primary-result preservation | Fake-driver policy passed; live execution pending |
 | Configurable hook timeouts | 1, 2 | `workspace_settings.ml`; `config_test.ml` default/invalid/explicit timeout cases | Config passed; subprocess behavior pending |
 | App-server subprocess transport/framing | 5 | — | Pending |
@@ -48,16 +48,12 @@ Seeded whole-service Eio simulation, orchestrator model agreement, static releas
 1,000-session benchmarks, HTTP API and portable harness remain pending their slices.
 Crowbar random campaigns are distinct from instrumented AFL coverage.
 
-Local slice 1: 70 example/property tests, 16,500 model/law cases, 19 CLI scenarios,
-34 source-gate controls, and 130,000 Crowbar invocations at seed `20260930` pass.
+Current local application gate: 96 example/property tests, 29,500 model/law cases,
+120 paired source files, 19 CLI scenarios, 34 source-gate controls, and 150,000
+Crowbar invocations at seed `20260930` pass.
 Build, formatting, interface pairing and protocol snapshot checks pass, normally
 and optimized, with 16 corrupted-fixture controls.
 
-With slice 2 keys: 77 tests, 21,500 model cases, 102 paired source files and 140,000
-Crowbar invocations pass. These add no live workspace-safety evidence yet.
-
-With frozen references and hook policy: 89 tests, 27,500 sampled model/law cases,
-114 paired source files, all CLI/source/format/protocol/corruption gates pass locally.
 The policy also checks 100 explicit fault/cancellation scenarios, a full rollback
 trace and persistent-driver operation sequences. These are fake-driver effects,
 not physical locks, filesystem identity, hook subprocesses or cancellation shielding.
