@@ -1,0 +1,9 @@
+(executable
+ (name test_main)
+ (modules test_main native_host_test)
+ (libraries
+  symphony_native
+  symphony_workspace
+  symphony_io
+  eio_posix
+  alcotest))

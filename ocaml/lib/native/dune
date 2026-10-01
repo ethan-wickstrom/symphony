@@ -1,0 +1,30 @@
+(library
+ (name symphony_native)
+ (wrapped false)
+ (modules
+  native_io
+  native_outcome
+  native_lifetime
+  workspace_flock
+  workspace_directory
+  workspace_path_posix
+  workspace_contract_posix
+  workspace_store_posix
+  workspace_process_posix
+  workspace_host_posix)
+ (private_modules
+  native_io
+  native_outcome
+  native_lifetime
+  workspace_flock
+  workspace_directory
+  workspace_path_posix
+  workspace_contract_posix
+  workspace_store_posix
+  workspace_process_posix)
+ (libraries symphony_workspace symphony_io eio_posix eio.unix cstruct unix)
+ (foreign_stubs
+  (language c)
+  (names workspace_flock_stubs)
+  (flags
+   (:standard -Wall -Wextra -Werror))))

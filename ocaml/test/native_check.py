@@ -1,0 +1,220 @@
+"""Watchdog and retained evidence for actual native workspace boundaries."""
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import signal
+import subprocess
+import sys
+import time
+
+
+TERM_GRACE = 2
+POLL_INTERVAL = 0.01
+HANDLED_SIGNALS = (signal.SIGINT, signal.SIGTERM)
+SIGNAL_EXIT_BASE = 128
+WATCHDOG = Path(__file__).resolve()
+SENTINEL = WATCHDOG.with_name("native_sentinel.py")
+
+
+class Terminated(SystemExit):
+    """A graceful SIGTERM unwinds owned resources before exiting."""
+
+
+def require_waitid():
+    flags = ("P_PID", "WEXITED", "WNOHANG", "WNOWAIT")
+    if not callable(getattr(os, "waitid", None)) or any(
+        not hasattr(os, name) for name in flags
+    ):
+        raise RuntimeError("native watchdog requires POSIX waitid with WNOWAIT")
+
+
+def signal_group(child, requested):
+    try:
+        os.killpg(child.pid, requested)
+    except ProcessLookupError:
+        pass
+
+
+def term_grace(child):
+    deadline = time.monotonic() + TERM_GRACE
+    while time.monotonic() < deadline:
+        # Observe exit without reaping: PID reservation fences the final kill.
+        exited = os.waitid(
+            os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT
+        )
+        remaining = max(0, deadline - time.monotonic())
+        if exited is not None:
+            time.sleep(remaining)
+            return
+        time.sleep(min(POLL_INTERVAL, remaining))
+
+
+def wait_exit(child, timeout, observe):
+    deadline = time.monotonic() + timeout
+    while True:
+        observe()
+        exited = os.waitid(os.P_PID, child.pid,
+                           os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        if exited is not None:
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(child.args, timeout)
+        time.sleep(min(POLL_INTERVAL, remaining))
+
+
+def interrupted(signum, _frame):
+    if signum == signal.SIGINT:
+        raise KeyboardInterrupt
+    raise Terminated(SIGNAL_EXIT_BASE + signal.SIGTERM)
+
+
+def stop_group(child):
+    signal_group(child, signal.SIGTERM)
+    term_grace(child)
+
+
+def close_group(child, before):
+    previous = {
+        signum: signal.signal(signum, signal.SIG_IGN)
+        for signum in HANDLED_SIGNALS
+    }
+    try:
+        try:
+            before()
+        finally:
+            # Retain the root PID until the last signal to its group.
+            try:
+                signal_group(child, signal.SIGKILL)
+            finally:
+                status = child.wait()
+        return status
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+
+
+def execute(binary, log, timeout):
+    require_waitid()
+    flags = ["-I"]
+    if sys.flags.optimize:
+        flags.append("-O" if sys.flags.optimize == 1 else "-OO")
+    started = time.monotonic()
+    with log.open("wb") as output:
+        pending = None
+
+        def collect(signum, _frame):
+            nonlocal pending
+            if pending is None:
+                pending = signum
+
+        def observe():
+            if pending is not None:
+                interrupted(pending, None)
+
+        previous = {
+            signum: signal.signal(signum, collect)
+            for signum in HANDLED_SIGNALS
+        }
+        try:
+            # Main-thread handlers only collect signals, including through
+            # Popen admission and mask setup. Delivery uses owned safe points.
+            child = subprocess.Popen(
+                [sys.executable, *flags, str(SENTINEL), str(binary)], stdout=output,
+                stderr=subprocess.STDOUT, start_new_session=True,
+            )
+            try:
+                wait_exit(child, timeout, observe)
+            except subprocess.TimeoutExpired:
+                close_group(child, lambda: stop_group(child))
+                return {"status": "timeout", "seconds": time.monotonic() - started}
+            except BaseException:
+                try:
+                    close_group(child, lambda: stop_group(child))
+                except BaseException:
+                    # A secondary cleanup defect cannot replace the primary.
+                    pass
+                raise
+            else:
+                status = close_group(child, lambda: None)
+                observe()
+                return {"status": status, "seconds": time.monotonic() - started}
+        finally:
+            for signum, handler in previous.items():
+                signal.signal(signum, handler)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--kernel", type=Path, required=True)
+    parser.add_argument("--host", type=Path, required=True)
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--timeout", type=float, default=90)
+    args = parser.parse_args()
+    if not (0 < args.timeout <= 300):
+        parser.error("timeout must be between 0 and 300 seconds")
+
+    root = Path(__file__).resolve().parents[1]
+    sources = sorted((root / "lib/native").glob("*"))
+    sources += sorted((root / "lib/io").glob("clock*"))
+    sources += sorted((root / "lib/workspace").glob("*.ml*"))
+    sources += sorted((root / "test/native_kernel").glob("*.ml*"))
+    sources += sorted((root / "test/native_host").glob("*.ml*"))
+    hashes = {
+        str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sources
+        if path.is_file()
+    }
+    helper = {
+        "path": str(SENTINEL),
+        "sha256": hashlib.sha256(SENTINEL.read_bytes()).hexdigest(),
+        "optimize": min(sys.flags.optimize, 2),
+    }
+    watchdog = {
+        "path": str(WATCHDOG),
+        "sha256": hashlib.sha256(WATCHDOG.read_bytes()).hexdigest(),
+        "optimize": sys.flags.optimize,
+    }
+    args.out.mkdir(parents=True, exist_ok=True)
+    results = {}
+    binaries = {}
+    for name, binary in [("kernel", args.kernel), ("host", args.host)]:
+        binary = binary.resolve()
+        if not binary.is_file():
+            parser.error(f"{name} binary is missing: {binary}")
+        binaries[name] = {
+            "path": str(binary),
+            "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+        }
+        results[name] = execute(binary, args.out / f"{name}.log", args.timeout)
+
+    manifest = {
+        "host": platform.platform(),
+        "machine": platform.machine(),
+        "python": platform.python_version(),
+        "sources": hashes,
+        "binaries": binaries,
+        "helper": helper,
+        "watchdog": watchdog,
+        "results": results,
+        "provenance": (
+            "Hashes record current source files and binary paths before launch; "
+            "no source-to-binary attestation"
+        ),
+        "boundary": (
+            "POSIX descriptors and advisory locks; watchdog owns its root process "
+            "group, not separate groups or sessions; controlled test binaries must "
+            "preserve its sentinel, group and credentials; no mount or VM isolation claim"
+        ),
+    }
+    (args.out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    print(json.dumps(results))
+    return 0 if all(result["status"] == 0 for result in results.values()) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
