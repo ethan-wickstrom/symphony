@@ -1,0 +1,394 @@
+{
+  "schema": 1,
+  "name": "macos-arm64-26.0",
+  "qualification_date": "2026-10-01",
+  "target": {
+    "os": "macos",
+    "arch": "arm64",
+    "minimum_os": "26.0",
+    "sdk_version": "26.5",
+    "sdk_build": "25F70",
+    "cpu_baseline": "Apple M1; GMP and pkgconf use generic Armv8-A",
+    "xcode_version": "26.6",
+    "xcode_build": "17F113",
+    "clang_version": "21.0.0 (clang-2100.1.1.101)",
+    "clang_sha256": "7def90dd8829726686213a747fc5bff1583df933dae5edc55d755479e0bfe00a",
+    "sdk": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+    "toolchain": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+  },
+  "source_commit": "4e2d6ac2b7d6bb84a02e32254e74218d49e646a6",
+  "bindings": {
+    "INPUTS": "inputs",
+    "TARGET": "target"
+  },
+  "sources": {
+    "opam": {
+      "url": "https://github.com/ocaml/opam/releases/download/2.5.2/opam-2.5.2-arm64-macos",
+      "sha256": "407e53416cfb49b41ce80e6d3c67a3df08df7f5028f407311f457f4e2a19004b",
+      "path": "@INPUTS@/opam-2.5.2-arm64-macos"
+    },
+    "ocaml": {
+      "url": "https://github.com/ocaml/ocaml/releases/download/5.5.0/ocaml-5.5.0.tar.gz",
+      "sha256": "c018052c8264a3791a8f54f84179e6bcc78ed82eb889bacc2773df445259aed3",
+      "via": "compiler-pin/ocaml-compiler.opam"
+    },
+    "gmp": {
+      "url": "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz",
+      "sha256": "a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898",
+      "path": "@INPUTS@/gmp-6.3.0.tar.xz",
+      "signature_url": "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz.sig",
+      "signature_sha256": "94def8c1a731854de684689126046ec93589147abd4cd0025f12d741d323aa82",
+      "historical_signer": "343C2FF0FBEE5EC2EDBEF399F3599FF828C67298"
+    },
+    "pkgconf": {
+      "url": "https://distfiles.ariadne.space/pkgconf/pkgconf-3.0.7.tar.xz",
+      "sha256": "c926ff491cbd9a331a589160811bd97ab1749b4d5198a519338f2cdfabe6940a",
+      "path": "@TARGET@/pkgconf-inputs/pkgconf-3.0.7.tar.xz",
+      "digest_authority": "https://api.github.com/repos/pkgconf/pkgconf/releases/tags/pkgconf-3.0.7"
+    },
+    "pkgconf_recipe": {
+      "url": "https://raw.githubusercontent.com/pkgconf/pkgconf/0c9e506b64124d8727b68d8af0ed73739e66e2ba/Makefile.lite",
+      "sha256": "68ec394d9708f198e9c39f4dc6526a018bf2cc4f1ae4c4f1e7c3033d14bb1f64",
+      "git_blob": "11b3e291dcde1c064886f89e873755251d84e82a",
+      "path": "@TARGET@/pkgconf-inputs/Makefile.lite"
+    },
+    "zarith": {
+      "url": "https://github.com/ocaml/Zarith/archive/release-1.14.tar.gz",
+      "sha256": "5db9dcbd939153942a08581fabd846d0f3f2b8c67fe68b855127e0472d4d1859",
+      "via": "package-pins/zarith.opam"
+    },
+    "conf_gmp_probe": {
+      "url": "https://raw.githubusercontent.com/ocaml/opam-source-archives/main/patches/conf-gmp/test.c.4",
+      "sha256": "54a30735f1f271a2531526747e75716f4490dd7bc1546efd6498ccfe3cc4d6fb",
+      "via": "package-pins/conf-gmp.opam"
+    },
+    "conf_powm_probe": {
+      "url": "https://raw.githubusercontent.com/ocaml/opam-source-archives/main/patches/conf-gmp-powm-sec/test.c.3",
+      "sha256": "388b3879530257a7e6e59b68208ee2a52de7be30e40eb4d3a54419708fdad490",
+      "via": "package-pins/conf-gmp-powm-sec.opam"
+    }
+  },
+  "vendors": [
+    {
+      "name": "yaml",
+      "tree": "1ffd11637add0ad9bf52f732afd5caf2cc1731fe",
+      "archive": "yaml-3.2.0.tar.gz",
+      "sha256": "56fa8053981e3063f73b23853814ab251341c34297be682feeb9555e27408b2b",
+      "tar_sha256": "182d4be03d2548b904f89842dbb942871c824330cbfaa1e21cab38c52ed2fa8f",
+      "tar_bytes": 593920,
+      "files": 73
+    },
+    {
+      "name": "crowbar",
+      "tree": "b9436d7d44ad59aaf8d4cb9d5018544a975b1973",
+      "archive": "crowbar-0.2.2.tar.gz",
+      "sha256": "8527329bccef8ea9918a0710d54217b1d95e0afe988c1041deb156705d79fee2",
+      "tar_sha256": "e824d4a484afec195e7cf5101785a27d411a345246d9daf25c4d74c0965c9181",
+      "tar_bytes": 92160,
+      "files": 33
+    },
+    {
+      "name": "eio",
+      "tree": "41a587920b7cbb5e62de6b04e36cd87e852bdb3b",
+      "archive": "eio-1.6.tar.gz",
+      "sha256": "09ac0dd49b97c1e5a9ca4bbc8073cd1776bf102b52c780d20f48b87e7e1825f7",
+      "tar_sha256": "ed68577ff670c732427339714790c2414cc6594ee9f08a06b567c2a88b08dae2",
+      "tar_bytes": 2181120,
+      "files": 380
+    },
+    {
+      "name": "h1",
+      "tree": "ce5e203d7c59a093946e9da24d2d27767c4e70ee",
+      "archive": "h1-1.1.1.tar.gz",
+      "sha256": "c5d1ab3db31b074fffa1dc1fd1f2330e539da31ab49042bd5242c414918ff177",
+      "tar_sha256": "a6825f41cc2babf42c5222601a89d8f4cb71264901a42df0d4ace14ae18430b6",
+      "tar_bytes": 450560,
+      "files": 54
+    }
+  ],
+  "templates": {
+    "compiler-pin/ocaml-compiler.opam": {
+      "template": "templates/compiler-pin/ocaml-compiler.opam.in",
+      "sha256": "46a802f33edcc4b1bebc97d02d2de0e10dfd666c436436d06659e6d031d12da7",
+      "tokens": [],
+      "qualified_sha256": "46a802f33edcc4b1bebc97d02d2de0e10dfd666c436436d06659e6d031d12da7"
+    },
+    "compiler-pin/compiler-cloning.opam": {
+      "template": "templates/compiler-pin/compiler-cloning.opam.in",
+      "sha256": "4a511ba7cb87a477d062ce8570801e08cb8c47d198f7b723952ecd8a328f21cf",
+      "tokens": [],
+      "qualified_sha256": "4a511ba7cb87a477d062ce8570801e08cb8c47d198f7b723952ecd8a328f21cf"
+    },
+    "compiler-pin/ocaml-variants.opam": {
+      "template": "templates/compiler-pin/ocaml-variants.opam.in",
+      "sha256": "d6dbd06fdc935a66b907438606c3c56ac504e2616d0c8a00d3c6b7f1aecee53f",
+      "tokens": [],
+      "qualified_sha256": "d6dbd06fdc935a66b907438606c3c56ac504e2616d0c8a00d3c6b7f1aecee53f"
+    },
+    "compiler-pin/ocaml-option-no-compression.opam": {
+      "template": "templates/compiler-pin/ocaml-option-no-compression.opam.in",
+      "sha256": "80b46a317d679e9c0f1b2a0a1030eeff522cbb03683b0f4e98284dfbdf2e9706",
+      "tokens": [],
+      "qualified_sha256": "80b46a317d679e9c0f1b2a0a1030eeff522cbb03683b0f4e98284dfbdf2e9706"
+    },
+    "symphony-release.opam": {
+      "template": "templates/symphony-release.opam.in",
+      "sha256": "492dd005e3df393a1f783656b5c2c84c3479ac106249ce63b0109faab5f3dde5",
+      "tokens": [],
+      "qualified_sha256": "492dd005e3df393a1f783656b5c2c84c3479ac106249ce63b0109faab5f3dde5"
+    },
+    "package-pins/conf-gmp-powm-sec.opam": {
+      "template": "templates/package-pins/conf-gmp-powm-sec.opam.in",
+      "sha256": "c9c09fe28f79f72e313b9168dbd1da5e0972f87cac69ad628ccff496f1ff3758",
+      "tokens": [
+        "TARGET"
+      ],
+      "qualified_sha256": "3fce2530750f888baabe0b084596ff280cbd3c8d221dec8df96d2ced67a63d0c"
+    },
+    "package-pins/conf-gmp.opam": {
+      "template": "templates/package-pins/conf-gmp.opam.in",
+      "sha256": "3c24c2e27367b3f2541e3f4452fa9768d333f254d4c23f6f5f90577cc3d6d660",
+      "tokens": [
+        "TARGET"
+      ],
+      "qualified_sha256": "69fb90b2609d81343bef3339561bd54051d8cb5af8243d570825335fa1810166"
+    },
+    "package-pins/crowbar.opam": {
+      "template": "templates/package-pins/crowbar.opam.in",
+      "sha256": "df3055e10432354d9bda906e1db8985aaee471434e7eceb60c3a859228ec03fc",
+      "tokens": [
+        "INPUTS"
+      ],
+      "qualified_sha256": "a92dd89d67b0820d2323592eb2f173701b0ab35a81fac33c7183d0db6eecc715"
+    },
+    "package-pins/eio.opam": {
+      "template": "templates/package-pins/eio.opam.in",
+      "sha256": "c52718457f9d6a864ca4e9f2b0674233a2fca1b7b09751715090a7a7c8979127",
+      "tokens": [
+        "INPUTS"
+      ],
+      "qualified_sha256": "2c16b16a3cdb7ce7122155df11069f060b17b86bfc7169ec85ebc5c3252965b8"
+    },
+    "package-pins/eio_posix.opam": {
+      "template": "templates/package-pins/eio_posix.opam.in",
+      "sha256": "0ec89a63ddbddd1634f202a69198a3d95c3e30a673e513b01dc72565438249c3",
+      "tokens": [
+        "INPUTS"
+      ],
+      "qualified_sha256": "00731ec6e79086bf68e208820bb03202f042180b3059b6227333365afb8fbfc2"
+    },
+    "package-pins/h1.opam": {
+      "template": "templates/package-pins/h1.opam.in",
+      "sha256": "3966181dca4f684d7da96989d91917e583699961d0de7225abe926a46ecfeafd",
+      "tokens": [
+        "INPUTS"
+      ],
+      "qualified_sha256": "303155ee507cb3e1c00ded0a875bc8521755d08885ca9264e9a0a8ba8f543b96"
+    },
+    "package-pins/yaml.opam": {
+      "template": "templates/package-pins/yaml.opam.in",
+      "sha256": "7556a0342cd4eb8c7fe8da39dced0736ede0c103b1ad15f91f3230efb1de1c06",
+      "tokens": [
+        "INPUTS"
+      ],
+      "qualified_sha256": "ab55deaf360b5413616f97af527eadbbcc8bd1106377c1bf1102ff399ac6b048"
+    },
+    "package-pins/zarith.opam": {
+      "template": "templates/package-pins/zarith.opam.in",
+      "sha256": "7428ec5abf333411d4672234f7fbf9b48ffe8e6a904aa0d3eb4a2dac03463eaf",
+      "tokens": [
+        "TARGET"
+      ],
+      "qualified_sha256": "ee68fe2193a10399422bb0fec8ac33acf38f1e1155981c7ffcd08cf9a6d7993b"
+    }
+  },
+  "operations": {
+    "gmp": {
+      "abi": "64",
+      "cpu_baseline": "generic Armv8-A",
+      "build_directory": "@TARGET@/gmp-build",
+      "prefix": "@TARGET@/gmp",
+      "configure_argv": [
+        "/bin/sh",
+        "@TARGET@/gmp-source/gmp-6.3.0/configure",
+        "--prefix=@TARGET@/gmp",
+        "--build=aarch64-apple-darwin25.5.0",
+        "--host=aarch64-apple-darwin25.5.0",
+        "--disable-shared",
+        "--enable-static",
+        "--with-pic"
+      ],
+      "environment": {
+        "PATH": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "CC": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+        "CFLAGS": "-O2 -fPIC -arch arm64 -mcpu=generic -march=armv8-a -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -mmacosx-version-min=26.0",
+        "CPPFLAGS": "",
+        "LDFLAGS": "-arch arm64 -mcpu=generic -march=armv8-a -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -mmacosx-version-min=26.0",
+        "LIBS": "",
+        "AR": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar",
+        "RANLIB": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib",
+        "NM": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/nm",
+        "STRIP": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip",
+        "M4": "/usr/bin/m4",
+        "CC_FOR_BUILD": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -arch arm64 -mcpu=generic -march=armv8-a -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -mmacosx-version-min=26.0",
+        "SDKROOT": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "MACOSX_DEPLOYMENT_TARGET": "26.0",
+        "DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "TMPDIR": "@TARGET@/gmp-tmp",
+        "ZERO_AR_DATE": "1",
+        "ABI": "64"
+      },
+      "make_argv": [
+        "/usr/bin/make",
+        "-j4"
+      ],
+      "check_argv": [
+        "/usr/bin/make",
+        "-j4",
+        "check"
+      ],
+      "install_argv": [
+        "/usr/bin/make",
+        "install"
+      ]
+    },
+    "pkgconf": {
+      "cpu_baseline": "generic Armv8-A",
+      "source": "@TARGET@/pkgconf-source/pkgconf-3.0.7",
+      "build_directory": "@TARGET@/pkgconf-build",
+      "prefix": "@TARGET@/tools",
+      "environment": {
+        "PATH": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "CC": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+        "CFLAGS": "-O2 -fPIC -arch arm64 -mcpu=generic -march=armv8-a -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -mmacosx-version-min=26.0",
+        "CPPFLAGS": "",
+        "LDFLAGS": "-arch arm64 -mcpu=generic -march=armv8-a -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -mmacosx-version-min=26.0",
+        "LIBS": "",
+        "STRIP": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip",
+        "SDKROOT": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "MACOSX_DEPLOYMENT_TARGET": "26.0",
+        "DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "TMPDIR": "@TARGET@/pkgconf-tmp",
+        "ZERO_AR_DATE": "1"
+      },
+      "header_argv": [
+        "/usr/bin/make",
+        "-f",
+        "@TARGET@/pkgconf-inputs/Makefile.lite",
+        "CC=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+        "CFLAGS=-O2 -fPIC -arch arm64 -mcpu=generic -march=armv8-a -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -mmacosx-version-min=26.0",
+        "STRIP=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip",
+        "SYSTEM_LIBDIR=/usr/lib",
+        "SYSTEM_INCLUDEDIR=/usr/include",
+        "PKG_DEFAULT_PATH=@TARGET@/gmp/lib/pkgconfig",
+        "libpkgconf/config.h"
+      ],
+      "build_argv": [
+        "/usr/bin/make",
+        "-f",
+        "@TARGET@/pkgconf-inputs/Makefile.lite",
+        "CC=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+        "CFLAGS=-O2 -fPIC -arch arm64 -mcpu=generic -march=armv8-a -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -mmacosx-version-min=26.0",
+        "STRIP=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip",
+        "SYSTEM_LIBDIR=/usr/lib",
+        "SYSTEM_INCLUDEDIR=/usr/include",
+        "PKG_DEFAULT_PATH=@TARGET@/gmp/lib/pkgconfig",
+        "-j4"
+      ],
+      "check_argv": [
+        "/usr/bin/make",
+        "-f",
+        "@TARGET@/pkgconf-inputs/Makefile.lite",
+        "CC=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+        "CFLAGS=-O2 -fPIC -arch arm64 -mcpu=generic -march=armv8-a -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -mmacosx-version-min=26.0",
+        "STRIP=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip",
+        "SYSTEM_LIBDIR=/usr/lib",
+        "SYSTEM_INCLUDEDIR=/usr/include",
+        "PKG_DEFAULT_PATH=@TARGET@/gmp/lib/pkgconfig",
+        "-j4",
+        "check"
+      ],
+      "build_note": "Official release tarball omits Makefile.lite; the unmodified recipe is a supplementary exact-release-commit input. Build occurs in a copy, leaving extracted source pristine. Header target runs before parallel compile because upstream object rules do not make the generated header an explicit prerequisite.",
+      "install": [
+        {
+          "operation": "mkdir",
+          "path": "@TARGET@/tools/bin"
+        },
+        {
+          "operation": "copyfile",
+          "source": "@TARGET@/pkgconf-build/pkgconf",
+          "destination": "@TARGET@/tools/bin/pkgconf"
+        },
+        {
+          "operation": "chmod",
+          "path": "@TARGET@/tools/bin/pkgconf",
+          "mode": "0755"
+        },
+        {
+          "operation": "symlink",
+          "path": "@TARGET@/tools/bin/pkg-config",
+          "target": "pkgconf"
+        }
+      ],
+      "install_note": "Installation steps reconstructed from qualification receipt paths, executable mode and relative alias; the historical copy API/argv was not retained. Materialization does not run these steps."
+    },
+    "compiler_install": {
+      "argv": [
+        "@INPUTS@/opam-2.5.2-arm64-macos",
+        "install",
+        "ocaml-variants.5.5.0+options",
+        "ocaml-option-no-compression.1",
+        "compiler-cloning.disabled",
+        "--root=@TARGET@/opam",
+        "--switch=release-macos-arm64",
+        "--yes",
+        "--no-depexts",
+        "--require-checksums",
+        "--keep-build-dir",
+        "--jobs=8"
+      ],
+      "env": {
+        "LANG": "C.UTF-8",
+        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        "MACOSX_DEPLOYMENT_TARGET": "26.0",
+        "SDKROOT": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk"
+      }
+    },
+    "dependencies_install": {
+      "argv": [
+        "@INPUTS@/opam-2.5.2-arm64-macos",
+        "install",
+        "@INPUTS@/symphony-release.opam",
+        "--deps-only",
+        "--with-test",
+        "--root=@TARGET@/opam",
+        "--switch=release-macos-arm64",
+        "--yes",
+        "--no-depexts",
+        "--require-checksums",
+        "--keep-build-dir",
+        "--jobs=8"
+      ],
+      "env": {
+        "LANG": "C.UTF-8",
+        "PATH": "@TARGET@/tools/bin:/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "CC": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -mmacosx-version-min=26.0",
+        "MACOSX_DEPLOYMENT_TARGET": "26.0",
+        "SDKROOT": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "PKG_CONFIG_LIBDIR": "@TARGET@/gmp/lib/pkgconfig",
+        "PKG_CONFIG_PATH": "",
+        "PKG_CONFIG": "@TARGET@/tools/bin/pkg-config"
+      }
+    }
+  },
+  "boundaries": [
+    "Path materialization and exact vendor archives only; no download, installation, build, or verification of the selected SDK/tool binaries.",
+    "Pinned package versions are retained; replay still requires opam repository metadata for all unpinned dependencies.",
+    "One qualified local build informed these recipes; neither fresh end-to-end replay nor clean macOS26.0 host execution is claimed.",
+    "Linux musl is a separate profile and remains pending."
+  ]
+}

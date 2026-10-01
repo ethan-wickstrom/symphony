@@ -1,7 +1,8 @@
 # Native release closure
 
-Status: design approved for investigation; no static release artifact has been
-built or verified. This is a build foundation before the orchestrator slice.
+Status: the isolated macOS build passes local physical closure and observed link
+checks. Clean-host deployment and Linux musl are pending. This is a build
+foundation before the orchestrator slice.
 
 ## Observed macOS artifact
 

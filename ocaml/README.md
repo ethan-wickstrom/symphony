@@ -33,6 +33,10 @@ transitive versions and excludes machine-specific local URLs. Pin these sources
 before installing. The current macOS development binary requires Homebrew GMP
 and macOS 26.0. A clean-host macOS binary and a fully static Linux musl binary
 remain release gates; see the [release plan](../docs/design/static-release-plan.md).
+The isolated macOS profile now produces a locally tested executable importing
+only libSystem. Its checked recipes and immutable vendor archive materializer
+are in [release/](release/README.md); this is not yet a published release or
+clean-host certification.
 
 ## Inspect a workflow
 
@@ -83,6 +87,12 @@ The native suites include 1,000 seeded lifetime scenarios with replay via
 `SYMPHONY_LIFETIME_SEED`. Retained logs/manifests are in `_build/native-evidence`;
 optimized Python checks have a separate directory. `just fuzz` runs the seeded Crowbar
 campaign. Without `just`, use the commands in [justfile](justfile).
+`just release-tools` checks the immutable input materializer and physical binary
+verifier. Native verifier controls explicitly skip hosts without the selected
+macOS/SDK profile locally; macOS CI requires it and fails on missing coverage.
+Portable controls still run on Linux. AFL has a separate bounded
+[Mach-O parser harness](fuzz/release_macho.py), with campaign limits in
+[release evidence](../docs/design/release-evidence.md).
 
 The source gate parses OCaml ASTs, checks interface pairs and rejects prohibited
 APIs/object syntax. It is not a proof of exception-freedom or resource safety.

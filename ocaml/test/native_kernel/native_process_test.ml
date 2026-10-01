@@ -49,7 +49,7 @@ let reference root env child =
        ~issue_id:(checked (Issue_id.parse "opaque-process"))
        ~identifier:(checked (Issue_identifier.parse "SYM-process")))
 
-let with_fixture run =
+let with_fixture ?(released = fun ~store:_ ~issue:_ ~cwd:_ -> ()) run =
   Eio_posix.run (fun host ->
       let base = Filename.temp_file "symphony-process-" "" in
       Unix.unlink base;
@@ -86,9 +86,14 @@ let with_fixture run =
             Store.create ~fs ~close_path:Workspace_path_posix.close
               ~report:(fun error -> Alcotest.fail (workspace_error error))
           in
-          acquired
-            (Store.with_lease store issue (fun _ lease ->
-                 run ~clock ~child ~cwd:(acquired (Store.path lease)))))
+          let cwd, result =
+            acquired
+              (Store.with_lease store issue (fun _ lease ->
+                   let cwd = acquired (Store.path lease) in
+                   (cwd, run ~clock ~child ~cwd)))
+          in
+          released ~store ~issue ~cwd;
+          result)
         ~finally:(fun () -> Eio.Path.rmtree (Eio.Path.( / ) fs base)))
 
 let collect read =
@@ -415,51 +420,218 @@ let mapping_defect () =
 module Recording_clock = struct
   module Pure = Clock.Pure
 
-  type event = Observed of Pure.instant | Slept of Pure.instant
-  type t = { native : Clock_posix.t; mutable events : event list }
+  type event =
+    | Observed of Pure.instant
+    | Slept of Pure.instant
+    | Woke of Pure.instant
+
+  type fault = Healthy | Once of Diagnostic.t
+
+  type t = {
+    native : Clock_posix.t;
+    mutable events : event list;
+    mutable fault : fault;
+  }
 
   let now t =
-    Result.map
-      (fun instant ->
-        t.events <- Observed instant :: t.events;
-        instant)
-      (Clock_posix.now t.native)
+    match t.fault with
+    | Once error ->
+        t.fault <- Healthy;
+        Error error
+    | Healthy ->
+        Result.map
+          (fun instant ->
+            t.events <- Observed instant :: t.events;
+            instant)
+          (Clock_posix.now t.native)
 
   let sample t = Clock_posix.sample t.native
 
   let sleep_until t deadline =
     t.events <- Slept deadline :: t.events;
-    Clock_posix.sleep_until t.native deadline
+    Result.bind (Clock_posix.sleep_until t.native deadline) (fun () ->
+        Result.map
+          (fun instant -> t.events <- Woke instant :: t.events)
+          (Clock_posix.now t.native))
 end
 
 module Recorded = Workspace_process_posix.Make (Recording_clock)
 
-let kill_after_grace () =
-  with_fixture (fun ~clock ~child ~cwd ->
-      let recorded = Recording_clock.{ native = clock; events = [] } in
+let grace_report reports error = reports := error :: !reports
+
+let process_remedy =
+  "Check the workspace process, host pipes and supplied capabilities"
+
+let permission_error site =
+  Diagnostic.make ~site:(Diagnostic.Host site)
+    ~message:("group signal: " ^ Unix.error_message Unix.EPERM)
+    ~remedy:process_remedy
+
+type platform = Darwin | Other
+
+let platform () =
+  let channel =
+    Unix.open_process_args_in "/usr/bin/uname" [| "uname"; "-s" |]
+  in
+  let system =
+    Fun.protect
+      (fun () -> input_line channel)
+      ~finally:(fun () ->
+        match Unix.close_process_in channel with
+        | Unix.WEXITED 0 -> ()
+        | Unix.WEXITED _ | Unix.WSIGNALED _ | Unix.WSTOPPED _ ->
+            Alcotest.fail "Host system query failed")
+  in
+  match system with
+  | "Darwin" -> Darwin
+  | _ -> Other
+
+let conservative system site error =
+  (* The public report redacts native causes into Diagnostic.t, so a typed
+     Group_signal EPERM is unavailable. Check the whole public diagnostic;
+     uncertainty stays observable and every other error still fails. *)
+  match (system, Diagnostic.site error) with
+  | Darwin, Diagnostic.Host observed ->
+      String.equal observed site
+      && String.equal
+           (Diagnostic.render (permission_error site))
+           (Diagnostic.render error)
+  | Other, Diagnostic.Host _
+  | ( (Darwin | Other),
+      (Diagnostic.Workflow _ | Diagnostic.Issue _ | Diagnostic.Protocol _) ) ->
+      false
+
+let log_conservative error =
+  Format.eprintf "Retained conservative Darwin cleanup error: %s@."
+    (Diagnostic.render error)
+
+let check_cleanup system site reports result =
+  match (result, List.rev reports) with
+  | Ok (), [] -> ()
+  | Error error, [ report ] when conservative system site error ->
+      Alcotest.(check string)
+        "outer Error matches retained cleanup report" (Diagnostic.render report)
+        (Diagnostic.render error);
+      log_conservative error
+  | Error error, _ -> Alcotest.fail (Diagnostic.render error)
+  | Ok (), _ :: _ -> Alcotest.fail "Reported cleanup error became success"
+
+let lease_closed ~store ~issue ~cwd =
+  (match Workspace_path_posix.check cwd with
+  | Error (Workspace_manager.Unsafe_path _) -> ()
+  | Ok () -> Alcotest.fail "Workspace path remained live after lease closure"
+  | Error
+      (( Workspace_manager.Invalid_key _
+       | Workspace_manager.Ownership_conflict _
+       | Workspace_manager.Filesystem_error _
+       | Workspace_manager.Hook_failed _
+       | Workspace_manager.Hook_timeout _ ) as error) ->
+      Alcotest.fail (workspace_error error));
+  acquired
+    (Store.with_existing store issue (function
+      | Some lease -> ignore (acquired (Store.path lease))
+      | None -> Alcotest.fail "Workspace disappeared after process cleanup"))
+
+let injected_report () =
+  with_fixture ~released:lease_closed (fun ~clock ~child ~cwd ->
+      let site = Contract.Path.display cwd in
+      let original = permission_error site in
+      let recorded =
+        Recording_clock.{ native = clock; events = []; fault = Once original }
+      in
+      let children = ref [] in
+      let reports = ref [] in
       let process =
-        Recorded.create ~clock:recorded ~report:(fun error ->
-            Alcotest.fail (Diagnostic.render error))
+        Recorded.create ~clock:recorded ~report:(grace_report reports)
       in
-      let owned =
-        succeeded
-          (Recorded.with_process process ~on_error:Fun.id ~cwd ~env:child
-             ~command:"trap '' TERM; printf '%s\n' \"$$\"; exec /bin/sleep 30"
-             (fun running -> Ok (pid (fun () -> Recorded.read running))))
+      let result =
+        Recorded.with_process process ~on_error:Fun.id ~cwd ~env:child
+          ~command:sleeper (fun running ->
+            children := [ pid (fun () -> Recorded.read running) ];
+            Ok ())
       in
-      reaped owned;
+      List.iter reaped !children;
+      (match result with
+      | Error error ->
+          Alcotest.(check bool)
+            "injected cleanup error retains identity" true (error == original)
+      | Ok () -> Alcotest.fail "Injected cleanup error disappeared");
+      Alcotest.(check int)
+        "injected cleanup report occurs once" 1
+        (List.length (List.filter (fun error -> error == original) !reports));
+      let system = platform () in
+      List.iter
+        (fun error ->
+          if error != original then (
+            Alcotest.(check bool)
+              "additional report is documented Darwin disposition" true
+              (conservative system site error);
+            log_conservative error))
+        !reports;
+      Alcotest.(check bool)
+        "exact Darwin disposition" true
+        (conservative Darwin site original);
+      Alcotest.(check bool)
+        "Linux retains permission failures" false
+        (conservative Other site original);
+      let foreign = permission_error (site ^ "/foreign") in
+      Alcotest.(check bool)
+        "foreign-site permission error rejects" false
+        (conservative Darwin site foreign);
+      let extra =
+        Diagnostic.make ~site:(Diagnostic.Host site)
+          ~message:
+            ("group signal: "
+            ^ Unix.error_message Unix.EPERM
+            ^ "; child reap: "
+            ^ Unix.error_message Unix.ECHILD)
+          ~remedy:process_remedy
+      in
+      Alcotest.(check bool)
+        "additional reap failure rejects" false
+        (conservative Darwin site extra))
+
+let kill_after_grace () =
+  with_fixture ~released:lease_closed (fun ~clock ~child ~cwd ->
+      let recorded =
+        Recording_clock.{ native = clock; events = []; fault = Healthy }
+      in
+      let reports = ref [] in
+      let process =
+        Recorded.create ~clock:recorded ~report:(grace_report reports)
+      in
+      let children = ref [] in
+      let result =
+        Recorded.with_process process ~on_error:Fun.id ~cwd ~env:child
+          ~command:"trap '' TERM; printf '%s\n' \"$$\"; exec /bin/sleep 30"
+          (fun running ->
+            children := [ pid (fun () -> Recorded.read running) ];
+            Ok ())
+      in
+      List.iter reaped !children;
+      check_cleanup (platform ()) (Contract.Path.display cwd) !reports result;
       match List.rev recorded.Recording_clock.events with
-      | Recording_clock.Observed since :: Recording_clock.Slept deadline :: _ ->
+      | Recording_clock.Observed since
+        :: Recording_clock.Slept deadline
+        :: Recording_clock.Woke woke
+        :: _ ->
           let expected =
             Clock.Pure.after since (checked (Milliseconds.parse "1000"))
           in
           Alcotest.(check int)
             "fixed exact TERM grace deadline" 0
-            (Clock.Pure.compare deadline expected)
+            (Clock.Pure.compare deadline expected);
+          Alcotest.(check bool)
+            "timer woke after full TERM grace before KILL" true
+            (Clock.Pure.compare woke expected >= 0)
       | []
       | [ _ ]
-      | (Recording_clock.Observed _ | Recording_clock.Slept _)
-        :: (Recording_clock.Observed _ | Recording_clock.Slept _)
+      | ( Recording_clock.Observed _
+        | Recording_clock.Slept _
+        | Recording_clock.Woke _ )
+        :: ( Recording_clock.Observed _
+           | Recording_clock.Slept _
+           | Recording_clock.Woke _ )
         :: _ -> Alcotest.fail "TERM grace did not use the injected clock")
 
 let escaped_read () =
@@ -555,4 +727,6 @@ let tests =
       `Quick mapping_defect;
     Alcotest.test_case "TERM-resistant child uses exact grace then KILL/reap"
       `Quick kill_after_grace;
+    Alcotest.test_case "conservative cleanup report retains expected Error"
+      `Quick injected_report;
   ]

@@ -1,0 +1,14 @@
+opam-version: "2.0"
+name: "ocaml-option-no-compression"
+version: "1"
+synopsis: "Set OCaml to be compiled with --without-zstd"
+maintainer: "David Allsopp <david@tarides.com>"
+authors: ["David Allsopp" "Louis Gesbert"]
+license: "CC0-1.0+"
+homepage: "https://opam.ocaml.org"
+bug-reports: "https://github.com/ocaml/opam-repository/issues"
+depends: [
+  "ocaml-variants" {post & >= "5.1.0~"} |
+  ("ocaml-base-compiler" {post & >= "5.1.0~"} & "host-system-msvc" {post})
+]
+flags: compiler

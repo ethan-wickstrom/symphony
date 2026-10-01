@@ -483,3 +483,40 @@ Frozen tracker bindings contain authentication, source/scope and IO. A separate
 checked read policy carries current terminal membership in each request. Reload
 thus updates future eligibility decisions while retaining a running session's
 original credentials. Request/config generation fences belong to the owner.
+
+## Native release foundation
+
+The first macOS profile is arm64, minimum 26.0, SDK 26.5, Apple M1 CPU baseline.
+GMP 6.3.0 uses generic Armv8-A code below that baseline. Linux x86-64 musl is a
+separate target; macOS evidence cannot certify it.
+
+Each release owns a fresh opam root, compiler, dependency prefix and Dune build
+with shared cache disabled. The compiler recipe retains target flags in `CC`,
+not only `CFLAGS`: OCaml persists the former for downstream stubs and assembly.
+Use OCaml 5.5.0 variants/options, no compression and disabled compiler cloning;
+vanilla conflicts with no compression. The published compiler source is unchanged.
+
+Pin opam 2.5.2 as the release build tool; its signed upstream binary fixes
+[CVE-2026-57825](https://opam.ocaml.org/blog/opam-2-5-2). Keep installed development
+tools unchanged. pkgconf-lite 3.0.7 is a release-local build tool, not an application
+package. Its official release tar omits `Makefile.lite`; the unchanged recipe from
+the exact release commit is a separately hashed input.
+
+Freeze audited vendor Git trees into deterministic compressed archives and
+retain file/mode/blob inventories. Strong checksum enforcement stays enabled;
+mutable directory pins are insufficient for release inputs. Zarith 1.14 keeps
+its published source and records the exact static GMP archive through a local
+make recipe. Conf-GMP probes have no ambient header/pkg-config fallback and
+resolve their original test symbols against that archive.
+
+The physical closure verifier copies bounded executable bytes into one private
+snapshot. Every Apple inspector reads that snapshot; the receipt identifies it by
+hash. Import acceptance is the set predicate `D ⊆ {libSystem}`; structural,
+architecture and deployment checks are separate obligations. This gate does not
+prove source attestation, runtime correctness or clean macOS 26.0 execution.
+
+Release profile decoding checks required structure and exact JSON types before
+Git or publication. A boolean cannot stand for schema version1. Descriptor reads
+reject symlinks/nonregular files and cap bytes; exclusive prefix creation follows
+every content check. Vendor tree IDs supply archive bytes; the qualification
+commit is provenance, so shallow checkouts need no history workaround.

@@ -27,6 +27,9 @@ against an independent model, replayable simulation, parser fuzzing and measured
   Workflow/config/template/reload and offline commands passed hosted Linux/macOS gates.
 - Slice 2 merged as PR #2 at `92f7ac670bb90fae2c21ab1a4a1523a1edde5112`.
   Native ownership, scoped hooks/processes and inspection passed both host workflows.
+- Slice 3 merged as [PR #3](https://github.com/ethan-wickstrom/symphony/pull/3)
+  at `98833b39c59a2def4257ac5ac9e405e1010554ca` on `2026-10-01T15:36:13Z`.
+  Linear reads and native HTTPS inspection passed local and hosted Linux/macOS gates.
 - Slice 2 keys, frozen references, opaque issue-ID ownership and strict bounded
   owner codec; independent models, hash vectors and parser fuzz targets.
 - Frozen Eio custody/admission extension and worker controls passed local macOS and
@@ -44,9 +47,115 @@ against an independent model, replayable simulation, parser fuzzing and measured
 
 ## Current focus
 
-Branch `ethan/linear-adapter` starts at merged `92f7ac6`; local/remote main agree.
-Slice 3's first usable path is explicit Linear inspection over verified HTTPS,
-tested through the actual adapter against a loopback HTTPS fake with an explicit CA.
+Branch `ethan/static-release` starts from merged `98833b3`.
+The isolated macOS arm64 build now passes physical closure, observed link,
+copied-artifact CLI and native process/HTTPS checks: minimum 26.0/SDK 26.5,
+only libSystem imported, exact static GMP archive.
+PR #4 is published in the owned repository. Review repairs pass locally:
+live bounded subprocess capture, executable entry mapping, exclusive receipts,
+complete duplicate-free profile decoding and required native SDK coverage. Checked
+JSON values are serialized before binding substitution. A native Darwin
+control now retains the frozen driver's documented conservative cleanup error
+while checking grace timing, direct-child reap and lease release.
+Follow-up review also validates virtual mappings and atomically publishes complete
+receipts without replacement, with a distinct published outcome on late cleanup
+failure. Actual RED controls precede both repairs.
+Next: publish reviewed fixes, verify exact-head CI and merge the foundation.
+Clean-host execution and Linux musl remain release gates.
+Plans: `docs/design/static-release-plan.md`, then
+`docs/design/slice-4-orchestrator-plan.md`.
+No user approval is pending under the accepted recommendations/autonomy instruction.
+
+## Current release foundation evidence
+
+- Fresh opam 2.5.2 root, OCaml 5.5.0 source build with compiler cloning disabled,
+  no compression, and explicit target flags in the compiler's saved C driver.
+  No development CMIs, native archives or Dune cache are reused.
+- GMP 6.3.0 source/hash verified; static PIC archive built for generic armv8-a,
+  all 525 members target 26.0; upstream 177 tests pass and one skips.
+  Whole compiler/application CPU baseline is Apple M1.
+- Release-local pkgconf-lite 3.0.7 passes 253 tests with 11 declared skips.
+  Zarith 1.14 records the owned GMP archive; conf probes have no ambient fallback.
+- All locked dependencies build. Five vendor pins use immutable checksum archives;
+  all 540 archived files/modes match committed Git blobs. All nine frozen Eio
+  hashes match both source and build trees.
+- Dune release build passes. Original executable SHA256:
+  `590f89dcb80fcbe69964699de020dec067524d697ea0e88f6c0eec84eb74b5f7`.
+  Evidence link uses a fresh output because Dune's successful output is readonly;
+  only output/evidence flags change. Both executables pass physical closure.
+- Evidence executable:12889176 bytes, SHA256
+  `0d5695083fd61430b31d4e892fe15eacd07b59ec1615f005acf1c9531b020d17`.
+  Actual C link orders Zarith/GMP/runtime at argv 140/141/142; map selects 239 GMP
+  objects. All 818 recorded files matched the qualification commit at that
+  observed build/link boundary; later tool/docs changes are separate.
+- Copied sole evidence executable passes 63 CLI scenarios normally/optimized with
+  empty HOME and child PATH excluding Homebrew/opam. Existing macOS 26.5.1 host;
+  this is not clean-host or minimum-host evidence.
+- Fresh profile passes 241 core cases and 78 native cases per mode; both manifests
+  bind 156 selected source hashes. Native process/cancellation/HTTPS are green.
+- A real malformed-name decoder escape went red before the checked parser fix.
+  Verifier 14 controls pass normally/optimized, including two portable controls.
+  Actual AFL++ 4.35c blind mutation: 1549 executions in 90 s, zero crashes/hangs;
+  injected unexpected defect aborts. Initial sandbox shmat failure is retained.
+  No instrumented coverage or persistent-forkserver claim.
+- Receipts and actual link map:
+  `/private/tmp/symphony-release-target/mac-arm64-26.0/`.
+  Native inputs, qualified requests and complete ten-recipe hashes:
+  `/private/tmp/symphony-release-inputs-djwlgpqp/`.
+- Copied executable receipt: `/private/tmp/symphony-release-cli-_0a52kqh/runtime.json`.
+  AFL receipt: `/private/tmp/symphony-release-afl-3izjc7np/receipt.json`.
+- Preserved 13 exact recipes and four vendor archives. Materializer 13 controls
+  pass normally/optimized; real shallow-checkout, malformed-profile/boolean-schema
+  and symlink controls went red before fixes. A pure 10,000-case validator campaign
+  has zero escapes or model disagreements. Final descriptor/FIFO audit is green.
+  `just release-tools` passes; required pinned Elixir `make all` also passes.
+- The profile boundary also passes actual AFL blind mutation:698 executions/45 s,
+  no crashes/hangs, with injected defects and effect guards checked.
+  Receipt: `/private/tmp/symphony-release-profile-afl-35ahyeeu/receipt.json`.
+- Six portable harness tests drive 19 real child scenarios per mode, including
+  six unexpected-error aborts, exact byte bounds and effect guards. Core dumps
+  are disabled. Both modes pass; Linux/macOS CI runs these controls.
+
+Review repairs supersede those initial tool/native counts: 26 verifier,
+20 materializer, nine bounded-capture and six fuzz-harness controls pass per mode,
+with required native SDK coverage. The harness now drives 20 children per mode
+and uses the exact production decoder. A fresh isolated native rebuild passes
+79 cases per mode (51 kernel + seven Host + 21 HTTPS); all production modules
+remain unchanged. Duplicate-key and JSON-escape reproducers went red before the
+checked-value publication fix. Initial receipt evidence remains historical.
+Fresh full-profile AFL passes 724 executions/45 s without crashes or hangs;
+the revised Mach-O parser passes another 767/45 s. Both campaigns are blind
+mutation. Independent verification of the two latest native manifests matches
+all 156 source hashes, watchdog/sentinel and binary identities, with zero
+mismatches. Required pinned Elixir `make all` passes after registry access is
+restored by scoped unconfined execution; the sandboxed registry failure is retained.
+Hosted PR/push workflows pass at `bcea5a3`: eight native mode manifests match all
+156 exact Git blobs and both runner hashes, each passing 51+7+21 cases. Four custody
+receipts match nine frozen Eio hashes and 20,000 total scenarios/8,000 stable closes.
+macOS retains its documented conservative cleanup errors. Both macOS release-tool
+jobs run all 23 verifier controls without skips; Ubuntu runs five portable controls
+and one explicit native-class skip per mode. Later mapping/publication repairs need
+a new exact-head run. Receipt: `/private/tmp/symphony-hosted-bcea5a3-audit-i6idh9h7/verification.json`.
+Final follow-up release-tool gate passes 61 controls per mode (26 verifier +
+20 materializer + nine capture + six harness). The final mapping parser passes
+431 further AFL executions/45 s with zero crashes/hangs; its receipt binds both
+26-control logs and the unchanged accepted artifact. Linux will run seven portable
+verifier methods and one native-class skip; all 19 native methods run on macOS.
+
+The temporary qualification tree, application binary and local receipts later
+disappeared; cause unknown. Their observations/hashes are historical. Replacement
+final-source evidence lives under ignored `_build/release-evidence/`: 61 release-tool
+controls per mode, 26 verifier controls per mode against a fresh native toy, and
+798 Mach-O and 824 profile blind AFL executions/45 s each with no crashes/hangs.
+Forty profile classification/effect controls pass across both child modes. No replacement
+application build or acceptance is claimed. The first required Elixir rerun had
+two unchanged fake-SSH trace timeouts; the serialized full rerun passes 302 tests,
+six declared skips, lint, coverage and Dialyzer. The timeout cause remains unproven.
+
+## Last merged slice evidence
+
+Slice 3 provides explicit Linear inspection over verified HTTPS, tested through
+the actual adapter against a loopback HTTPS fake with an explicit CA.
 
 Implemented ordered issue batches, frozen registry bindings, Linear envelope/record/
 page parsing and atomic pagination. Independent list/query models cover these paths.
@@ -72,7 +181,7 @@ Independent review found no remaining blocker in these contracts.
 Final serial gates pass: 241 core cases (61 properties), 63 CLI scenarios,
 78 native cases per mode, 235 source/interface files, 39 source controls,
 16 protocol corruption controls and 22 Crowbar groups × 10,000 invocations.
-Both native manifests bind 156 selected source hashes and the runner/sentinel.
+Both final local native manifests bind 156 selected source hashes and the runner/sentinel.
 An overlapping gate run failed child publication and an Elixir response timeout;
 its cause remains unproven. A deliberate startup delay reproduced the watchdog
 fixture race. Bounded READY admission fixes that control without changing the
@@ -80,27 +189,32 @@ production timeout or PID probes. Normal/optimized full controls now pass.
 Pinned Elixir passes alone: 302 tests, six skips, coverage/lint/Dialyzer green.
 The sandbox blocks PID-specific `ps` probes, so native validation runs outside it.
 Framing provenance passes six corruption controls in both Python modes.
-PR #3 is open; final hosted CI/publication/merge remain next.
 Final review found that the first native manifests predated the source-inventory
 expansion. Both native modes were rerun successfully with the final runner;
 the new evidence binds the expanded domain/IO/workflow source inventory.
 
-Deployment audit found the development Mach-O imports Homebrew GMP and has a
-macOS26.0 minimum. This is not a clean-host single-file release. Resolve static
-GMP linkage and pin the target profile in a dedicated release gate; Linux musl
-linkage remains unverified. Orchestrator/simulator planning follows in slice 4.
+Final [PR run 36883354256](https://github.com/ethan-wickstrom/symphony/actions/runs/36883354256)
+and [push run 36883346701](https://github.com/ethan-wickstrom/symphony/actions/runs/36883346701)
+passed on Linux/glibc and macOS at
+`06ce6c577c48142b7fb89cf8223c3c35acdf0184`, the exact merged PR head.
+Four hosted native manifests match all 156 selected committed Git blobs,
+watchdog/sentinel hashes and modes 0/1, with status 0 and 50+7+21 cases each.
+Both frozen custody manifests match all nine Eio hashes and 5,000 scenarios per
+host. Linux records 2,000 normal closes, zero cleanup EPERM and zero repeated-signal
+EPERM values; macOS records 1,999 normal closes, one conservative cleanup EPERM
+and 31 repeated-signal EPERM values. Both retain 2,000 stable explicit close outcomes.
+Focused custody/admission controls pass. Binary hashes are recorded context only;
+archives exclude executables and provide no source-to-binary attestation.
+Hosted verification and both final local source receipts have zero mismatches.
 Plan: `docs/design/slice-3-tracker-plan.md`.
-Next foundations: `docs/design/static-release-plan.md` and
-`docs/design/slice-4-orchestrator-plan.md`.
-No user approval is pending under the accepted recommendations/autonomy instruction.
+
+## Previous slice-two evidence
 
 Slice 2's final hook repair (`98e9d6a`) carries caller errors directly through Process
 and Path. Four hook controls went red/green; three native controls check identity,
 mapper suppression and conversion after reap. Independent review and current-head
 Copilot found no remaining finding; all three review threads are resolved. Devin
 analysis was unavailable at its diff-size limit; Sourcery exceeded its file limit.
-
-## Last merged slice evidence
 
 - macOS arm64; OCaml 5.5.0, Dune 3.24.0, ocamlformat 0.28.1.
 - Build and formatting pass; core: 126 cases, 39 properties and 41,500 samples.
@@ -160,6 +274,10 @@ analysis was unavailable at its diff-size limit; Sourcery exceeded its file limi
 - `/private/tmp/symphony-slice3-reviewed-serial-check.log`
 - `/private/tmp/symphony-slice3-reviewed-fuzz.log`
 - `/private/tmp/symphony-slice3-reviewed-elixir-isolated.log`
+- `/private/tmp/symphony-slice3-reviewed-native/manifest.json`
+- `/private/tmp/symphony-slice3-reviewed-native-optimized/manifest.json`
+- `/private/tmp/symphony-hosted-06ce6c5/verification.json`
+- `/private/tmp/symphony-hosted-06ce6c5/local-source-verification.json`
 - `/private/tmp/symphony-watchdog-admission-red-receipt.json`
 - `/private/tmp/symphony-watchdog-admission-green-optimized.log`
 - `/private/tmp/symphony-ca-default-linux-red.log`
@@ -172,8 +290,9 @@ simulation. Descriptor APIs and protected metadata assume a cooperating host;
 POSIX final unlink/rmdir cannot condition on inode, and same-device bind mounts
 need host policy. Escaped process groups/credentials require stronger isolation.
 POSIX provides no finite kernel reap bound. Eio1.6 release-hook backtraces may be
-empty; primary exception traces are preserved. Static linkage, live tracker/agent,
-HTTP API, orchestrator simulation, benchmarks and portable harness remain unverified.
+empty; primary exception traces are preserved. Linux static linkage, clean-host
+deployment, live tracker/agent, HTTP API, orchestrator simulation, benchmarks and
+portable harness remain unverified.
 
 ## Steering
 
