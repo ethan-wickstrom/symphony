@@ -1,7 +1,9 @@
 """Real Appleclang/Mach-O release controls; no text fixture proves acceptance."""
 
 import errno
+from contextlib import redirect_stdout
 import importlib.util
+import io
 import itertools
 import json
 import os
@@ -28,11 +30,16 @@ PARSER_MUTATIONS = 10000
 # Selected SDK mach-o/loader.h layout and mach/vm_prot.h permissions.
 LC_SEGMENT_64 = 0x19
 LC_MAIN = 0x80000028
+VMADDR_OFFSET = 24
+VMSIZE_OFFSET = 32
 FILEOFF_OFFSET = 40
 FILESIZE_OFFSET = 48
 ENTRYOFF_OFFSET = 8
 MAXPROT_OFFSET = 56
 INITPROT_OFFSET = 60
+SEGMENT_FLAGS_OFFSET = 68
+SG_HIGHVM = 0x01
+UINT64_MAX = (1 << 64) - 1
 VM_PROT_READ = 0x01
 VM_PROT_WRITE = 0x02
 VM_PROT_EXECUTE = 0x04
@@ -48,6 +55,105 @@ def command(argv):
 
 
 class PortableReleaseTest(unittest.TestCase):
+    def test_published_receipt_cleanup(self):
+        # A late cleanup failure retains the complete published physical result.
+        original_cleanup = tempfile.TemporaryDirectory.cleanup
+        with tempfile.TemporaryDirectory() as base:
+            root = Path(base)
+            artifact = root / "invalid-executable"
+            artifact.write_bytes(b"invalid Mach-O")
+            artifact.chmod(0o755)
+            receipt = root / "receipt.json"
+            failure = OSError(errno.EIO, "injected post-publication cleanup failure")
+
+            def failing_cleanup(temporary):
+                original_cleanup(temporary)
+                if Path(temporary.name).name.startswith(".symphony-receipt-"):
+                    self.assertTrue(receipt.exists(), "cleanup happened before publication")
+                    raise failure
+
+            stdout = io.StringIO()
+            argv = [str(CHECK), str(artifact), "--receipt", str(receipt)]
+            with mock.patch.object(sys, "argv", argv), redirect_stdout(stdout), \
+                 mock.patch.object(tempfile.TemporaryDirectory, "cleanup", failing_cleanup):
+                self.assertEqual(GATE.main(), 1)
+            observed = json.loads(stdout.getvalue())
+            written = json.loads(receipt.read_text())
+            self.assertEqual(observed["diagnostic"]["code"], "receipt")
+            self.assertIn(str(failure), observed["diagnostic"]["detail"])
+            self.assertEqual(observed.get("receipt_publication"),
+                             {"status": "published", "path": str(receipt)})
+            self.assertTrue(observed["diagnostic"].get("cleanup_notes"))
+            self.assertNotEqual(written["diagnostic"]["code"], "receipt")
+            self.assertEqual(list(root.iterdir()), [artifact, receipt])
+
+    def test_receipt_write_retry(self):
+        # Real CLI/filesystem writes fail after publishing partial bytes or closing.
+        original_open = Path.open
+        original_cleanup = tempfile.TemporaryDirectory.cleanup
+        for fault in ("write", "close", "write-and-close", "write-and-cleanup"):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as base:
+                root = Path(base)
+                artifact = root / "invalid-executable"
+                artifact.write_bytes(b"invalid Mach-O")
+                artifact.chmod(0o755)
+                receipt = root / "receipt.json"
+                failure = OSError(errno.ENOSPC, "injected partial receipt write")
+
+                class PartialWriter:
+                    def __init__(self, stream):
+                        self.stream = stream
+
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, *args):
+                        self.close()
+
+                    def close(self):
+                        self.stream.close()
+                        if fault == "close":
+                            raise failure
+                        if fault == "write-and-close":
+                            raise OSError("private injected close failure")
+
+                    def write(self, text):
+                        self.stream.write(text[:len(text) // 2])
+                        if fault != "close":
+                            raise failure
+
+                def failing_open(path, mode="r", *args, **kwargs):
+                    stream = original_open(path, mode, *args, **kwargs)
+                    return PartialWriter(stream) if mode == "x" else stream
+
+                def failing_cleanup(temporary):
+                    original_cleanup(temporary)
+                    if fault == "write-and-cleanup" and \
+                            Path(temporary.name).name.startswith(".symphony-receipt-"):
+                        raise OSError("private injected cleanup failure")
+
+                argv = [str(CHECK), str(artifact), "--receipt", str(receipt)]
+                stdout = io.StringIO()
+                with mock.patch.object(sys, "argv", argv), redirect_stdout(stdout), \
+                     mock.patch.object(Path, "open", failing_open), \
+                     mock.patch.object(tempfile.TemporaryDirectory, "cleanup", failing_cleanup):
+                    self.assertEqual(GATE.main(), 1)
+                failed = json.loads(stdout.getvalue())
+                self.assertEqual(failed["diagnostic"]["code"], "receipt")
+                self.assertIn(str(failure), failed["diagnostic"]["detail"])
+                self.assertNotIn("private injected cleanup failure", stdout.getvalue())
+                if fault in {"write-and-close", "write-and-cleanup"}:
+                    self.assertTrue(failed["diagnostic"].get("cleanup_notes"))
+                self.assertFalse(receipt.exists(), "failed write published a receipt")
+                self.assertEqual(list(root.iterdir()), [artifact], "staging escaped cleanup")
+
+                stdout = io.StringIO()
+                with mock.patch.object(sys, "argv", argv), redirect_stdout(stdout):
+                    self.assertEqual(GATE.main(), 1)
+                retried = json.loads(stdout.getvalue())
+                self.assertNotEqual(retried["diagnostic"]["code"], "receipt")
+                self.assertEqual(json.loads(receipt.read_text()), retried)
+
     def test_dependency_law(self):
         # Independent set oracle; approval is downward closed under subset.
         invalid = ["@rpath/foreign.dylib", "/opt/foreign.dylib", "libSystem.B.dylib"]
@@ -263,6 +369,45 @@ class ReleaseCheckTest(unittest.TestCase):
                 struct.pack_into("<Q", data, main + ENTRYOFF_OFFSET, entry)
                 path = self.write_artifact(name, data)
                 self.require_status(path, "rejected", "entrypoint")
+
+    def test_entry_needs_vm_mapping(self):
+        original = self.good.read_bytes()
+        text = self.text_offset(original)
+        filesize = struct.unpack_from("<Q", original, text + FILESIZE_OFFSET)[0]
+        main = self.command_offset(original, LC_MAIN)
+        entry = struct.unpack_from("<Q", original, main + ENTRYOFF_OFFSET)[0]
+        vmsize = struct.unpack_from("<Q", original, text + VMSIZE_OFFSET)[0]
+        linkedit = original.index(b"__LINKEDIT\0") - ENTRYOFF_OFFSET
+        link_vmaddr = struct.unpack_from("<Q", original, linkedit + VMADDR_OFFSET)[0]
+        link_fileoff = struct.unpack_from("<Q", original, linkedit + FILEOFF_OFFSET)[0]
+        self.assertLess(entry, filesize)
+        self.assertGreater(len(original) - 1, vmsize)
+        executable = VM_PROT_READ | VM_PROT_EXECUTE
+
+        mutations = (
+            ("file-exceeds-vm", ((text + VMSIZE_OFFSET, "Q", filesize - 1),), "mapping"),
+            ("vm-end-overflow", ((text + VMADDR_OFFSET, "Q", UINT64_MAX - vmsize + 1),), "mapping"),
+            ("entry-in-highvm-zero-fill", ((text + VMSIZE_OFFSET, "Q", filesize + entry + 1),
+                                           (text + SEGMENT_FLAGS_OFFSET, "I", SG_HIGHVM)), "entrypoint"),
+            ("entry-address-overflow", ((text + VMADDR_OFFSET, "Q", UINT64_MAX - vmsize),
+                                        (main + ENTRYOFF_OFFSET, "Q", len(original) - 1),
+                                        (linkedit + MAXPROT_OFFSET, "i", executable),
+                                        (linkedit + INITPROT_OFFSET, "i", executable)), "entrypoint"),
+            ("entry-file-vm-disagreement", ((main + ENTRYOFF_OFFSET, "Q", link_fileoff),
+                                            (linkedit + VMADDR_OFFSET, "Q", link_vmaddr + vmsize),
+                                            (linkedit + MAXPROT_OFFSET, "i", executable),
+                                            (linkedit + INITPROT_OFFSET, "i", executable)), "entrypoint"),
+        )
+        for name, changes, code in mutations:
+            with self.subTest(name=name):
+                data = bytearray(original)
+                for offset, form, value in changes:
+                    struct.pack_into("<" + form, data, offset, value)
+                path = self.write_artifact(name, data)
+                with self.assertRaises(GATE.Rejected) as failure:
+                    GATE.parse_macho(path.read_bytes())
+                self.assertEqual(failure.exception.diagnostic["code"], code)
+                self.require_status(path, "rejected", code)
 
     def test_receipt_preserves_existing(self):
         flags = [] if not sys.flags.optimize else ["-" + "O" * sys.flags.optimize]

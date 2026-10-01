@@ -21,7 +21,11 @@ are rejected. The admitted modern command layouts come from Apple's selected
 SDK `mach-o/loader.h`; the list is deliberately closed.
 Segment protections use ordinary read/write/execute bits, with initial access a
 subset of maximum access. `__TEXT` initially permits execution; `LC_MAIN` lies in
-a file-backed segment with initial execute access.
+a file-backed segment with initial execute access. File bytes fit the segment's
+virtual size; virtual extents and the entry address cannot overflow. The entry
+address derives from `__TEXT` plus `entryoff` and agrees with the selected
+file-to-VM mapping, including `SG_HIGHVM` placement.
+[Apple dyld entry validation](https://github.com/apple-oss-distributions/dyld/blob/main/common/MachOAnalyzer.cpp#L566-L593)
 
 Apple's `/usr/bin/file`, `/usr/bin/lipo`, and `/usr/bin/otool -l/-L` must agree
 with the checked bytes. Tool warnings, failures, timeouts, excess output, and
@@ -37,8 +41,13 @@ Git and Apple inspector output use one shared live capture mechanism, with
 independent stdout/stderr caps and one drain/reap deadline. Overflow kills the
 owned direct producer before bounded cleanup. OS cleanup failure remains visible
 as a secondary note on the primary error. No temporary disk capture is used.
-Receipts exclusively create a new path; existing files and artifact aliases are
-never overwritten.
+Receipt bytes are closed in a private directory beside the destination, then
+published by an atomic hard link without replacement. Existing files and artifact
+aliases are never overwritten. Failed writes leave the final path absent and
+preserve the primary error through close/staging cleanup failures. If publication
+completes before staging cleanup fails, exit 1 reports `receipt_publication` as
+`published`; the complete physical receipt remains intact. No power-loss durability
+or concurrent same-user staging mutation claim is made.
 
 ## Laws and reference models
 
@@ -52,6 +61,9 @@ never overwritten.
 - The framing model is a bounded sequence of commands whose lengths sum exactly
   to the header's command-byte count. Every interpreted file range must lie
   within the observed snapshot.
+- Receipt publication preserves an existing destination. Before publication,
+  write/close failure leaves the destination absent; after publication, cleanup
+  failure preserves the complete bytes and reports the published outcome.
 
 ## Native controls
 
@@ -105,13 +117,14 @@ effects. Core dumps are disabled.
 
 ## Review repair evidence
 
-The revised gate passes 23 physical-verifier, 20 materializer, nine live capture
+The revised gate passes 26 physical-verifier, 20 materializer, nine live capture
 and six fuzz-harness controls per Python mode. The macOS run requires native
 SDK availability. Actual failing controls preceded fixes for segment permissions,
 entry mapping, destructive receipt aliases, unbounded producer output,
 unchecked profile fields, duplicate keys, unresolved escaped tokens and missing
-pkgconf installation steps. Successful materialization publishes the validated
-value, eliminating disagreement between checked and emitted JSON.
+pkgconf installation steps, virtual mapping and atomic receipt publication.
+Successful materialization publishes the validated value, eliminating disagreement
+between checked and emitted JSON.
 
 The revised native process control accepts only the frozen driver's exact
 documented Darwin cleanup result. It verifies timer wake before KILL, direct-child
@@ -125,8 +138,20 @@ used at that phase; later diagnostic-only changes are tested separately.
 The complete profile decoder/validator and its production-bound harness completed
 a fresh 45 s campaign with 724 executions and zero crashes/hangs. Its receipt
 binds the final decoder, shared helper, profile, harness and harness-control bytes.
-Retained review receipts and logs are under `/private/tmp/symphony-release-*`
-and `review-native-evidence-{0,1}/` in the isolated target.
+The final mapped Mach-O parser completed 431 executions in another 45 s, without
+crashes/hangs. That phase also checked the unchanged application artifact.
+All campaigns use blind mutation.
+
+The temporary qualification tree, application binary and local receipts later
+disappeared; the cause is unknown. The committed hashes and observations above
+remain historical evidence, not currently available artifacts. Fresh final-source
+controls are retained under the ignored `_build/release-evidence/` directory:
+26 verifier controls per mode and a new native toy fixture, plus 798 Mach-O and
+824 profile blind AFL executions in 45 s each without crashes/hangs. Forty profile
+classification/effect controls pass across normal and optimized children.
+The application was not rebuilt or
+revalidated in this replacement phase. Hosted native artifacts remain separately
+downloadable from their recorded GitHub Actions runs.
 
 ## Observed Symphony build
 

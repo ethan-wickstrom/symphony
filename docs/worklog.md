@@ -57,6 +57,9 @@ complete duplicate-free profile decoding and required native SDK coverage. Check
 JSON values are serialized before binding substitution. A native Darwin
 control now retains the frozen driver's documented conservative cleanup error
 while checking grace timing, direct-child reap and lease release.
+Follow-up review also validates virtual mappings and atomically publishes complete
+receipts without replacement, with a distinct published outcome on late cleanup
+failure. Actual RED controls precede both repairs.
 Next: publish reviewed fixes, verify exact-head CI and merge the foundation.
 Clean-host execution and Linux musl remain release gates.
 Plans: `docs/design/static-release-plan.md`, then
@@ -113,7 +116,7 @@ No user approval is pending under the accepted recommendations/autonomy instruct
   six unexpected-error aborts, exact byte bounds and effect guards. Core dumps
   are disabled. Both modes pass; Linux/macOS CI runs these controls.
 
-Review repairs supersede those initial tool/native counts: 23 verifier,
+Review repairs supersede those initial tool/native counts: 26 verifier,
 20 materializer, nine bounded-capture and six fuzz-harness controls pass per mode,
 with required native SDK coverage. The harness now drives 20 children per mode
 and uses the exact production decoder. A fresh isolated native rebuild passes
@@ -126,6 +129,28 @@ mutation. Independent verification of the two latest native manifests matches
 all 156 source hashes, watchdog/sentinel and binary identities, with zero
 mismatches. Required pinned Elixir `make all` passes after registry access is
 restored by scoped unconfined execution; the sandboxed registry failure is retained.
+Hosted PR/push workflows pass at `bcea5a3`: eight native mode manifests match all
+156 exact Git blobs and both runner hashes, each passing 51+7+21 cases. Four custody
+receipts match nine frozen Eio hashes and 20,000 total scenarios/8,000 stable closes.
+macOS retains its documented conservative cleanup errors. Both macOS release-tool
+jobs run all 23 verifier controls without skips; Ubuntu runs five portable controls
+and one explicit native-class skip per mode. Later mapping/publication repairs need
+a new exact-head run. Receipt: `/private/tmp/symphony-hosted-bcea5a3-audit-i6idh9h7/verification.json`.
+Final follow-up release-tool gate passes 61 controls per mode (26 verifier +
+20 materializer + nine capture + six harness). The final mapping parser passes
+431 further AFL executions/45 s with zero crashes/hangs; its receipt binds both
+26-control logs and the unchanged accepted artifact. Linux will run seven portable
+verifier methods and one native-class skip; all 19 native methods run on macOS.
+
+The temporary qualification tree, application binary and local receipts later
+disappeared; cause unknown. Their observations/hashes are historical. Replacement
+final-source evidence lives under ignored `_build/release-evidence/`: 61 release-tool
+controls per mode, 26 verifier controls per mode against a fresh native toy, and
+798 Mach-O and 824 profile blind AFL executions/45 s each with no crashes/hangs.
+Forty profile classification/effect controls pass across both child modes. No replacement
+application build or acceptance is claimed. The first required Elixir rerun had
+two unchanged fake-SSH trace timeouts; the serialized full rerun passes 302 tests,
+six declared skips, lint, coverage and Dialyzer. The timeout cause remains unproven.
 
 ## Last merged slice evidence
 

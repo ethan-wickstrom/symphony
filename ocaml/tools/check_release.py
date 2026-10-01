@@ -32,6 +32,9 @@ MAX_COMMANDS = 4096
 MAX_TOOL_OUTPUT = 8 * 1024 * 1024
 TOOL_TIMEOUT = 30
 COPY_CHUNK = 1024 * 1024
+RECEIPT_CLOSE_NOTE = "Private receipt staging file close also failed."
+RECEIPT_CLEANUP_NOTE = "Private receipt staging directory cleanup also failed."
+RECEIPT_PUBLISHED_NOTE = "Complete receipt publication preceded cleanup failure."
 HEADER_SIZE = 32
 ARM64 = 0x0100000C
 MH_MAGIC_64 = 0xFEEDFACF
@@ -41,6 +44,8 @@ VM_PROT_READ = 0x01
 VM_PROT_WRITE = 0x02
 VM_PROT_EXECUTE = 0x04
 VM_PROT_ALL = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE
+SG_HIGHVM = 0x01
+UINT64_MAX = (1 << 64) - 1
 
 # Apple's SDK mach-o/loader.h defines these command numbers and layouts.
 COMMANDS = {
@@ -131,6 +136,7 @@ def check_segment(block, total):
     values = struct.unpack_from("<II16sQQQQiiII", block)
     name = values[2].rstrip(b"\0")
     segment = ascii_name(name, "segment name")
+    vmaddr, vmsize = values[3], values[4]
     fileoff, filesize, sections = values[5], values[6], values[9]
     maximum, initial = values[7], values[8]
     if len(block) != 72 + sections * 80:
@@ -142,6 +148,10 @@ def check_segment(block, total):
         reject("permissions", f"Segment {segment} initial permissions exceed its maximum.")
     if segment == "__TEXT" and not initial & VM_PROT_EXECUTE:
         reject("permissions", "The __TEXT segment must initially permit execution.")
+    if filesize > vmsize or vmaddr > UINT64_MAX - vmsize:
+        reject("mapping", f"Segment {segment} has an invalid virtual extent.")
+    # SDK SG_HIGHVM places file bytes above low zero-fill (normally used by core stacks).
+    backed_start = vmaddr + (vmsize - filesize if values[10] & SG_HIGHVM else 0)
     require_range(fileoff, filesize, total)
     for offset in range(72, len(block), 80):
         section = struct.unpack_from("<16s16sQQIIIIIIII", block, offset)
@@ -152,7 +162,8 @@ def check_segment(block, total):
         if section_type not in {1, 0xC, 0x12}:
             require_range(section[4], section[3], total)
         require_range(section[6], section[7] * 8, total)
-    return {"name": segment, "fileoff": fileoff, "filesize": filesize, "initial": initial}
+    return {"name": segment, "fileoff": fileoff, "filesize": filesize,
+            "vmaddr": vmaddr, "backed_start": backed_start, "initial": initial}
 
 
 def check_shape(name, block, total):
@@ -238,10 +249,16 @@ def parse_macho(data):
     segment_names = [segment["name"] for segment in segments]
     if len(segment_names) != len(set(segment_names)) or not {"__TEXT", "__LINKEDIT"} <= set(segment_names):
         reject("malformed", "Executable segments are missing or duplicated.")
+    # Dyld uses __TEXT.vmaddr + entryoff; that address must map the same file byte.
+    text = next(segment for segment in segments if segment["name"] == "__TEXT")
+    if entry > UINT64_MAX - text["vmaddr"]:
+        reject("entrypoint", "LC_MAIN's virtual address overflows the address space.")
+    entry_address = text["vmaddr"] + entry
     if not any(segment["initial"] & VM_PROT_EXECUTE and
                segment["fileoff"] <= entry < segment["fileoff"] + segment["filesize"]
+               and entry_address == segment["backed_start"] + entry - segment["fileoff"]
                for segment in segments):
-        reject("entrypoint", "LC_MAIN must lie in an initially executable, file-backed segment.")
+        reject("entrypoint", "LC_MAIN must map its file byte in an initially executable segment.")
     if loader != DYLD:
         reject("loader", "The executable does not use the approved system loader.")
     if build != {"platform": PLATFORM_MACOS, "minimum": MINIMUM, "sdk": SDK}:
@@ -358,6 +375,40 @@ def verify(artifact):
     return receipt
 
 
+def publish_receipt(path, rendered):
+    # A same-parent hard link publishes complete bytes atomically without replacement.
+    temporary = tempfile.TemporaryDirectory(prefix=".symphony-receipt-", dir=path.parent)
+    stream = None
+    try:
+        staged = Path(temporary.name) / "receipt.json"
+        stream = staged.open("x", encoding="utf-8")
+        stream.write(rendered)
+        stream.close()
+        stream = None
+        os.link(staged, path, follow_symlinks=False)
+    except BaseException as error:
+        operations = [(temporary.cleanup, RECEIPT_CLEANUP_NOTE)]
+        if stream is not None:
+            operations.insert(0, (stream.close, RECEIPT_CLOSE_NOTE))
+        for release, note in operations:
+            try:
+                release()
+            except BaseException:
+                try:
+                    error.add_note(note)
+                except BaseException:
+                    pass
+        raise
+    try:
+        temporary.cleanup()
+    except BaseException as error:
+        try:
+            error.add_note(RECEIPT_PUBLISHED_NOTE)
+        except BaseException:
+            pass
+        raise
+
+
 def main():
     parser = Arguments(description=__doc__)
     parser.add_argument("artifact", type=Path)
@@ -373,12 +424,17 @@ def main():
     rendered = json.dumps(receipt, indent=2, sort_keys=True) + "\n"
     if arguments.receipt is not None:
         try:
-            with arguments.receipt.open("x", encoding="utf-8") as output:
-                output.write(rendered)
+            publish_receipt(arguments.receipt, rendered)
         except OSError as error:
             receipt["status"] = "rejected"
-            receipt["diagnostic"] = {"code": "receipt", "detail": f"Cannot write receipt: {error}",
-                                     "remedy": "Choose a new writable receipt path; existing files are never overwritten."}
+            receipt["diagnostic"] = {"code": "receipt", "detail": f"Cannot finalize receipt {arguments.receipt}: {error}",
+                                     "remedy": "Check parent permissions and free space. Use a new name if the receipt already exists."}
+            notes = [note for note in getattr(error, "__notes__", ())
+                     if type(note) is str and note in {RECEIPT_CLOSE_NOTE, RECEIPT_CLEANUP_NOTE, RECEIPT_PUBLISHED_NOTE}]
+            if notes:
+                receipt["diagnostic"]["cleanup_notes"] = notes
+            if RECEIPT_PUBLISHED_NOTE in notes:
+                receipt["receipt_publication"] = {"status": "published", "path": str(arguments.receipt)}
             rendered = json.dumps(receipt, indent=2, sort_keys=True) + "\n"
     print(rendered, end="")
     return 0 if receipt["status"] == "accepted" else 1
