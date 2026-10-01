@@ -48,14 +48,17 @@ Seeded whole-service Eio simulation, orchestrator model agreement, static releas
 1,000-session benchmarks, HTTP API and portable harness remain pending their slices.
 Crowbar random campaigns are distinct from instrumented AFL coverage.
 
-Current local application gate: 96 example/property tests, 29,500 model/law cases,
-120 paired source files, 19 CLI scenarios, 34 source-gate controls, and 150,000
+Current local application gate: 99 example/property tests, 29,500 model/law cases,
+128 paired source files, 19 CLI scenarios, 34 source-gate controls, and 150,000
 Crowbar invocations at seed `20260930` pass.
 Build, formatting, interface pairing and protocol snapshot checks pass, normally
 and optimized, with 16 corrupted-fixture controls.
 
 The policy also checks 100 explicit fault/cancellation scenarios, a full rollback
 trace and persistent-driver operation sequences. These are fake-driver effects,
-not physical locks, filesystem identity, hook subprocesses or cancellation shielding.
+not physical locks, filesystem identity or hook subprocesses. Separate Driver
+tests exercise actual Eio cancellation shielding, child joining and reporting
+with a fake Store. The retained macOS process-custody gate passes; Linux and the
+live workspace/hook layer remain pending.
 
 Real integration results will be reported independently as passed, failed, or skipped.

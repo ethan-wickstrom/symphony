@@ -1,8 +1,9 @@
 # Slice 2: owned workspaces and hooks
 
 Status: keys, references, ownership codec and hook policy tested against
-independent models; directory ownership/live hooks remain pending. No workspace
-containment or host-safety claim yet. Slice 1 is merged at
+independent models; protected Driver composition and macOS process custody pass.
+Directory ownership/live hooks remain pending. No workspace containment claim.
+Slice 1 is merged at
 `f56a66c`.
 
 ## Contracts and intentional equalities
@@ -83,8 +84,14 @@ Record the source delta/provenance and the failing old-API reproducer with the p
 
 The old API counterexample was reproduced on macOS: after the leader exited and
 was reaped, protected positive-PID KILL left its TERM-ignoring descendant alive.
-No unsafe attempt to force OS identifier reuse was made. The replacement's host
-tests and library integration remain pending.
+No unsafe attempt to force OS identifier reuse was made. Both Eio packages are
+now pinned to the [reviewed source](../vendor/eio/PATCHES.md). The frozen macOS
+gate passed 15,000 cases plus cancellation, concurrent close, permission/reap
+errors, signal normalization and failed-exec cleanup controls. Exact-source
+normal/optimized worker-admission tests preserve finalizers, original backtraces
+and defect categories; rejected admission forks no child and leaves the same
+switch usable. One reserved native worker observes and reaps; cleanup allocates
+no new worker. Independent custody review passed. Linux host evidence is pending.
 
 Darwin's zombie-only process group can report EPERM for a group signal. Modern
 killpg has the same behavior; its legacy variant also hides live permission
@@ -107,6 +114,15 @@ ownership boundary; stronger same-user containment is a later isolation extensio
 
 ## Build order and checks
 
+[Live composition](design/workspace-live.md) separates Store, hook interpreter and
+process ports under one sealed Path brand. Private child loans retain semantic
+ownership through process closure; FD reference counting alone cannot do that.
+Fresh protected cleanup scopes run before the lease enters Closing. Store/Hooks
+port signatures and Driver delegation are implemented; three actual Eio tests
+cover path rejection, protected after_run child joining/reporting and original
+cancellation/defect propagation. The broader agent assembly type-checks on 5.5;
+native registration remains work.
+
 1. Checked keys and independent model/golden vectors.
 2. Frozen reference and refined manager signatures, type-checked with shared paths.
 3. Safe POSIX group lifetime and acquired-descriptor cwd host prototype.
@@ -116,14 +132,14 @@ ownership boundary; stronger same-user containment is a later isolation extensio
    CONFORMANCE.md only after actual passes. Green Linux/macOS CI and review precede
    merge and tracker work.
 
-The current full local check passes 96 tests and 29,500 model/law cases;
+The current full local check passes 99 tests and 29,500 model/law cases;
 the 15-group seed `20260930` campaign passes 150,000 invocations. The key module's
 13 independent hash vectors, length/alias examples and four properties are included.
 Reference/policy models compare complete fake-driver traces, primary outcomes,
 directory presence and release multiplicity;
 sequence properties retain one driver across operations. A same-diagnostic,
 changed-error-variant control failed before the oracle was corrected.
-The full check passes with 120 paired source files, 19 CLI scenarios normally and
+The full check passes with 128 paired source files, 19 CLI scenarios normally and
 optimized, 34 source and 16 corruption controls. Revised 56 blueprints plus an
 assembly witness type-check on 5.5 after temporary doc normalization. No physical
 directory/lock/hook behavior is established by those tests.

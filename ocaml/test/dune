@@ -15,7 +15,8 @@
   workspace_owner_model
   workspace_owner_test
   workspace_policy_model
-  workspace_policy_test)
+  workspace_policy_test
+  workspace_driver_test)
  (libraries
   symphony_workflow
   symphony_io

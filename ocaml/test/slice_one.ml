@@ -34,5 +34,6 @@ let () =
       ("workspace references", Workspace_reference_test.tests);
       ("workspace owners", Workspace_owner_test.tests);
       ("workspace policy", Workspace_policy_test.tests);
+      ("workspace driver", Workspace_driver_test.tests);
       ("properties", property_cases);
     ]

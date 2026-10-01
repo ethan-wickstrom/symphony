@@ -44,29 +44,31 @@ Slice 1 merged as PR #1 at `f56a66c906925f050edd055d09226d29c8e2ed91`.
 Final head `b35370e` passed hosted Linux/macOS builds, models, CLI/source/format
 gates, seeded fuzzing and Elixir. Every review thread is resolved; the final
 Codex review found no major issues. Slice 2 starts on `ethan/ocaml-workspaces`.
-Checked keys are implemented and independently reviewed. Live directory ownership,
-hooks and workspace inspection remain pending. The Eio group-custody source patch
-is under host testing and is not yet installed into the application switch.
-Frozen references, the strict ownership codec and pure hook policy pass their
-independent model/fake suite. Ownership now includes opaque issue IDs to reject
-historical identifier reuse. No physical acquisition/ownership claim yet.
+Keys, frozen references, strict ownership codec and manager policy pass independent
+models. Ownership includes opaque issue IDs to reject historical identifier reuse.
+The frozen Eio group-custody source passes its macOS gate and independent review;
+both Eio packages are pinned/installed. The application selects the POSIX backend
+explicitly. Store/Hooks ports and Driver composition pass real Eio cancellation
+tests. Live directory ownership, hook execution and inspection remain pending.
+No physical acquisition/ownership or Linux process claim yet.
 
 ## Verified locally
 
 - macOS arm64; OCaml 5.5.0, Dune 3.24.0, ocamlformat 0.28.1.
 - `just check` passed: build, fatal enabled warnings, formatting and all checks below.
-- Current application gate: 96 Alcotest cases, 63 examples and 33 properties,
-  29,500 generated model/law cases. Log: `/private/tmp/symphony-owner-check-final.log`.
+- Current application gate: 99 Alcotest cases, 66 examples and 33 properties,
+  29,500 generated model/law cases. Log: `/private/tmp/symphony-runtime-check.log`.
 - 19 CLI scenarios: workflow paths/default/anchoring, strict rendering/attempts,
   literal issue text, metadata, actionable errors, redaction and bounded file reads.
 - Generated policy snapshot/digest check passed.
-- Compiler-AST source gate checked 120 application source/interface files;
+- Compiler-AST source gate checked 128 application source/interface files;
   all 34 positive/negative controls passed.
 - Crowbar seed `20260930`: 15 groups × 10,000 = 150,000 invocations passed,
   including ownership JSON and combined issue-fixture parsing/rendering.
-  Log: `/private/tmp/symphony-owner-fuzz.log`. These are random/curated cases,
+  Log: `/private/tmp/symphony-runtime-fuzz.log`. These are random/curated cases,
   not an instrumented AFL coverage result.
-- Locked dependency installation with both source pins completed with no changes.
+- Both Eio runtime pins installed; dependency lock regenerated without local URLs
+  or eio_main. YAML/Crowbar remain pinned. Only the project switch was changed.
 - Final independent review fixed malformed URI acceptance, substituted credential
   leakage in tracker-kind errors, missing attempt diagnostics and oversized JSON
   composition allocation. Each had a failing regression before its fix.
@@ -92,16 +94,15 @@ opam build sandbox after bwrap failed, so this is no build-isolation claim.
 
 ## Next action
 
-Finish the Eio group custody gate before live directory/hook implementation.
-The blocking WNOWAIT observer removed the sampled SIGCHLD hang and passed repeated
-5,000-scenario campaigns plus deterministic queued-producer revocation. Review then
-reproduced Eio thread-creation failure escaping the suspended fiber's finalizers.
-An isolated scheduler correction resumes that continuation with its original error
-and preserves cleanup. Reserve one producer before fork, retain it through exit
-observation and sole reap, and fence cancellation during launch. This removes the
-post-fork thread-allocation failure class. Revised host stress/review is pending.
-Preserve uncertain Darwin EPERM as a result; retain the final group KILL sweep.
-No user decision is pending. The source patch is not installed or claimed green.
+Run the retained process gate on hosted Linux/macOS before native directory/hook
+integration. Review caught and fixed a CI switch-location mismatch before push. Both runners
+accept an explicit switch; another 5,000-case campaign and all normal/optimized
+controls pass with that argument. CI selects its workspace-root switch.
+Then implement the anchored directory Store and private Path/child-loan bracket,
+followed by Process and Hooks over the shared ports. Eio already supplies managed
+nofollow openat/stat/directory iteration; the smallest native gap is nonblocking
+flock. No user decision is pending. Do not start tracker slice 3 before slice 2 is
+complete, reviewed, green and merged.
 
 Review the full Algebra-Driven Design manuscript at source commit
 `118aa81a48fb46255dfe4503cbcdee6d893098c9`. The main prose manuscript has been read:
@@ -120,9 +121,16 @@ Do not equate a delivered termination request with a closed OS process group.
 - Refined 56 component/support sketches plus assembly witness type-check on 5.5.
   Temporary copies normalize pre-existing blueprint doc attachment; live source
   interfaces pass the normal fatal-warning/format gate without that normalization.
-- The old process API's early-leader-exit/remaining-descendant failure was reproduced
-  on macOS before patching. A zombie-only group exposes a Darwin EPERM edge case;
-  replacement behavior and Linux portability remain under verification.
+- Frozen process source: 15,000 macOS cases plus public-close cancellation,
+  concurrent close, injected permission/reap errors, actual signal normalization,
+  failed-exec cleanup and reporter-defect controls. Independent normal/optimized
+  controls prove zero-fork admission failure, same-switch reuse, original
+  backtraces/finalizers and unchanged worker defect categories. Full hashes and
+  retained logs are in vendor/eio/PATCHES.md. Preserve uncertain Darwin EPERM as a
+  result; retain final group KILL before sole reap. No finite kernel reap bound.
+- Three Driver composition tests use actual Eio cancellation: after_run gets a
+  fresh protected switch, joins its child, reports error and preserves the
+  original cancellation before fake-lease release. Native leases remain pending.
 
 These are key and interface results, not workspace containment or hook conformance.
 
