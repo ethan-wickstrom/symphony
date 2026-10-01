@@ -6,6 +6,20 @@ let parse s =
   else Ok (Z.of_string s)
 
 let decimal = Z.to_string
+let native_bits = 64
+let native_modulus = Z.shift_left Z.one native_bits
+
+let of_uint64_bits bits =
+  let signed = Z.of_int64 bits in
+  if Int64.compare bits 0L < 0 then Z.add signed native_modulus else signed
+
+let to_uint64_bits n =
+  if Z.numbits n > native_bits then None
+  else
+    let signed =
+      if Z.testbit n (native_bits - 1) then Z.sub n native_modulus else n
+    in
+    Some (Z.to_int64 signed)
 
 let decimal_bounded ~max_bytes n =
   if max_bytes <= 0 || max_bytes > max_int / 4 then

@@ -61,12 +61,36 @@ module type S = sig
     ('a, error) result
 
   val cleanup : t -> Contract.cleanup -> (unit, error) result
+  val inspect : t -> Contract.reference -> (string option, error) result
 end
 
 module Make (Driver : DRIVER) = struct
   module Contract = Driver.Contract
 
   type t = Driver.t
+  type 'a outcome = Returned of 'a | Raised of exn * Printexc.raw_backtrace
+
+  let capture run =
+    match run () with
+    | value -> Returned value
+    | exception exn -> Raised (exn, Printexc.get_raw_backtrace ())
+
+  let resume = function
+    | Returned value -> value
+    | Raised (exn, trace) -> Printexc.raise_with_backtrace exn trace
+
+  let first_fault first second =
+    match first with
+    | Raised _ -> first
+    | Returned () -> second
+
+  let resolve primary cleanup =
+    match primary with
+    | Returned (Error _ as error) -> error
+    | Returned (Ok value) ->
+        resume cleanup;
+        Ok value
+    | Raised (exn, trace) -> Printexc.raise_with_backtrace exn trace
 
   let observe t = function
     | Ok () -> ()
@@ -75,8 +99,11 @@ module Make (Driver : DRIVER) = struct
   let hook t lease phase = observe t (Driver.hook t lease phase)
 
   let remove t lease =
-    hook t lease Workspace_settings.Before_remove;
-    Driver.remove t lease
+    let before =
+      capture (fun () -> hook t lease Workspace_settings.Before_remove)
+    in
+    let removal = capture (fun () -> Driver.remove t lease) in
+    resolve removal before
 
   let rollback t origin lease =
     match origin with
@@ -84,9 +111,13 @@ module Make (Driver : DRIVER) = struct
     | Driver.Created -> observe t (remove t lease)
 
   let finish t lease cleanup =
-    Driver.cleanup_scope t (fun () ->
-        hook t lease Workspace_settings.After_run;
-        cleanup ())
+    capture (fun () ->
+        Driver.cleanup_scope t (fun () ->
+            let after =
+              capture (fun () -> hook t lease Workspace_settings.After_run)
+            in
+            let completed = capture cleanup in
+            resume (first_fault after completed)))
 
   let prepare t origin lease =
     let created =
@@ -99,19 +130,19 @@ module Make (Driver : DRIVER) = struct
           (fun () -> Driver.path lease))
 
   let attempt t origin lease run =
-    (* Preparation rollback has a separate bracket from an agent attempt. *)
-    match prepare t origin lease with
-    | Ok path ->
-        Fun.protect
-          ~finally:(fun () -> finish t lease (fun () -> ()))
-          (fun () -> run path)
-    | Error error ->
-        finish t lease (fun () -> rollback t origin lease);
-        Error error
-    | exception exn ->
-        let trace = Printexc.get_raw_backtrace () in
-        finish t lease (fun () -> rollback t origin lease);
-        Printexc.raise_with_backtrace exn trace
+    (* Capture the primary outcome before finalizers: a cleanup defect cannot
+       replace it or skip a later rollback/removal obligation. *)
+    match capture (fun () -> prepare t origin lease) with
+    | Returned (Ok path) ->
+        let primary = capture (fun () -> run path) in
+        let cleanup = finish t lease (fun () -> ()) in
+        resolve primary cleanup
+    | Returned (Error error) ->
+        let cleanup = finish t lease (fun () -> rollback t origin lease) in
+        resolve (Returned (Error error)) cleanup
+    | Raised (exn, trace) ->
+        let cleanup = finish t lease (fun () -> rollback t origin lease) in
+        resolve (Raised (exn, trace)) cleanup
 
   let with_workspace t reference run =
     match
@@ -126,6 +157,18 @@ module Make (Driver : DRIVER) = struct
       Driver.with_existing t request.Contract.workspace (function
         | None -> Ok ()
         | Some lease -> Driver.cleanup_scope t (fun () -> remove t lease))
+    with
+    | Ok result -> result
+    | Error error -> Error error
+
+  let inspect t reference =
+    match
+      Driver.with_existing t reference (function
+        | None -> Ok None
+        | Some lease ->
+            Result.map
+              (fun path -> Some (Contract.Path.display path))
+              (Driver.path lease))
     with
     | Ok result -> result
     | Error error -> Error error

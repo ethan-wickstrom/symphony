@@ -76,7 +76,8 @@ module type DRIVER = sig
 
   val report : t -> error -> unit
   (** Observe ignored cleanup failures. Expected logging failures do not raise;
-      defects may propagate. Reporting never changes the primary result. *)
+      defects may propagate after remaining cleanup obligations. Reporting never
+      replaces a primary error, defect or cancellation. *)
 end
 
 module type S = sig
@@ -94,16 +95,31 @@ module type S = sig
       Created, after after_run and before_remove. Callback failure preserves the
       workspace. after_run occurs once after any acquired attempt, including
       cancellation. Ignored hook/rollback failures preserve the primary error.
-      Driver cancellation and defects propagate with cleanup; no expected error
-      escapes as an exception. *)
+      Cleanup/reporting defects cannot skip rollback or lease release. Primary
+      errors, defects and cancellation outrank cleanup defects; exception
+      identity and original backtrace survive. A successful callback exposes the
+      first cleanup defect after the cleanup obligations finish. Driver
+      cancellation and defects propagate with cleanup; no expected error escapes
+      as an exception. *)
 
   val cleanup : t -> Contract.cleanup -> (unit, error) result
   (** Missing cleanup is identity. before_remove failure is reported, then
-      deletion proceeds under the same lease. After successful removal with no
+      deletion proceeds under the same lease, including hook/reporting defects.
+      Removal failure is the primary outcome; successful removal exposes a
+      preceding cleanup defect after release. After successful removal with no
       recreation, another cleanup returns Ok and preserves the resulting
       filesystem projection; hook/log traces are not equal. Failed cleanup has
       no idempotence guarantee. Owner fencing must reject delayed cleanup before
       effects. *)
+
+  val inspect : t -> Contract.reference -> (string option, error) result
+  (** Non-creating inspection under the ownership lock. Missing returns None and
+      preserves the filesystem projection. Existing returns an informational
+      display label after identity/ownership validation; no live Path escapes
+      the bracket. Inspection runs no hooks and removes nothing. Repetition with
+      unchanged ownership preserves its result and filesystem projection.
+      Busy/foreign/unsafe entries return Error before display; cancellation and
+      defects propagate after release. *)
 end
 
 module Make (Driver : DRIVER) :

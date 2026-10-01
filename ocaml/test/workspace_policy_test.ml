@@ -9,6 +9,7 @@ end
 module Reference = Workspace_reference.Make (Path)
 
 exception Cancelled of Model.normal_stage
+exception Fault of Model.fault
 
 let checked = function
   | Ok value -> value
@@ -116,7 +117,8 @@ module Driver = struct
     | Model.Normal _ | Model.After_run | Model.Before_remove | Model.Remove -> (
         match t.scenario.Model.respond stage with
         | Model.Proceed -> Ok ()
-        | Model.Fail failure -> Error (error stage failure))
+        | Model.Fail failure -> Error (error stage failure)
+        | Model.Defect -> raise (Fault (Model.Operation_defect stage)))
 
   let release lease =
     match lease.status with
@@ -180,7 +182,11 @@ module Driver = struct
 
   let report t value =
     let stage, failure = error_identity value in
-    record t (Model.Report (stage, failure))
+    record t (Model.Report (stage, failure));
+    match t.scenario.Model.report stage failure with
+    | Model.Observed -> ()
+    | Model.Reporter_defect ->
+        raise (Fault (Model.Reporting_defect (stage, failure)))
 end
 
 module Manager = Workspace_manager.Make (Driver)
@@ -238,6 +244,7 @@ let run_driver driver operation =
         let stage, failure = error_identity value in
         Model.Errored (stage, failure)
     | exception Cancelled stage -> Model.Cancelled stage
+    | exception Fault fault -> Model.Defected fault
   in
   {
     Model.presence = driver.Driver.presence;
@@ -261,6 +268,7 @@ let plain initial operation : Model.scenario =
     Model.initial;
     operation;
     respond = (fun _ -> Model.Proceed);
+    report = (fun _ _ -> Model.Observed);
     cancel_at = None;
   }
 
@@ -354,6 +362,132 @@ let cleanup_twice () =
     "second cleanup preserves absence and performs no hooks"
     (Model.show repeated) (Model.show second)
 
+let cleanup_defects () =
+  let cleanup_stages = Model.[ After_run; Before_remove; Remove ] in
+  List.iter
+    (fun initial ->
+      List.iter
+        (fun operation ->
+          let scenario = plain initial operation in
+          List.iter
+            (fun target ->
+              let scenario =
+                {
+                  scenario with
+                  Model.respond =
+                    (fun stage ->
+                      if stage = target then Model.Defect else Model.Proceed);
+                }
+              in
+              ignore (compare scenario))
+            cleanup_stages;
+          List.iter
+            (fun target ->
+              let scenario = inject scenario target Model.Rejected in
+              ignore
+                (compare
+                   {
+                     scenario with
+                     Model.report = (fun _ _ -> Model.Reporter_defect);
+                   }))
+            cleanup_stages)
+        Model.[ Attempt; Cleanup ])
+    Model.[ Absent; Present ]
+
+let compound_defects () =
+  List.iter
+    (fun initial ->
+      List.iter
+        (fun primary_stage ->
+          List.iter
+            (fun response ->
+              List.iter
+                (fun secondary ->
+                  let scenario = plain initial Model.Attempt in
+                  let scenario =
+                    {
+                      scenario with
+                      Model.respond =
+                        (fun stage ->
+                          if stage = Model.Normal primary_stage then response
+                          else if stage = secondary then Model.Defect
+                          else Model.Proceed);
+                    }
+                  in
+                  ignore (compare scenario);
+                  ignore
+                    (compare
+                       { scenario with Model.cancel_at = Some primary_stage });
+                  ignore
+                    (compare
+                       {
+                         scenario with
+                         Model.respond =
+                           (fun stage ->
+                             if stage = secondary then Model.Fail Model.Rejected
+                             else scenario.Model.respond stage);
+                         report = (fun _ _ -> Model.Reporter_defect);
+                       }))
+                Model.[ After_run; Before_remove; Remove ])
+            Model.[ Fail Rejected; Fail Timed_out; Defect ])
+        Model.[ After_create; Before_run; Path; Callback ])
+    Model.[ Absent; Present ]
+
+let defect_backtrace () =
+  List.iter
+    (fun (after_run, reporting) ->
+      let scenario = plain Model.Present Model.Attempt in
+      let scenario =
+        {
+          scenario with
+          Model.respond =
+            (fun stage ->
+              if stage = Model.After_run then after_run else Model.Proceed);
+          report = (fun _ _ -> reporting);
+        }
+      in
+      let driver = Driver.create scenario in
+      let primary =
+        Fault (Model.Operation_defect (Model.Normal Model.Callback))
+      in
+      let traces = ref [] in
+      let callback _ =
+        try raise primary
+        with exn ->
+          let trace = Printexc.get_raw_backtrace () in
+          traces := [ trace ];
+          Printexc.raise_with_backtrace exn trace
+      in
+      match Manager.with_workspace driver reference callback with
+      | Ok _ | Error _ -> Alcotest.fail "Primary defect did not propagate"
+      | exception exn ->
+          let observed = Printexc.get_raw_backtrace () in
+          Alcotest.(check bool)
+            "original exception identity" true (exn == primary);
+          (match !traces with
+          | [ expected ] ->
+              Alcotest.(check bool)
+                "primary backtrace contains frames" true
+                (Printexc.raw_backtrace_length expected > 0);
+              Alcotest.(check bool)
+                "original backtrace retained" true
+                (String.starts_with
+                   ~prefix:(Printexc.raw_backtrace_to_string expected)
+                   (Printexc.raw_backtrace_to_string observed))
+          | [] | _ :: _ -> Alcotest.fail "Primary backtrace was not captured");
+          Alcotest.(check int)
+            "one release after finalizer defect" 1
+            (List.fold_left
+               (fun count event ->
+                 match event with
+                 | Model.Release -> count + 1
+                 | Model.Call _
+                 | Model.Enter_cleanup
+                 | Model.Leave_cleanup
+                 | Model.Report _ -> count)
+               0 driver.Driver.trace))
+    Model.[ (Defect, Observed); (Fail Rejected, Reporter_defect) ]
+
 let variant_control () =
   let value = error (Model.Normal Model.Path) Model.Rejected in
   let changed =
@@ -374,6 +508,105 @@ let variant_control () =
     "changed error variant rejected" true
     (Option.is_none (find_error changed))
 
+let inspection_examples () =
+  let observed =
+    Alcotest.testable
+      (fun formatter value ->
+        Format.pp_print_string formatter (Model.show value))
+      Model.equal
+  in
+  let check driver expected label =
+    let outcome =
+      match Manager.inspect driver reference with
+      | Ok actual ->
+          Alcotest.(check (option string)) "informational label" label actual;
+          Model.Returned
+      | Error value ->
+          let stage, failure = error_identity value in
+          Model.Errored (stage, failure)
+      | exception Cancelled stage -> Model.Cancelled stage
+      | exception Fault fault -> Model.Defected fault
+    in
+    let actual =
+      {
+        Model.presence = driver.Driver.presence;
+        outcome;
+        trace = List.rev driver.Driver.trace;
+      }
+    in
+    Alcotest.check observed "read-only lifecycle" expected actual;
+    driver.Driver.trace <- []
+  in
+  let lookup = Model.Call (Model.Normal Model.Lookup) in
+  let held = [ lookup; Model.Call (Model.Normal Model.Path); Model.Release ] in
+  let absent = Driver.create (plain Model.Absent Model.Cleanup) in
+  let missing =
+    {
+      Model.presence = Model.Absent;
+      outcome = Model.Returned;
+      trace = [ lookup ];
+    }
+  in
+  check absent missing None;
+  check absent missing None;
+  let present = Driver.create (plain Model.Present Model.Cleanup) in
+  let owned =
+    { Model.presence = Model.Present; outcome = Model.Returned; trace = held }
+  in
+  check present owned (Some "/checked/workspace");
+  check present owned (Some "/checked/workspace");
+  List.iter
+    (fun (stage, trace) ->
+      let scenario =
+        inject
+          (plain Model.Present Model.Cleanup)
+          (Model.Normal stage) Model.Rejected
+      in
+      check (Driver.create scenario)
+        {
+          Model.presence = Model.Present;
+          outcome = Model.Errored (Model.Normal stage, Model.Rejected);
+          trace;
+        }
+        None)
+    [ (Model.Lookup, [ lookup ]); (Model.Path, held) ];
+  let scenario =
+    {
+      (plain Model.Present Model.Cleanup) with
+      Model.cancel_at = Some Model.Path;
+    }
+  in
+  check (Driver.create scenario)
+    {
+      Model.presence = Model.Present;
+      outcome = Model.Cancelled Model.Path;
+      trace = held;
+    }
+    None;
+  let scenario =
+    {
+      (plain Model.Present Model.Cleanup) with
+      Model.respond =
+        (function
+        | Model.Normal Model.Path -> Model.Defect
+        | Model.Normal
+            ( Model.Acquire
+            | Model.Lookup
+            | Model.After_create
+            | Model.Before_run
+            | Model.Callback )
+        | Model.After_run | Model.Before_remove | Model.Remove -> Model.Proceed);
+    }
+  in
+  check (Driver.create scenario)
+    {
+      Model.presence = Model.Present;
+      outcome =
+        Model.Defected (Model.Operation_defect (Model.Normal Model.Path));
+      trace = held;
+    }
+    None
+
 let tests =
   [
     Alcotest.test_case "all single fault and cancellation boundaries" `Quick
@@ -385,6 +618,14 @@ let tests =
       cleanup_twice;
     Alcotest.test_case "primary error observation includes its variant" `Quick
       variant_control;
+    Alcotest.test_case "cleanup defects cannot skip deletion or release" `Quick
+      cleanup_defects;
+    Alcotest.test_case "primary faults survive cleanup and reporter defects"
+      `Quick compound_defects;
+    Alcotest.test_case "cleanup retains original defect identity and backtrace"
+      `Quick defect_backtrace;
+    Alcotest.test_case "inspection preserves contents and scoped ownership"
+      `Quick inspection_examples;
   ]
 
 let rec zip first second =
@@ -395,24 +636,37 @@ let rec zip first second =
 let generator =
   QCheck2.Gen.(
     map
-      (fun ((initial, operation), (cancel_at, responses)) ->
+      (fun ((initial, operation), (cancel_at, (responses, reports))) ->
         let bindings = zip stages responses in
         let respond stage =
           match List.assoc_opt stage bindings with
           | Some value -> value
           | None -> Model.Proceed
         in
-        Model.{ initial; operation; respond; cancel_at })
+        let reporting = zip stages reports in
+        let report stage _ =
+          match List.assoc_opt stage reporting with
+          | Some value -> value
+          | None -> Model.Observed
+        in
+        Model.{ initial; operation; respond; cancel_at; report })
       (pair
          (pair
             (oneof_list Model.[ Absent; Present ])
             (oneof_list Model.[ Attempt; Cleanup ]))
          (pair
             (oneof_list (None :: List.map Option.some normal_stages))
-            (list_size
-               (return (List.length stages))
-               (oneof_list
-                  Model.[ Proceed; Proceed; Fail Rejected; Fail Timed_out ])))))
+            (pair
+               (list_size
+                  (return (List.length stages))
+                  (oneof_list
+                     Model.
+                       [
+                         Proceed; Proceed; Fail Rejected; Fail Timed_out; Defect;
+                       ]))
+               (list_size
+                  (return (List.length stages))
+                  (oneof_list Model.[ Observed; Observed; Reporter_defect ]))))))
 
 let sequence scenarios =
   let driver = Driver.create (plain Model.Absent Model.Attempt) in

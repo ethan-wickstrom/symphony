@@ -1,4 +1,4 @@
 (library
  (name symphony_io)
  (wrapped false)
- (libraries symphony_workflow eio))
+ (libraries symphony_workflow eio mtime unix))

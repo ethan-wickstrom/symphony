@@ -22,3 +22,19 @@ module type S = sig
       Defects are outside this outcome algebra and may propagate after cleanup.
   *)
 end
+
+module Make
+    (Contract : Workspace_manager.PURE)
+    (Process : Agent_process.S with module Path = Contract.Path)
+    (Clock : Clock.S) : sig
+  include S with module Contract = Contract
+
+  val create :
+    process:Process.t ->
+    clock:Clock.t ->
+    emit:(Contract.reference -> Workspace_settings.hook -> event -> unit) ->
+    t
+  (** Capture ports without effects. Live and simulated execution share this
+      interpreter. Output is discarded in bounded chunks, never logged raw;
+      readers yield so deadlines cannot starve under continuous output. *)
+end
