@@ -13,6 +13,7 @@ let () =
     Workflow_parser_test.properties @ Template_test.properties
     @ Tests.properties ~registry @ Domain_test.properties
     @ Registry_test.properties @ Workspace_key_test.properties
+    @ Workspace_reference_test.properties @ Workspace_policy_test.properties
   in
   let property_cases =
     List.mapi
@@ -21,7 +22,7 @@ let () =
             QCheck2.Test.check_exn ~rand:(Random.State.make [| 20260930; i |]) p))
       properties
   in
-  Alcotest.run "Symphony slice 1"
+  Alcotest.run "Symphony boundaries"
     [
       ("workflow", Workflow_parser_test.tests);
       ("template", Template_test.tests);
@@ -29,5 +30,7 @@ let () =
       ("domain", Domain_test.tests);
       ("registry", Registry_test.tests);
       ("workspace keys", Workspace_key_test.tests);
+      ("workspace references", Workspace_reference_test.tests);
+      ("workspace policy", Workspace_policy_test.tests);
       ("properties", property_cases);
     ]

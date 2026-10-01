@@ -9,10 +9,15 @@
   domain_test
   registry_test
   workspace_key_model
-  workspace_key_test)
+  workspace_key_test
+  workspace_reference_model
+  workspace_reference_test
+  workspace_policy_model
+  workspace_policy_test)
  (libraries
   symphony_workflow
   symphony_io
+  symphony_workspace
   alcotest
   qcheck-core
   qcheck-core.runner
