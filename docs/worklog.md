@@ -9,10 +9,10 @@ against an independent model, replayable simulation, parser fuzzing and measured
 
 ## Constraints
 
-- Approved P01–P08/D01–D13, signatures, policies and vertical-slice build order.
+- Approved P01–P08/D01–D14, signatures, policies and vertical-slice build order.
 - Linear first; spec RFC 2119 requirements; generated Codex schema wins wire details.
 - One scheduling owner; explicit Eio capabilities; checked identifiers and shared Path brand.
-- Every `.ml` has an `.mli`; fatal enabled warnings; no objects/Lwt/Async/casts.
+- Every application `.ml` has an `.mli`; fatal enabled warnings; no objects/Lwt/Async/casts.
 - Tracker/repository data is untrusted. Only trusted configuration enters Bash.
 - Develop/publish only to `ethan-wickstrom/symphony`; browser means in-app Browser.
 - Finish, review and merge each green slice before starting the next.
@@ -25,6 +25,8 @@ against an independent model, replayable simulation, parser fuzzing and measured
   retained selected definitions, provenance/digests and normal/optimized drift controls.
 - Slice 1 merged as PR #1 at `f56a66c906925f050edd055d09226d29c8e2ed91`.
   Workflow/config/template/reload and offline commands passed hosted Linux/macOS gates.
+- Slice 2 merged as PR #2 at `92f7ac670bb90fae2c21ab1a4a1523a1edde5112`.
+  Native ownership, scoped hooks/processes and inspection passed both host workflows.
 - Slice 2 keys, frozen references, opaque issue-ID ownership and strict bounded
   owner codec; independent models, hash vectors and parser fuzz targets.
 - Frozen Eio custody/admission extension and worker controls passed local macOS and
@@ -42,23 +44,53 @@ against an independent model, replayable simulation, parser fuzzing and measured
 
 ## Current focus
 
-Branch `ethan/ocaml-workspaces`; open PR #2 is attached (currently not a draft). Main remains `f56a66c`.
-Published head is `ae2ed5b`; verified delivery code is `b30263e`. Commits include
-`77073ae` (cleanup ownership), `daf839c` (clock/hook policy), `a6d7118` (native
-ownership) and `48770fb` (inspection CLI). All owned workflows pass on the delivery
-head. Fresh Copilot review found hook failures hidden by an outer successful
-process callback. The repair carries the caller's error type directly through
-Process and Path; four hook regressions went red/green and three native cases
-check identity, mapper suppression and conversion after reap. Independent review
-found no remaining issue. Affected hosted gates must pass before merge.
-No user approval is pending.
+Branch `ethan/linear-adapter` starts at merged `92f7ac6`; local/remote main agree.
+Slice 3's first usable path is explicit Linear inspection over verified HTTPS,
+tested through the actual adapter against a loopback HTTPS fake with an explicit CA.
 
-Independent review is complete for native Directory/Path/Gate/Store/Process/Host.
-Remaining work: complete local/hosted gates and current-code review, then merge
-slice 2. Do not begin the tracker adapter before that. Devin analysis is unavailable
-because the diff exceeds its size limit; regeneration confirmed that cause.
+Implemented ordered issue batches, frozen registry bindings, Linear envelope/record/
+page parsing and atomic pagination. Independent list/query models cover these paths.
+A generic exact deadline joins losing work before converting its outcome.
+Native HTTPS passes 17 controls; the real inspection binary passes 18 loopback HTTPS
+scenarios, including peer verification, pagination, redaction and atomic failures.
+The existing 27 workflow/workspace CLI scenarios remain green. Four independent
+pagination budgets now have precise boundary controls. H1's narrow framing repairs
+pass eleven examples and 1,000 property samples; its frozen-source gate passes.
+Configuration and IO capture remain pure; explicit reads activate network/trust/crypto.
 
-## Current local evidence
+An abstract public environment now eliminates exact credential reuse through
+ordinary config fields, JSON assembly, diagnostics and child aliases. Deferred
+agent policies retain only opaque quarantine rules and return checked failures.
+Fresh checked read policy is separate from frozen provider/auth settings; terminal
+reloads update blocker decisions without rotating an existing run's credentials.
+Independent review found no remaining blocker in these contracts.
+
+Full local gates pass: 241 core cases (61 properties), 62 real CLI scenarios,
+74 native cases normally/optimized, 39 source controls, 16 protocol corruption
+controls and 22 Crowbar groups × 10,000 seeded invocations. The sandbox blocks
+PID-specific `ps` controls; the complete gate passed outside it. Framing provenance
+passes six corruption controls in both Python modes. Pinned Elixir's 302 tests,
+coverage, lint and Dialyzer also pass. Hosted CI/publication/merge are next.
+Final review found that the first native manifests predated the source-inventory
+expansion. Both native modes were rerun successfully with the final runner;
+the new evidence binds the expanded domain/IO/workflow source inventory.
+
+Deployment audit found the development Mach-O imports Homebrew GMP and has a
+macOS26.0 minimum. This is not a clean-host single-file release. Resolve static
+GMP linkage and pin the target profile in a dedicated release gate; Linux musl
+linkage remains unverified. Orchestrator/simulator planning follows in slice 4.
+Plan: `docs/design/slice-3-tracker-plan.md`.
+Next foundations: `docs/design/static-release-plan.md` and
+`docs/design/slice-4-orchestrator-plan.md`.
+No user approval is pending under the accepted recommendations/autonomy instruction.
+
+Slice 2's final hook repair (`98e9d6a`) carries caller errors directly through Process
+and Path. Four hook controls went red/green; three native controls check identity,
+mapper suppression and conversion after reap. Independent review and current-head
+Copilot found no remaining finding; all three review threads are resolved. Devin
+analysis was unavailable at its diff-size limit; Sourcery exceeded its file limit.
+
+## Last merged slice evidence
 
 - macOS arm64; OCaml 5.5.0, Dune 3.24.0, ocamlformat 0.28.1.
 - Build and formatting pass; core: 126 cases, 39 properties and 41,500 samples.
@@ -78,10 +110,12 @@ because the diff exceeds its size limit; regeneration confirmed that cause.
   formatting, lint and Dialyzer pass. No unrelated compiler/library upgrade.
 - mtime/cstruct are direct imports already present through Eio. Lock regenerated;
   no global opam switch changed and no machine-specific URLs entered the lock.
-- PR run 36840015440 and push run 36840011609 passed at `b30263e` on Linux/glibc
-  and macOS. Downloaded artifacts match 56 selected native sources, watchdog/helper
-  and all nine frozen Eio hashes. Modes 0/1 each pass 47+7 native cases. Each custody
-  run passed 5,000 scenarios and 2,000 normal closures with zero cleanup EPERM.
+- Final PR run 36844689498 and push run 36844682548 passed at `98e9d6a` on
+  Linux/glibc and macOS. Four artifacts match 56 selected native sources and both
+  runner hashes; modes 0/1 each pass 50+7 cases. Both frozen manifests match nine
+  Eio hashes and 5,000 scenarios. Linux has 2,000 successful close outcomes;
+  macOS has 1,999 successes plus one conservative EPERM error. The frozen contract
+  preserves that error; 73 repeated-signal permission errors also remain visible.
 
 ## Retained evidence
 
@@ -99,8 +133,20 @@ because the diff exceeds its size limit; regeneration confirmed that cause.
 - `/private/tmp/symphony-workspace-check-final.log`
 - `/private/tmp/symphony-watchdog-controls-delivery-{normal,optimized}.log`
 - `/private/tmp/symphony-hosted-b30263e/verification.json`
+- `/private/tmp/symphony-hosted-98e9d6a/verification.json`
 - `/private/tmp/symphony-pr2-review-size-limit.jpg`
+- `/private/tmp/symphony-pr2-merged.jpg`
 - Frozen process evidence/provenance: `vendor/eio/PATCHES.md`.
+- `/private/tmp/symphony-slice3-full-check-unconfined.log`
+- `/private/tmp/symphony-slice3-fuzz-final.log`
+- `/private/tmp/symphony-public-config-json-{red,green}.log`
+- `/private/tmp/symphony-public-tracker-cli-green-2.log`
+- `/private/tmp/symphony-cli-secret-quarantine-red.log`
+- `/private/tmp/symphony-source-scope-{red,green}.log`
+- `/private/tmp/symphony-native-http-wire-{red,green}.log`
+- `/private/tmp/symphony-slice3-elixir-pinned-gate.log`
+- `/private/tmp/symphony-slice3-final-native/manifest.json`
+- `/private/tmp/symphony-slice3-final-native-optimized/manifest.json`
 
 ## Boundaries
 
