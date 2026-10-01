@@ -47,14 +47,65 @@ against an independent model, replayable simulation, parser fuzzing and measured
 
 ## Current focus
 
-Branch `ethan/static-release` starts clean from merged `98833b3`.
-Static release foundation comes before slice 4; no release artifact is built.
-The development Mach-O imports Homebrew GMP and has a macOS26.0 minimum.
-Next: freeze release compiler/dependency profiles, link GMP statically, and build
-and verify clean-host macOS and Linux musl artifacts. Both release targets remain
-unverified. Plans: `docs/design/static-release-plan.md`, then
+Branch `ethan/static-release` starts from merged `98833b3`.
+The isolated macOS arm64 build now passes physical closure, observed link,
+copied-artifact CLI and native process/HTTPS checks: minimum 26.0/SDK 26.5,
+only libSystem imported, exact static GMP archive.
+Reviewed input decoder/materializer controls are green. Next: publish and merge
+the foundation. Clean-host execution and Linux musl remain release gates.
+Plans: `docs/design/static-release-plan.md`, then
 `docs/design/slice-4-orchestrator-plan.md`.
 No user approval is pending under the accepted recommendations/autonomy instruction.
+
+## Current release foundation evidence
+
+- Fresh opam 2.5.2 root, OCaml 5.5.0 source build with compiler cloning disabled,
+  no compression, and explicit target flags in the compiler's saved C driver.
+  No development CMIs, native archives or Dune cache are reused.
+- GMP 6.3.0 source/hash verified; static PIC archive built for generic armv8-a,
+  all 525 members target 26.0; upstream 177 tests pass and one skips.
+  Whole compiler/application CPU baseline is Apple M1.
+- Release-local pkgconf-lite 3.0.7 passes 253 tests with 11 declared skips.
+  Zarith 1.14 records the owned GMP archive; conf probes have no ambient fallback.
+- All locked dependencies build. Five vendor pins use immutable checksum archives;
+  all 540 archived files/modes match committed Git blobs. All nine frozen Eio
+  hashes match both source and build trees.
+- Dune release build passes. Original executable SHA256:
+  `590f89dcb80fcbe69964699de020dec067524d697ea0e88f6c0eec84eb74b5f7`.
+  Evidence link uses a fresh output because Dune's successful output is readonly;
+  only output/evidence flags change. Both executables pass physical closure.
+- Evidence executable:12889176 bytes, SHA256
+  `0d5695083fd61430b31d4e892fe15eacd07b59ec1615f005acf1c9531b020d17`.
+  Actual C link orders Zarith/GMP/runtime at argv 140/141/142; map selects 239 GMP
+  objects. All 818 recorded files matched the qualification commit at that
+  observed build/link boundary; later tool/docs changes are separate.
+- Copied sole evidence executable passes 63 CLI scenarios normally/optimized with
+  empty HOME and child PATH excluding Homebrew/opam. Existing macOS 26.5.1 host;
+  this is not clean-host or minimum-host evidence.
+- Fresh profile passes 241 core cases and 78 native cases per mode; both manifests
+  bind 156 selected source hashes. Native process/cancellation/HTTPS are green.
+- A real malformed-name decoder escape went red before the checked parser fix.
+  Verifier 14 controls pass normally/optimized, including two portable controls.
+  Actual AFL++ 4.35c blind mutation: 1549 executions in 90 s, zero crashes/hangs;
+  injected unexpected defect aborts. Initial sandbox shmat failure is retained.
+  No instrumented coverage or persistent-forkserver claim.
+- Receipts and actual link map:
+  `/private/tmp/symphony-release-target/mac-arm64-26.0/`.
+  Native inputs, qualified requests and complete ten-recipe hashes:
+  `/private/tmp/symphony-release-inputs-djwlgpqp/`.
+- Copied executable receipt: `/private/tmp/symphony-release-cli-_0a52kqh/runtime.json`.
+  AFL receipt: `/private/tmp/symphony-release-afl-3izjc7np/receipt.json`.
+- Preserved 13 exact recipes and four vendor archives. Materializer 13 controls
+  pass normally/optimized; real shallow-checkout, malformed-profile/boolean-schema
+  and symlink controls went red before fixes. A pure 10,000-case validator campaign
+  has zero escapes or model disagreements. Final descriptor/FIFO audit is green.
+  `just release-tools` passes; required pinned Elixir `make all` also passes.
+- The profile boundary also passes actual AFL blind mutation:698 executions/45 s,
+  no crashes/hangs, with injected defects and effect guards checked.
+  Receipt: `/private/tmp/symphony-release-profile-afl-35ahyeeu/receipt.json`.
+- Six portable harness tests drive 19 real child scenarios per mode, including
+  six unexpected-error aborts, exact byte bounds and effect guards. Core dumps
+  are disabled. Both modes pass; Linux/macOS CI runs these controls.
 
 ## Last merged slice evidence
 
@@ -194,8 +245,9 @@ simulation. Descriptor APIs and protected metadata assume a cooperating host;
 POSIX final unlink/rmdir cannot condition on inode, and same-device bind mounts
 need host policy. Escaped process groups/credentials require stronger isolation.
 POSIX provides no finite kernel reap bound. Eio1.6 release-hook backtraces may be
-empty; primary exception traces are preserved. Static linkage, live tracker/agent,
-HTTP API, orchestrator simulation, benchmarks and portable harness remain unverified.
+empty; primary exception traces are preserved. Linux static linkage, clean-host
+deployment, live tracker/agent, HTTP API, orchestrator simulation, benchmarks and
+portable harness remain unverified.
 
 ## Steering
 

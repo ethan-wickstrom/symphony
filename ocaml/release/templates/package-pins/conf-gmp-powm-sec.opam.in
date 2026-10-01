@@ -1,0 +1,34 @@
+opam-version: "2.0"
+name: "conf-gmp-powm-sec"
+version: "4"
+synopsis:
+  "Virtual package relying on a GMP lib with constant-time modular exponentiation"
+description: """\
+This package can only install if the GMP lib is installed on the system and
+corresponds to a version that has the mpz_powm_sec function."""
+maintainer: "Etienne Millon <etienne@cryptosense.com>"
+authors: "Etienne Millon <etienne@cryptosense.com>"
+license: "GPL-1.0-or-later"
+homepage: "http://gmplib.org/"
+bug-reports: "https://github.com/ocaml/opam-repository/issues"
+depends: [
+  "conf-gmp"
+  ("host-arch-x86_32" {os = "win32" & os-distribution != "cygwinports"} |
+   "host-arch-x86_64" {os = "win32" & os-distribution != "cygwinports"})
+]
+flags: conf
+build: [
+  ["@TARGET@/tools/bin/pkg-config" "--print-errors" "--exists" "gmp"]
+  ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang" "-arch" "arm64" "-isysroot" "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk" "-mmacosx-version-min=26.0" "-I@TARGET@/gmp/include" "-dynamiclib" "-Wl,-undefined,error" "-o" "profile-probe.dylib" "test.c" "@TARGET@/gmp/lib/libgmp.a"]
+]
+extra-source "test.c" {
+  src:
+    "https://raw.githubusercontent.com/ocaml/opam-source-archives/main/patches/conf-gmp-powm-sec/test.c.3"
+  checksum: [
+    "sha256=388b3879530257a7e6e59b68208ee2a52de7be30e40eb4d3a54419708fdad490"
+    "md5=29317f477fa828e18428660ef31064fb"
+  ]
+}
+
+build-env: [[PKG_CONFIG_LIBDIR = "@TARGET@/gmp/lib/pkgconfig"] [PKG_CONFIG_PATH = ""]]
+available: [os = "macos" & arch = "arm64"]

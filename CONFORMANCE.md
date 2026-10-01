@@ -3,8 +3,9 @@
 Status: slices 1–3 are merged. Native owned workspaces, hooks, scoped process
 custody, Linear reads and verified HTTPS inspection pass local and hosted
 macOS/Linux-glibc gates in normal and optimized modes. Slice 3 merged as `98833b3`
-from tested head `06ce6c5`. Current focus is the static release foundation;
-no release artifact is built. The full service remains pending.
+from tested head `06ce6c5`. The isolated macOS release-profile build now passes
+local physical closure/link checks and available CLI/native tests. Clean-host
+macOS deployment, Linux musl and the full service remain pending.
 The upstream Elixir implementation is reference material, not evidence for this port.
 Requirements refer to SPEC.md at `be10a1b79df723d6d7612b5651c8522704dafb2e`.
 Current protocol fixture: Codex 0.159.2. Stable core and experimental tool
@@ -68,6 +69,14 @@ custody passes on Linux/glibc and macOS. Musl/static linkage remains unverified.
 The macOS development binary currently loads Homebrew GMP; a release must link
 that archive statically and pass a clean-host dependency check before claiming
 a single-file deployment.
+An isolated macOS arm64 release-profile build now passes 241 core cases,
+63 copied-executable CLI scenarios and 78 native cases per Python mode.
+Its 12889176-byte evidence executable imports only libSystem; the actual
+link/map selects the owned static GMP archive after Zarith and before runtime.
+Physical verifier/control evidence is documented in
+[release evidence](docs/design/release-evidence.md). These local observations
+do not certify a clean macOS26.0 host, a reproducible build, Linux musl or a
+complete service release.
 Compiler-target trust defaults and one shared deferred crypto runtime pass real
 CLI and overlapping registry controls. A delayed-start watchdog control separates
 bounded fixture readiness from the unchanged run timeout and retains actual PID

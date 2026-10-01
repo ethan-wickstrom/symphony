@@ -26,6 +26,15 @@ check: test check-format
     python3 test/verification_check.py .
     python3 tools/check_h1.py ../vendor/h1
     PYTHONOPTIMIZE=1 python3 tools/check_h1.py ../vendor/h1
+    just release-tools
+
+release-tools:
+    python3 test/release_materialize_test.py -v
+    PYTHONOPTIMIZE=1 python3 test/release_materialize_test.py -v
+    python3 test/release_check_test.py -v
+    python3 -O test/release_check_test.py -v
+    python3 test/release_fuzz_test.py -v
+    python3 -O test/release_fuzz_test.py -v
 
 fuzz: build
     opam exec --switch . -- dune exec fuzz/boundaries.exe -- --repeat 10000 --seed 20260930

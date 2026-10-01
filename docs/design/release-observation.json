@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "date": "2026-10-01",
+  "scope": "Observed local foundation build; not a published release or source-to-binary attestation.",
+  "profile": "macos-arm64-26.0-sdk26.5",
+  "host": "macOS26.5.1 arm64",
+  "application": {
+    "path": "/private/tmp/symphony-release-target/mac-arm64-26.0/linked/symphony",
+    "sha256": "0d5695083fd61430b31d4e892fe15eacd07b59ec1615f005acf1c9531b020d17",
+    "size": 12889176,
+    "qualified_source_commit": "4e2d6ac2b7d6bb84a02e32254e74218d49e646a6"
+  },
+  "binary": {
+    "architecture": "arm64",
+    "minimum": "26.0",
+    "sdk": "26.5",
+    "loader": "/usr/lib/dyld",
+    "dependencies": [
+      "/usr/lib/libSystem.B.dylib"
+    ]
+  },
+  "native_link": {
+    "gmp_archive_sha256": "ecb8610cb3256de009b910acc6b75f53ecfc0c1dd70335b172fb49a1fa0cf016",
+    "gmp_selected_objects": 239,
+    "c_argv_positions": {
+      "zarith": 140,
+      "gmp": 141,
+      "runtime": 142
+    },
+    "map_sha256": "8763aa3ec82ba825b6c395c88c5c0bc55813a81933e506d248ce265cf768528c",
+    "application_source_files": 818,
+    "source_check_scope": "Observed build/link boundary at qualified source commit, before later tool/documentation edits.",
+    "source_mismatches": []
+  },
+  "gates": {
+    "core_cases": 241,
+    "copied_application_cli_cases_per_mode": 63,
+    "native_cases_per_mode": 78,
+    "modes": [
+      "normal",
+      "optimized"
+    ],
+    "source_files": 235,
+    "source_controls": 39,
+    "afl_blind_executions": 1549,
+    "afl_seconds": 90,
+    "afl_crashes": 0,
+    "afl_hangs": 0,
+    "materializer_controls_per_mode": 13,
+    "verifier_controls_per_mode": 14,
+    "profile_validator_seeded_cases": 10000,
+    "profile_afl_blind_executions": 698,
+    "profile_afl_seconds": 45,
+    "profile_afl_crashes": 0,
+    "profile_afl_hangs": 0,
+    "fuzz_harness_controls_per_mode": 6,
+    "fuzz_harness_child_scenarios_per_mode": 19
+  },
+  "pending": [
+    "Clean macOS26.0 host execution",
+    "Linux musl static build and clean host",
+    "Fresh end-to-end recipe replay",
+    "Two-build reproducibility",
+    "Release source/notices/relink materials",
+    "Complete service"
+  ],
+  "receipts": {
+    "/private/tmp/symphony-release-target/mac-arm64-26.0/application-closure-linked.json": "1e6ec592f72d13a0ba86cfbff1eb8ac8304cd366d06c1d3090c7a7e07d48806f",
+    "/private/tmp/symphony-release-target/mac-arm64-26.0/main-link-request.json": "d8123d7618c9d97d7d4449d7b741f7f9ee0e9612ed55d9b6c04f02c107d91a22",
+    "/private/tmp/symphony-release-target/mac-arm64-26.0/main-link-verification.json": "f48044662b5c5302b8ba157dcf8ea34d3585f83266573a48d4acfe8b643d8245",
+    "/private/tmp/symphony-release-target/mac-arm64-26.0/native-evidence/manifest.json": "7a7c1e1fd41ed1e48b1acb4995db93afed7b840df33ced0c9faac8e7d4e6ffdb",
+    "/private/tmp/symphony-release-target/mac-arm64-26.0/native-evidence-optimized/manifest.json": "bbb0863a910875d4ee424536f1d22f63600497a2a98ec3e1ce61fd5656de43c4",
+    "/private/tmp/symphony-release-cli-_0a52kqh/runtime.json": "198902f6f25ebaae81cfb84ddfd239d01eb7486f0f4a4f7ba6d37884fde02597",
+    "/private/tmp/symphony-release-afl-3izjc7np/receipt.json": "67b34929726feedbd33591ab3287969b94ddd69c1d350f910a8199159c643bd9",
+    "/private/tmp/symphony-release-profile-afl-35ahyeeu/receipt.json": "82166e3aecc7e042fbb0dba43b0598272c12f7326ac909a7c2a358220d6ebd42",
+    "/private/tmp/symphony-materialize-review-xxu7osre/validator-final.json": "10ec4378d850af3fb5cc879c43fd0587da194d59257efc0cc6448b66b0b31a28",
+    "/private/tmp/symphony-materialize-review-xxu7osre/reader-final.json": "ced169cbbbd3e73dab9ac398b936efef5f5ece6071c0ecf25c8b28174ec74a95"
+  }
+}

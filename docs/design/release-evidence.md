@@ -1,0 +1,140 @@
+# Physical release evidence
+
+`ocaml/tools/check_release.py ARTIFACT --receipt RECEIPT.json` checks one profile:
+`macos-arm64-26.0-sdk26.5`. Exit 0 means accepted, 1 means artifact/tool/receipt
+rejection, and 2 means invalid CLI arguments. Failures identify the failed gate
+and a remedy in JSON. `--help` prints usage. Linux verification is not implemented.
+
+The gate opens a regular executable without following its final symlink, copies
+bounded bytes into a private snapshot, and rejects changes observed during the
+copy. SHA-256 and size identify the inspected snapshot. Every inspector reads
+that copy; its hash is checked again afterward. The original pathname is a
+label, not continuing authority over bytes at that name.
+
+The binary must be thin arm64, `MH_EXECUTE`, with checked Mach-O load-command
+framing, executable segments, entry point, symbol metadata, and exactly one
+macOS build-version command specifying minimum 26.0 and SDK 26.5. The loader is
+`/usr/lib/dyld`. Ordinary imports form a subset of
+`{/usr/lib/libSystem.B.dylib}`. Unknown commands, RPATH, weak/reexport/upward/lazy
+loads, missing commands, malformed lengths, and truncated referenced file ranges
+are rejected. The admitted modern command layouts come from Apple's selected
+SDK `mach-o/loader.h`; the list is deliberately closed.
+
+Apple's `/usr/bin/file`, `/usr/bin/lipo`, and `/usr/bin/otool -l/-L` must agree
+with the checked bytes. Tool warnings, failures, timeouts, excess output, and
+unrecognized dependency output fail the gate. The receipt records normalized
+argv and hashes of the actual tool output. Tool-output hashes can differ because
+the snapshot pathname differs; acceptance and the artifact identity remain
+stable.
+
+Bounds are explicit constants: artifact 256 MiB, load commands 1 MiB/4096
+commands, each tool output 8 MiB, each tool deadline 30 s. Inspection never
+executes the candidate.
+
+## Laws and reference models
+
+- Acceptance is idempotent for fixed artifact bytes, profile, and inspection
+  tools. Rechecking produces the same decision and artifact hash.
+- The import policy is the set predicate `D ⊆ {libSystem}`. If it rejects `D`,
+  it rejects every superset of `D`. An empty import set satisfies this policy;
+  executable structural obligations are separate.
+- Changing inspected bytes changes the hash identity, subject to SHA-256's
+  collision assumption. Reusing a pathname does not reuse a receipt's authority.
+- The framing model is a bounded sequence of commands whose lengths sum exactly
+  to the header's command-byte count. Every interpreted file range must lie
+  within the observed snapshot.
+
+## Native controls
+
+`python3 ocaml/test/release_check_test.py -v` and the same command with `-O`
+compile physical fixtures with selected Appleclang and SDK 26.5. The system-only
+fixture must pass and execute successfully. Actual foreign and weak dylib
+imports, RPATH, a minimum-15.0 build, a `vtool`-changed SDK-26.4 executable, and
+malformed/truncated/unknown-command artifacts must fail. The independent set
+oracle checks the import law. CLI controls check JSON receipts and errors.
+The parser also runs 10,000 reproducible byte/truncation mutations with seed
+`0x53594d50484f4e59`, plus a curated non-ASCII name regression. This is seeded
+coverage, not instrumented AFL/Crowbar fuzzing or an exhaustive malformed-input
+proof.
+Native controls explicitly require macOS and SDK 26.5; skipping them elsewhere
+is not native release evidence.
+
+`ocaml/fuzz/release_macho.py INPUT` is a separate bounded AFL file harness.
+It accepts at most 64 KiB, parses only bytes, treats checked `Rejected` values as
+normal, and aborts on an unexpected parser exception. It never launches the
+candidate or an inspection tool. The input cap is narrower than the release
+artifact cap. Run AFL with `-G 65536` to respect this harness contract.
+
+On 2026-10-01, actual AFL++ 4.35c `-n` campaigns completed 45 s each: 807 executions
+with mixed seeds, 742 with a valid Mach-O seed alone; zero crashes/hangs. The
+mixed campaign selected a truncated-header seed after dry-run, so the second
+campaign exercised mutation from the valid framing. An injected defect produced
+SIGABRT in both Python modes. This is blind mutation without coverage
+instrumentation or a persistent forkserver. The initial sandbox run failed
+`shmat` before fuzzing; successful scoped runs used unconfined execution without
+OS or tool safety-check changes.
+
+The existing development Symphony executable was rejected before a positive
+fixture claim: it imported
+`/opt/homebrew/opt/gmp/lib/libgmp.10.dylib`. Its minimum/SDK were already 26.0/26.5.
+
+The new release profile boundary has its own pure harness,
+`ocaml/fuzz/release_profile.py INPUT`, with the same 64 KiB bound. It decodes JSON
+and validates consumed profile fields; it never calls Git, prepares files or
+publishes inputs. Actual AFL++ 4.35c blind mutation from the real profile seed
+completed 45 s/698 executions with zero crashes/hangs. Injected unnamed errors
+and defects abort; checked JSON/profile failures are normal outcomes. A separate
+10,000-case directed validator campaign checks malformed shapes and valid order
+permutations against its input model, without invoking effects.
+
+Six portable harness controls drive 19 real child scenarios per Python mode.
+They observe child optimization directly, require SIGABRT for unexpected errors,
+check exact/+1-byte bounds, and trap forbidden effects. Core dumps are disabled.
+
+## Observed Symphony build
+
+The isolated arm64 build uses fresh OCaml 5.5.0, GMP 6.3.0 and locked application
+dependencies. Its compiler saves minimum 26.0/SDK 26.5 flags in the C driver;
+compiler cloning and compression are disabled. Every vendor archive reproduces
+committed Git bytes. The development switch and installed packages are unchanged.
+See [preserved inputs](../../ocaml/release/README.md).
+
+Both the original Dune executable and an evidence link pass physical closure:
+
+| Artifact | Bytes | SHA256 |
+| --- | ---: | --- |
+| Dune output |12889176| `590f89dcb80fcbe69964699de020dec067524d697ea0e88f6c0eec84eb74b5f7` |
+| Evidence link |12889176| `0d5695083fd61430b31d4e892fe15eacd07b59ec1615f005acf1c9531b020d17` |
+
+The evidence link changes only output and evidence flags; Dune's successful
+output is readonly and is preserved. The actual C argv orders `-lzarith`, the
+exact GMP archive, and the runtime at positions 140/141/142. The link map selects
+239 objects from that GMP archive, whose SHA256 is
+`ecb8610cb3256de009b910acc6b75f53ecfc0c1dd70335b172fb49a1fa0cf016`.
+At the observed build/link boundary, all 818 recorded files matched
+`4e2d6ac2b7d6bb84a02e32254e74218d49e646a6`. Later release-tool/documentation
+changes are tested separately; this binary is not an attestation of those files.
+
+The fresh profile passes 241 core cases. A copied sole evidence executable passes
+63 CLI scenarios normally and optimized with an empty HOME and child PATH
+`/usr/bin:/bin`; its Python test controller uses the existing Homebrew Python.
+The release-profile native binaries pass 50 kernel, seven Host and 21 HTTPS cases
+in each mode. These tests ran on the existing macOS 26.5.1 host, not a clean
+macOS 26.0 host. They do not certify minimum-host execution, byte reproducibility,
+Linux musl or a complete service release.
+
+The [machine-readable observation](release-observation.json) records artifact
+identity, selected archive, link-map hash, tests and explicit pending gates.
+
+Retained receipts: `/private/tmp/symphony-release-target/mac-arm64-26.0/`,
+`/private/tmp/symphony-release-cli-_0a52kqh/runtime.json`, and
+`/private/tmp/symphony-release-afl-3izjc7np/receipt.json`.
+
+## Claim boundary
+
+This is physical binary-closure evidence. It does not prove compiler source,
+compiler configuration, selected GMP archive, link argv/map, source tree,
+runtime correctness, code-signature validity, or a library's runtime `dlopen`
+behavior. Build and link provenance belong in a separate, independently checked
+receipt. libSystem/dyld remain operating-system dependencies. Same-user mutation
+of verifier code, tools, or private snapshots is outside this custody boundary.
