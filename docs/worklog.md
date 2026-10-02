@@ -94,13 +94,17 @@ instances reach the runner; one owner interprets actual reducer commands.
   The new 1000-program failure-register list-model property and full just check
   gate pass. Help invokes no properties; replay at prefix zero passes, and a
   negative seed returns exit 2. Receipt: _build/eio-full-check.log.
+- Self-review strengthened the failure property with distinct error/exception
+  identities. A deliberate same-kind last-wins mutation fails and shrinks to
+  `error,error`; restoring production code passes all three property groups.
+  Logs: _build/eio-same-kind-mutant.log and eio-distinct-failure-final.log.
 - Current type gate: 14 lifecycle/three Service clients rejected, two valid
   assemblies accepted, 71 input CMIs unchanged, normal and optimized. Source
   pairing/policy checks 323 files. Formatting, native, CLI and release-tool gates
   pass. Pinned Elixir reference gate also passes. Hosted publication is next.
 
-Next: finish refactor gates, update conformance evidence, publish and merge this
-checkpoint. Then physical capacity measurement and the real closed Codex runner;
+Next: finish exact-head hosted checks/review for PR #9 and merge this checkpoint.
+Then physical capacity measurement and the real closed Codex runner;
 no live dispatch CLI before its progress/continuation/stall contract is tested.
 
 ## Boundaries and references

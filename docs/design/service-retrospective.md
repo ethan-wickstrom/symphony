@@ -50,6 +50,10 @@ I also treated test control code as scaffolding. Its blocked finalizers are real
 Eio resources. The test actor needs the same ownership discipline as production.
 The actor-failure regression demonstrated the mistake before the API replacement.
 
+The first failure-register property reused error identities. That could miss
+same-kind replacement. Distinct observations now reject a deliberate last-wins
+mutation, shrinking it to `error,error`; restored production code passes.
+
 ## Hunches and next falsifiers
 
 The interpreter remains large. Admission, cancellation and observation are closely
