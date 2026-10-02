@@ -61,6 +61,10 @@ jobs:
           opam install . --deps-only --locked --with-test --with-dev-setup --yes
       - run: opam exec -- dune build @all @fmt @test/native-http-inputs
       - run: opam exec -- dune runtest
+      - name: Reject illegal lifecycle calls
+        run: |
+          opam exec -- python3 test/lifecycle_types_test.py
+          opam exec -- python3 -O test/lifecycle_types_test.py
       - name: Bounded native workspace and HTTPS checks
         run: |
           python3 test/native_check_test.py

@@ -1,6 +1,6 @@
 # OCaml conformance
 
-Status: slices 1–3 are merged. Native owned workspaces, hooks, scoped process
+Status: slices 1–3 and the scheduler foundation are merged. Native owned workspaces, hooks, scoped process
 custody, Linear reads and verified HTTPS inspection pass local and hosted
 macOS/Linux-glibc gates in normal and optimized modes. Slice 3 merged as `98833b3`
 from tested head `06ce6c5`. The historical macOS release-profile build passed
@@ -21,7 +21,7 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | YAML front matter and prompt split | 1 | `workflow_document.ml`, `config_value.ml`; `workflow_parser_test.ml` workflow/YAML examples and tree/line models | Passed locally |
 | Typed defaults and `$` resolution | 1 | `config_layer.ml`, settings modules; `config_test.ml` defaults, env/path/numeric/state cases | Passed locally |
 | Dynamic workflow reload/re-apply | 1, 4 | `Config_layer.Make.apply`; `config_model.ml`, `config_test.ml` reload histories | Pure laws passed; watch/owner application pending |
-| Single-authority polling orchestrator | 4 | `ownership.ml`; `ownership_model.ml`, `ownership_test.ml` last-write/disjoint-claim/minimum laws; `agent_plan.ml`, `run_plan.ml`, `run_plan_test.ml` frozen authority and checked planning failures | Foundation laws passed locally; event owner/polling pending |
+| Single-authority polling orchestrator | 4 | `ownership.ml`; independent owner list model; `agent_plan.ml`, `run_plan.ml`, `issue_lifecycle.ml`; planning and lifecycle models/tests | Foundation and typed transitions passed locally; event owner/polling pending |
 | State-list and ID-refresh tracker reads | 3 | `linear_tracker.ml`, `linear_pager.ml`, `linear_record.ml`, `tracker_registry.ml`; independent boundary/pagination/binding models, `linear_tracker_test.ml`, `native_http_test.ml`, real `tracker_cli_check.py` | Reads, frozen auth/current policy, atomic failures and verified HTTPS passed locally and on both CI hosts |
 | Sanitized collision-resistant workspaces | 2 | `workspace_key.ml`, `workspace_reference.ml`, `workspace_owner.ml`, `native/workspace_directory.ml`, `workspace_store_posix.ml`; key/owner models, hash vectors, parser fuzzing, `native_directory_test.ml`, `native_store_test.ml` | Descriptor/lock/identity/replacement/rollback cases passed locally and on both CI hosts |
 | Four workspace lifecycle hooks | 2 | `workspace_manager.ml`, `workspace_hooks.ml`; policy models, fake-port hook tests and `native_host_test.ml` frozen lifecycle/cancellation/rollback cases | Fake and live cases passed locally and on both CI hosts |
@@ -29,10 +29,10 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | App-server subprocess transport/framing | 5 | — | Pending |
 | Configurable Codex launch command | 1, 5 | `agent_settings.ml`; `config_test.ml` verbatim/empty/NUL validation | Config passed; launch pending |
 | Strict issue/attempt prompt rendering | 1 | `template.ml`; `template_test.ml` strictness/scope/limits, independent AST and rational models; CLI fixture rendering | Passed locally for documented strict Jinja profile |
-| Failure backoff and continuation retries | 4 | `backoff.ml`; `scheduler_algebra_model.ml`, `scheduler_algebra_test.ml` closed-form, huge attempts, cap/overflow and continuation literal | Algebra passed locally; retry scheduling pending |
+| Failure backoff and continuation retries | 4 | `backoff.ml`, `issue_lifecycle.ml`; independent algebra/lifecycle models, exact attempt/reset/requeue and parked-read examples | Algebra and source transitions passed locally; retry scheduling pending |
 | Configurable retry cap | 1, 4 | `scheduling_policy.ml`, `backoff.ml`; config tests and independent bounded-recurrence model | Config/algebra passed; retry scheduling pending |
-| Terminal/non-active reconciliation | 4 | — | Pending |
-| Terminal startup/transition cleanup | 2, 4 | — | Pending |
+| Terminal/non-active reconciliation | 4 | `issue_lifecycle.ml`, `lifecycle_test.ml` first cause, absorbing Cleanup, cancellation discharge and original-reference cases | Typed stop/finish laws passed locally; reconciliation reads/decisions pending |
+| Terminal startup/transition cleanup | 2, 4 | `Issue_lifecycle.clean_startup`, `terminal_retry`, `clean_run`; startup identity and Named/Unnamed controls | Typed cleanup authority passed locally; startup/cleanup event barriers pending |
 | Required structured log context | 6 | — | Pending |
 | Operator-visible observability | 1–7 | `diagnostic.ml`, `ocaml/bin/cli.ml`, `workspace_cli.ml`; `cli_check.py`, `workspace_cli_check.py` file/key/remedy/redaction, missing/owned/busy/foreign/symlink inspection | Workflow and workspace CLI passed; service snapshots/logs pending |
 

@@ -37,9 +37,10 @@ end
 ```
 
 Instantiate Core with `Tracker.Contract`, `Clock.Pure`, `Workspace.Contract`,
-`Agent.Contract`, `Log.Contract` and `Config`. Instantiate Issue_lifecycle with
-`Tracker.Contract`, `Clock.Pure`, `Workspace.Contract` and `Agent.Contract`;
-Ownership's instant equals Clock.Pure.instant. The
+`Agent.Contract`, `Log.Contract` and `Config`. Create one Run_plan instance from
+those contracts and pass that same Plan to Issue_lifecycle. Its binding, request
+and workspace types equal Tracker.binding, Agent.request and Workspace.reference
+through Run_plan.S. Ownership's instant equals Clock.Pure.instant. The
 Owner adapter is a projection of Lifecycle.owned, not a second owner datatype
 with copied issue fields. Its `issue` and `role` supply Ownership.Make.
 
@@ -52,7 +53,8 @@ into a simulator contract.
 ## Small immutable state
 
 One persistent priority search queue owns Starting, Active, Stopping, Waiting,
-Refreshing and Cleaning values, keyed by issue ID. Complete and Released are
+Refreshing, Parked and Cleaning values, keyed by issue ID. Closed completions,
+Refreshed and Released are
 transition witnesses; reduce them to the next owned phase within the same step.
 Retain no completed-ID history, separate owner map or waiting-priority index.
 
@@ -62,7 +64,9 @@ acknowledgement, fresh token supplies, finished-runtime/token aggregates and
 latest bounded rate-limit observation. Do not cache counts, claims or views.
 
 Service mode is `Startup | Serving | Draining_scope | Shutting_down`.
-Poll cycle is `Idle | Reconciling request | Validating request | Candidates request`.
+Poll cycle is `Idle | Reconciling barrier | Validating request | Candidates request`.
+The barrier groups runs by their original binding and awaits every group's
+post-close result, including authoritative continuation reads already in progress.
 These are closed phases, not independent busy/pending flags. Startup terminal
 fetch and its cleanup jobs finish before the first dispatch cycle; failures warn
 and advance. This preserves the ordering in §§8.1 and 16.1 without racing a stale
@@ -164,11 +168,11 @@ attempt, error and a closed Unnamed scope/Named reference target. No request is
 invented when key construction fails. This planning boundary is separate from a
 resource-closed worker completion.
 
-`Agent_runner.PURE` will include this checked Agent_plan contract; runner protocol
-phases stay in the runner layer. Its old standalone request factory with frozen
-scheduling policy is superseded. The owner keeps current scheduling policy.
+`Agent_runner.PURE` includes this checked Agent_plan contract. Its completion
+witness is abstract and exposes original issue/run IDs. The effectful runner
+instance remains pending. The owner keeps current scheduling policy.
 
-Before lifecycle implementation, incorporate planning rejections explicitly:
+The typed lifecycle handles planning rejections explicitly:
 initial rejection can queue without a reference; resumed rejection retains the
 previous retry's cleanup target. Retry refresh/no-slot rejection increments the
 positive attempt and stores a closed cause. A fresh terminal reconciliation while
@@ -181,9 +185,7 @@ request already freezes workspace reference, child environment, agent settings,
 prompt source and attempt. Scope is derived from the binding/reference; no copied
 scope or credential printer belongs in the owner.
 
-The current Lifecycle draft cannot carry this relationship: its functor takes
-Issue rather than Tracker, and start/resume receive no binding. Refine it before
-implementation:
+The shared Plan signature carries the binding/request relationship:
 
 ```ocaml
 module Make
@@ -193,31 +195,35 @@ module Make
     (Agent : Agent_runner.PURE
        with module Issue = Tracker.Issue
         and module Path = Workspace.Path
+        and type workspace = Workspace.reference)
+    (Plan : Run_plan.S
+       with type binding = Tracker.binding
+        and type request = Agent.request
         and type workspace = Workspace.reference) : sig
-  (* Existing phase types and source-state transitions. *)
-  val start : unclaimed -> binding:Tracker.binding ->
-    request:Agent.request -> now:Clock.instant -> (starting run, string) result
-  val resume : refreshing retry -> binding:Tracker.binding ->
-    request:Agent.request -> now:Clock.instant -> (starting run, string) result
-  val binding : 'phase run -> Tracker.binding
+  (* Source phase and disposition types remain abstract. *)
+  val start : unclaimed -> Plan.t -> now:Clock.instant ->
+    (starting run, Diagnostic.t) result
+  val resume : refreshed retry -> Plan.t -> now:Clock.instant ->
+    (starting run, Diagnostic.t) result
+  val plan : 'phase run -> Plan.t
 end
 ```
 
-Store that binding inside the run, alongside its Agent.request; the Owner adapter
-still projects Lifecycle.owned. start/resume check issue/reference identity and
-binding/reference scope once because OCaml cannot prove equal runtime IDs/scopes.
+Store Plan once in the run; the Owner adapter projects Lifecycle.owned.
+Start/resume check current issue identity, attempt and retry scope where those
+dynamic values meet. OCaml cannot prove equality of parsed runtime IDs/scopes.
 Continuation reads obtain their original authority through binding, with fresh
 Tracker_read_policy from Config.scheduling. Converting a closed run into a retry
 retains its original workspace reference without retaining obsolete launch auth.
 
-Remove `policy:Scheduling_policy.t` from Agent.PURE.request. The implemented
+Agent.PURE.request has no Scheduling_policy argument. The implemented
 Agent_settings already owns max_turns and protocol timeouts; the owner owns
 current eligibility, stall and retry policy. Freezing the whole scheduling policy
 inside an agent request supplies stale, unnecessary authority.
 
-The current Lifecycle draft also cannot ingest retained Agent.progress: it has
-neither observation transitions nor observers for sequence/session/usage/event
-time. Put a closed checked observation carrier inside its run values. Keep those
+The implemented lifecycle stores Plan, current issue and monotonic start. Agent
+progress remains a later Run_observation gate: define a closed checked carrier
+before integrating protocol progress. Keep those
 facts once in the canonical owner payload and derive snapshot phases and totals;
 do not add a progress map. Show that carrier's signature/algebra before code.
 Its transition boundary checks run/sequence/thread/turn/phase causality. Duplicate
@@ -337,11 +343,12 @@ to workflow resolution, not request execution.
 
 ## Time and snapshot gap
 
-The actual Clock.S.now is independent of wall time, but Orchestrator.event and
-Issue_lifecycle.start currently require Clock.sample. A failed wall sample would
-therefore prevent ordinary reconciliation/retry events from reaching Core.
+Clock.S.now is independent of wall time. Lifecycle start/resume now consume
+Clock.instant. The proposed Core uses the same monotonic event stamps; only a
+requested status projection needs Clock.sample. Wall failure cannot suppress
+reconciliation, retries or resource discharge.
 
-Required focused signature corrections, retaining Snapshot's existing shape:
+Proposed Core/Service signatures, retaining Snapshot's existing shape:
 
 ```ocaml
 (* Orchestrator.S *)

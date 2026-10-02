@@ -19,6 +19,8 @@ check-format:
     opam exec --switch . -- dune build @fmt
 
 check: test check-format
+    opam exec --switch . -- python3 test/lifecycle_types_test.py
+    opam exec --switch . -- python3 -O test/lifecycle_types_test.py
     opam exec --switch . -- dune exec tools/check_source.exe -- .
     opam exec --switch . -- dune exec tools/check_source.exe -- --self-test
     python3 tools/check_protocol.py .

@@ -65,7 +65,10 @@
   scheduler_algebra_test
   ownership_model
   ownership_test
-  run_plan_test)
+  run_plan_test
+  lifecycle_fixture
+  lifecycle_model
+  lifecycle_test)
  (libraries
   symphony_orchestration
   symphony_test_support

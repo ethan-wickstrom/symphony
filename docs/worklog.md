@@ -53,7 +53,7 @@ against an independent model, replayable simulation, parser fuzzing and measured
 
 ## Current focus
 
-Branch `ethan/orchestrator-core` starts from merged `c97cff2`.
+Branch `ethan/typed-lifecycle` starts from merged `527da52`.
 Crypto refresh [PR #5](https://github.com/ethan-wickstrom/symphony/pull/5) merged
 at `c97cff22f472505a18736054e33bb9cd6a141c84` on `2026-10-02T00:39:41Z`.
 Exact-head PR/push Linux/macOS CI, review and independent receipts pass:
@@ -78,10 +78,35 @@ formatting, lint and Dialyzer.
 The sandbox denied native fixture PID probes; the scoped unconfined full rerun
 passes without a source change. Both outcomes remain recorded.
 
-Current: publish/merge the foundation, then typed lifecycle,
-independent event model, core and Eio simulator. Correct the audited signatures
-before implementation: monotonic stamps, original binding, checked observations,
-planning failures, retry causes and post-drain completion.
+Foundation [PR #6](https://github.com/ethan-wickstrom/symphony/pull/6) merged
+at `527da52f352c3eaa0585d9d1cc80586611f77c28` on `2026-10-02T01:48:34Z`.
+Final-head `872303e` PR/push Linux/macOS workflows pass. All four platform logs
+show 17 examples, seed 20261001 and 18 property groups; source checks cover 273
+files. Final-head Codex review reports no major issue; Copilot/Devin found none
+in the implementation. Sourcery exhausted its budget and supplied no review.
+
+Typed lifecycle now compiles with fatal warnings: shared Plan, source-specific
+run/retry phases, transient completion dispositions and original-reference cleanup.
+24 examples and 19 property groups pass at seed 20261001; lifecycle adds seven
+examples and 100 streams of 500–600 operations, checked after every transition.
+Length samples remain long but shrink toward 0; failures print the replay program
+and expected/current/frozen observations. A final example verifies the replaced
+owner before activation. Independent production and model reviews found no blocker.
+
+Full OCaml check passes, then final targeted build/format/model/source checks pass
+after that assertion refinement. Type contracts compile one valid assembly and
+reject 14 wrong source/disposition calls, normally and optimized; all 65 input CMIs
+remain unchanged. A syntax-error control rejects invalid type evidence. Both local
+and Linux/macOS workflow gates run these controls. Nine proposed blueprint
+interfaces compile with fatal warnings; all 64 library CMIs remain unchanged.
+These are pure/compiler checks, not real worker closure or event-loop conformance.
+Pinned Elixir validation passes 302 tests, zero failures, six skips and all gates.
+
+Next: pure event core and Eio simulator. Checked observations remain a later
+Run_observation gate; no placeholder progress map or production runner is added.
+Next core uses keyed issue/generation envelopes, grouped original-binding reads,
+an explicit parked retry state and startup/scope closure barriers. Superseded
+startup reads cannot build cleanup references under a later root/policy.
 Static musl/clean-host qualification remains a release gate, separate from core
 development. It no longer blocks this next original vertical slice.
 Plans: `docs/design/slice-4-orchestrator-plan.md` and

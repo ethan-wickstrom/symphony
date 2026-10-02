@@ -143,6 +143,20 @@ causes dispatch or release. Timer, fetch, and worker events need attempt/config 
 identities so delayed events cannot affect a newer attempt. This is a design consequence
 of asynchronous effects, not a new tracker policy.
 
+The lifecycle stores one shared Run_plan, current issue and monotonic start.
+Its private GADT indices are concrete per-state data carriers: the OCaml 5.5
+compiler could not exclude other phases when their indices were empty variants.
+Carriers preserve fatal exhaustiveness/unused warnings without dummy tags or
+runtime flags. Retryable, releasable and cleanable closed completions are distinct
+transient types; none is an owner that can accumulate in the queue.
+
+Stop cause is the first cause. The after-close disposition is a separate join
+semilattice, Retry < Release < Cleanup. A later terminal reconciliation therefore
+preserves required cleanup through a shutdown/stall race. Refreshing and Parked
+are distinct states: a parked retry has neither a due timer nor a live read.
+Fake completed values certify only their empty fixture scope; the future Host
+must publish real completions after the enclosing resource switch closes.
+
 ### Workspace aliases and mutable filesystem state
 
 The allowed character set admits `.` and `..`. Case-folding filesystems alias otherwise
