@@ -30,11 +30,11 @@ module type S = sig
     | Workflow_changed
     | Workflow_loaded of Request_id.t * (config, Config_layer.error) result
     | Tracker_completed of Request_id.t * tracker_reply
-    | Worker_progress of Run_id.t * agent_progress
+    | Worker_progress of Issue_id.t * Run_id.t * agent_progress
     | Worker_finished of agent_completed
-    | Continuation_requested of Run_id.t * Turn_id.t
+    | Continuation_requested of Issue_id.t * Run_id.t * Turn_id.t
     | Request_canceled of Request_id.t
-    | Retry_due of Retry_id.t
+    | Retry_due of Issue_id.t * Retry_id.t
     | Workspace_removed of Request_id.t * (unit, Workspace_manager.error) result
     | Shutdown
 
@@ -48,16 +48,16 @@ module type S = sig
         (Agent_runner.continuation, Tracker_error.t) result
     | Cancel_request of Request_id.t
     | Arm_poll of Request_id.t * instant
-    | Arm_retry of Retry_id.t * instant
+    | Arm_retry of Issue_id.t * Retry_id.t * instant
     | Cancel_poll of Request_id.t
     | Cancel_retry of Retry_id.t
     | Log of log_entry
 
-  val create : now:clock_sample -> config -> state * command list
+  val create : now:instant -> config -> state * command list
   (** Starts terminal cleanup and polling under the validated startup config.
       Cleanup read failure warns and proceeds; startup config failure never reaches create. *)
 
-  val event : now:clock_sample -> input -> event
+  val event : now:instant -> input -> event
   val step : state -> event -> state * command list
   (** Deterministic. Duplicate completions, request replies and timer IDs are observational no-ops.
       Progress is fenced by run/sequence; turn starts by turn ID. Absolute usage
@@ -72,9 +72,10 @@ module type S = sig
       for each issue, retain the original binding and update the canonical issue before
       replying. Duplicate continuation requests cannot start a second turn. *)
 
-  val snapshot : now:clock_sample -> state -> Snapshot.t
+  val snapshot : now:clock_sample -> state -> (Snapshot.t, Diagnostic.t) result
   (** Fresh issue fields, claimed union, counts, slots, runtime computed at read time.
-      A scope change drains old owners before admission under the new scope. *)
+      Wall projection failure changes no scheduling state. A scope change drains
+      old owners before admission under the new scope. *)
 
   val quiescent : state -> bool
   (** True after Shutdown iff no worker, required cleanup, or pending request remains.

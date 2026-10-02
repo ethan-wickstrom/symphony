@@ -1,4 +1,4 @@
-(** Closed owner decisions. Shared directly rather than copied into worker metadata. *)
+(** Closed owner decisions, distinct from the agent's reported outcome. *)
 
 type t =
   | Reconcile_terminal

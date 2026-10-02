@@ -88,18 +88,21 @@ No objects or polymorphic variants are needed in the project interfaces.
 ## Ownership and terminal states
 
 [issue_lifecycle.mli](interfaces/issue_lifecycle.mli) distinguishes starting, active,
-stopping and resource-complete runs; waiting and refreshing retries; and cleanup.
-Only a resource-complete run can retry or release. Only a refreshing retry can resume.
+stopping runs; waiting, refreshing and parked retries; and cleanup.
+Closed completion witnesses have separate retryable, releasable and cleanable
+types. Only a retryable completion can queue; only a post-read Refreshed witness
+can resume. These transition witnesses cannot be stored in the owner collection.
 `Agent.completed` has no public constructor. A turn-completed notification is insufficient.
 Runtime ID equality and OS lifetime cannot be dependent/linear OCaml types; the
 hidden lifecycle/driver boundaries enforce those checks once and test their laws.
 
-[ownership.mli](interfaces/ownership.mli) owns one map keyed by `Issue_id` and a priority
-index of waiting retry IDs/deadlines. The index contains no copied issue or retry payload.
-Both representations are updated through one immutable operation; a projection law
-checks agreement with the list model. `claimed` is derived as running-ownership IDs
+[ownership.mli](interfaces/ownership.mli) owns one persistent priority search queue
+keyed by `Issue_id`, with the canonical owner as its payload. Waiting rank derives
+from its due instant; every other role is inactive. There is no separate map,
+heap or stale-entry history. Projection laws check the independent list model.
+`claimed` is derived as running-ownership IDs
 union retry IDs. Stopping/draining runs retain their worker slot until resource completion;
-complete/cleanup-only runs keep ownership while holding no worker slot.
+cleanup keeps ownership while holding no worker slot.
 Status presents cleanup separately. Released IDs and finished watermarks are discarded.
 
 Per-run observation sequences fence duplicate progress; run, retry and request tokens
@@ -123,7 +126,7 @@ ocaml/
     ports/        tracker, workspace, agent, clock, log contracts
     tracker/      registry, Linear adapter, injected HTTP driver
     workspace/    reference/lease mechanism, hooks, POSIX directory driver
-    core/         lifecycle, ownership/index, ordering, backoff, orchestrator
+    orchestration/ lifecycle, canonical owner PSQ, ordering, backoff, event core
     agent/        JSONL framer, selected codec, app-server client, runner
     runtime/      Eio clock, process groups, mailbox, command interpreter, watcher
     status/       snapshot projection, route formatter, HTTP listener
