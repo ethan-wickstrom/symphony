@@ -142,9 +142,10 @@ passed 100 replayable seeds of 2,000 operations against an independent list mode
 checking keyed payloads, lookups, minimum and size after every operation. Controls
 covered equal-rank payload replacement, retained ownership on refresh and due/ID
 ties. This is sampled library evidence, not a proof or orchestration conformance.
-The actual Ownership instance still needs comparator laws and QCheck/model tests
-over its checked types. Declare Psq directly when implementing this slice; it is
-already installed and pinned transitively, so no new package choice is needed.
+The implemented Ownership instance now passes its algebra properties and 200,000
+generated operations against a separate list model over checked values. Psq is
+declared directly and remains pinned at 0.2.1. These checks establish sampled
+queue behavior; lifecycle and event-machine laws remain the next gate.
 
 Primary sources: [versioned public interface](https://github.com/pqwy/psq/blob/v0.2.1/src/psq.mli),
 [versioned implementation](https://github.com/pqwy/psq/blob/v0.2.1/src/psq.ml),
@@ -261,10 +262,9 @@ Do not retry the whole worker merely because its continuation read was supersede
 ## Fences and effect custody
 
 All request/run/retry tokens come from the owner's immutable allocator chains;
-never reset an allocator within a Core instance. Add named Order/Map/Set exports
-for these token modules before choosing request/host containers. Existing token
-interfaces expose only equal/text, unlike Checked_id.S. A map needs an explicit
-total comparator; never use dispatch ordering or polymorphic compare.
+never reset an allocator within a Core instance. Run_id, Retry_id and Request_id
+now export named Order/Map/Set instances. Use those explicit total comparators
+for request/host containers; never use dispatch ordering or polymorphic compare.
 
 Pending requests form a closed sum: Workflow_load, Startup_terminal_read,
 Reconcile_read, Candidate_read, Retry_read, Continuation_read and Workspace_cleanup.
