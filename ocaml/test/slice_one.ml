@@ -28,6 +28,7 @@ let () =
       ("configuration", Tests.tests ~registry);
       ("environment quarantine", Environment_boundary_test.tests);
       ("domain", Domain_test.tests);
+      ("crypto rejection", Crypto_boundary_test.tests);
       ("issue batches", Issue_batch_test.tests);
       ("Linear boundaries", Linear_boundary_test.tests);
       ("Linear pagination", Linear_pager_test.tests);

@@ -30,6 +30,12 @@ against an independent model, replayable simulation, parser fuzzing and measured
 - Slice 3 merged as [PR #3](https://github.com/ethan-wickstrom/symphony/pull/3)
   at `98833b39c59a2def4257ac5ac9e405e1010554ca` on `2026-10-01T15:36:13Z`.
   Linear reads and native HTTPS inspection passed local and hosted Linux/macOS gates.
+- Native release foundation merged as [PR #4](https://github.com/ethan-wickstrom/symphony/pull/4)
+  at `039ce50b78600cad1690f370bca272b9d9ecd5be` on `2026-10-01T23:17:28Z`.
+  Final head `a93ce52` passed PR/push Linux/macOS CI and independent receipt review:
+  eight native manifests (79 cases each), 20,000 custody scenarios and 8,000 stable
+  closes; all selected source hashes match. Historical application qualification
+  remains separate from those source/test receipts.
 - Slice 2 keys, frozen references, opaque issue-ID ownership and strict bounded
   owner codec; independent models, hash vectors and parser fuzz targets.
 - Frozen Eio custody/admission extension and worker controls passed local macOS and
@@ -47,23 +53,22 @@ against an independent model, replayable simulation, parser fuzzing and measured
 
 ## Current focus
 
-Branch `ethan/static-release` starts from merged `98833b3`.
-The isolated macOS arm64 build now passes physical closure, observed link,
-copied-artifact CLI and native process/HTTPS checks: minimum 26.0/SDK 26.5,
-only libSystem imported, exact static GMP archive.
-PR #4 is published in the owned repository. Review repairs pass locally:
-live bounded subprocess capture, executable entry mapping, exclusive receipts,
-complete duplicate-free profile decoding and required native SDK coverage. Checked
-JSON values are serialized before binding substitution. A native Darwin
-control now retains the frozen driver's documented conservative cleanup error
-while checking grace timing, direct-child reap and lease release.
-Follow-up review also validates virtual mappings and atomically publishes complete
-receipts without replacement, with a distinct published outcome on late cleanup
-failure. Actual RED controls precede both repairs.
-Next: publish reviewed fixes, verify exact-head CI and merge the foundation.
-Clean-host execution and Linux musl remain release gates.
-Plans: `docs/design/static-release-plan.md`, then
-`docs/design/slice-4-orchestrator-plan.md`.
+Branch `ethan/crypto-security` starts from merged `039ce50`.
+The four locked Mirage 1.2.0 packages reach code affected by OSEC-2026-14/15/17.
+Actual RED/GREEN confirms 12 crypto exceptions and two real certificate exceptions
+are now checked rejections. All four Mirage packages are 2.4.1; TLS/X509 stay pinned.
+Exact TLS diagnostics, bounded peer termination and false-positive controls pass.
+Hosted macOS exposed a fixture assumption: raw TCP can end with RST rather than EOF.
+A deterministic reset control went red before the narrow typed-reset repair;
+unrelated errors/defects still escape. No public HTTP interface change or masking.
+Fresh generated lock and 239-file source gate pass; 256 core tests, 26 × 10,000
+fuzz inputs and 85 native cases per mode pass. Required pinned Elixir 302 tests
+pass with six explicit skips; an unchanged hosted retry bound failed once, then
+passed at the same head on rerun. Historical release
+recipes remain byte-identical and require explicit archival replay.
+Next: push the reviewed fixture repair to PR #5, verify exact-head CI and merge.
+Linux musl and clean-host qualification follow; the orchestrator follows those gates.
+Plan: `docs/design/crypto-security-plan.md`.
 No user approval is pending under the accepted recommendations/autonomy instruction.
 
 ## Current release foundation evidence

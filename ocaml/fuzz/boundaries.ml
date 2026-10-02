@@ -1019,6 +1019,7 @@ let collections text count =
   Crowbar.check_eq count (List.length (List.sort_uniq String.compare names))
 
 let () =
+  Crypto_boundaries.register ();
   Crowbar.add_test ~name:"YAML, fields, policies and adapter settings"
     (yaml_input @> no_inputs) yaml_boundary;
   Crowbar.add_test ~name:"workflow load, config resolve and reload model"

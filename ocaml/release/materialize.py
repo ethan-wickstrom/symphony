@@ -19,6 +19,11 @@ import tarfile
 
 
 PROFILE = "macos-arm64-26.0.json"
+HISTORICAL_PURPOSE = "historical-replay"
+ARCHIVAL_NOTICE = (
+    "Security-affected Mirage Crypto 1.2.0 archival inputs; "
+    "not current release qualification."
+)
 TOKEN = re.compile(r"@([A-Z_]+)@")
 SAFE_PATH = re.compile(r"/[A-Za-z0-9_./+\-]+")
 GIT_TIMEOUT = 30
@@ -417,6 +422,8 @@ def prepare(release, output):
     resolved = substitute(json.dumps(profile, indent=2) + "\n", bindings).encode()
     files["profile.json"] = resolved
     receipt = {
+        "purpose": HISTORICAL_PURPOSE,
+        "security_notice": ARCHIVAL_NOTICE,
         "profile_sha256": sha256(profile_bytes),
         "materializer_sha256": sha256(Path(__file__).read_bytes()),
         "bounded_process_sha256": sha256(_PROCESS_PATH.read_bytes()),
@@ -454,7 +461,11 @@ def materialize(output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=ARCHIVAL_NOTICE, formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--purpose", required=True, choices=[HISTORICAL_PURPOSE],
+                        help="explicit intent to reproduce historical inputs")
     parser.add_argument("--output", required=True, help="absent, canonical absolute output prefix")
     args = parser.parse_args()
     try:
@@ -465,6 +476,7 @@ def main():
         for note in _PROCESS.cleanup_notes(error):
             print(note, file=sys.stderr)
         return 2
+    print(ARCHIVAL_NOTICE)
     print(output / "materialization.json")
     return 0
 

@@ -1,4 +1,8 @@
-# Qualified macOS inputs
+# Historical macOS inputs
+
+These archived recipes contain security-affected Mirage Crypto 1.2.0. They
+preserve historical observations and must not qualify a current release. The
+development dependency refresh to 2.4.1 requires a fresh release qualification.
 
 This profile preserves the locally qualified macOS arm64 recipes: minimum OS
 26.0, SDK 26.5, Xcode 26.6, OCaml 5.5.0 and an Apple M1 CPU baseline. GMP and
@@ -7,7 +11,7 @@ switch and from the pending Linux musl profile.
 
 ```sh
 python3 ocaml/release/materialize.py --help
-python3 ocaml/release/materialize.py --output /private/tmp/symphony-release-fresh
+python3 ocaml/release/materialize.py --purpose historical-replay --output /private/tmp/symphony-release-fresh
 ```
 
 The output must be absent and its parent must exist. Paths are canonical absolute
@@ -40,7 +44,8 @@ signature was cryptographically valid, with an expired-key warning in the retain
 verification. pkgconf's archive hash matched its official release-asset digest;
 no detached-signature verification is claimed.
 
-Use the resolved profile as the build input: build/check/install GMP in its owned
+For a historical replay, use the resolved profile as the build input:
+build/check/install GMP in its owned
 prefix, build/check pkgconf with its header target first, install the standalone
 binary as `target/tools/bin/pkgconf` and a `pkg-config` alias, then use the explicit
 compiler and package pins in the fresh opam root. Compiler cloning is disabled;
