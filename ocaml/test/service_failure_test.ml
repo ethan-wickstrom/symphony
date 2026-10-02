@@ -2,17 +2,34 @@ module F = Service_failure
 
 exception Callback_defect of int
 
-type observation = Success | Error | Defect
+type Eio.Exn.err += First_io | Middle_io | Last_io
+type observation = Success | Error | Defect | Shared_defect | Io
 
 let model entries =
   List.find_map
     (function
       | Success, _ -> None
-      | (Error | Defect), outcome -> Some outcome)
+      | (Error | Defect | Shared_defect | Io), outcome -> Some outcome)
     entries
+
+let secondary_model observations =
+  let rec after_first = function
+    | [] -> []
+    | (_, Success) :: rest -> after_first rest
+    | (_, (Error | Defect | Shared_defect | Io)) :: rest ->
+        List.filter_map
+          (function
+            | key, (Defect | Shared_defect | Io) -> Some key
+            | _, (Success | Error) -> None)
+          rest
+  in
+  after_first
+    (List.mapi (fun key observation -> (key, observation)) observations)
 
 let agrees observations =
   let register = F.create () in
+  let shared = Callback_defect (-1) in
+  let io = Eio.Exn.create First_io in
   (* Distinct identities make replacing the first Error with a later Error
      observable, even when both failures have the same constructor. *)
   let entries =
@@ -28,11 +45,28 @@ let agrees observations =
                       ~message:("observation " ^ string_of_int index)
                       ~remedy:"Retain the first failed observation."))
           | Defect -> F.Raised (Callback_defect index, Printexc.get_callstack 8)
+          | Shared_defect -> F.Raised (shared, Printexc.get_callstack 8)
+          | Io ->
+              let error =
+                match io with
+                | Eio.Io (error, context) -> Eio.Io (error, context)
+                | _ -> Alcotest.fail "Expected an IO failure"
+              in
+              F.Raised (error, Printexc.get_callstack 8)
         in
         (observation, outcome))
       observations
   in
-  List.iter (fun (_, outcome) -> F.record register () outcome) entries;
+  List.iteri (fun key (_, outcome) -> F.record register key outcome) entries;
+  let reports = ref [] in
+  let flush () =
+    F.flush register ~describe:string_of_int ~report:(fun key _ ->
+        reports := key :: !reports)
+  in
+  flush ();
+  flush ();
+  List.rev !reports = secondary_model observations
+  &&
   match (model entries, F.prefer register (F.Returned (Ok ()))) with
   | None, F.Returned (Ok ()) -> not (F.failed register)
   | Some (F.Returned (Error expected)), F.Returned (Error actual) ->
@@ -45,7 +79,7 @@ let agrees observations =
 let properties =
   let open QCheck2 in
   [
-    Test.make ~name:"failure register equals first unsuccessful observation"
+    Test.make ~name:"failure register preserves first failure and later reports"
       ~count:1000
       ~print:(fun observations ->
         String.concat ","
@@ -53,17 +87,17 @@ let properties =
              (function
                | Success -> "success"
                | Error -> "error"
-               | Defect -> "defect")
+               | Defect -> "defect"
+               | Shared_defect -> "shared-defect"
+               | Io -> "io")
              observations))
       (Gen.list_size (Gen.int_range 0 100)
-         (Gen.oneof_list [ Success; Error; Defect ]))
+         (Gen.oneof_list [ Success; Error; Defect; Shared_defect; Io ]))
       agrees;
   ]
 
 exception First_cleanup of string
 exception Last_cleanup of string
-
-type Eio.Exn.err += First_io | Middle_io | Last_io
 
 let aggregate failures =
   Eio_mock.Backend.run (fun () ->
@@ -140,6 +174,25 @@ let io_occurrences () =
     "suppress one primary, retain the later identical IO" 1
     (List.length (reported ~primary:[ first ] errors))
 
+let independent_failures () =
+  let register = F.create () in
+  let first = Eio.Exn.create First_io in
+  let second =
+    match first with
+    | Eio.Io (error, context) -> Eio.Io (error, context)
+    | _ -> Alcotest.fail "Expected an IO failure"
+  in
+  let reports = ref [] in
+  List.iteri
+    (fun key error ->
+      F.record register key (F.Raised (error, Printexc.get_callstack 8)))
+    [ first; second; first ];
+  F.flush register ~describe:string_of_int ~report:(fun key _ ->
+      reports := key :: !reports);
+  Alcotest.(check (list int))
+    "independent observations survive shared payloads and exception values"
+    [ 1; 2 ] (List.rev !reports)
+
 let reporter_drain () =
   let register = F.create () in
   let original = Callback_defect 83 in
@@ -163,6 +216,8 @@ let reporter_drain () =
 
 let tests =
   [
+    Alcotest.test_case "independent failures are never deduplicated" `Quick
+      independent_failures;
     Alcotest.test_case "normalization retains distinct same-kind IO occurrences"
       `Quick io_occurrences;
     Alcotest.test_case "reporter failure drains remaining reports exactly once"

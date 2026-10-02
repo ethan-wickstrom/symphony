@@ -9,21 +9,18 @@ val restore : 'a outcome -> 'a
     backtrace of [f]. Neither operation translates a defect into a domain error.
 *)
 
-val flatten : 'a outcome outcome -> 'a outcome
-(** [flatten (Returned x) = x]; [flatten (Raised e) = Raised e]. Normalize at
-    the producer boundary so a nested restore cannot bypass failure selection.
-*)
-
 type 'key secondary
 
 val secondary : 'key -> primary:exn list -> exn -> 'key secondary list
 (** Flatten Eio's cleanup aggregation, removing cancellation wrappers and exact
     primary occurrences. Normalized IO uses retained error/context identities;
     one primary occurrence removes at most one matching leaf, preserving later
-    independent failures with the same IO fields. For each non-cancellation
-    identity, [count(result) = max 0 (count(leaves) - count(primary))].
-    Distribution over an aggregate preserves observation order. Raw exceptions
-    stay private until their constructor names are rendered. *)
+    failures within that same aggregate with the same IO fields. Only subtract a
+    primary captured from the scope that produced this aggregate; never an
+    unrelated register's primary. For each non-cancellation identity,
+    [count(result) = max 0 (count(leaves) - count(primary))]. Distribution over
+    an aggregate preserves observation order. Raw exceptions stay private until
+    their constructor names are rendered. *)
 
 type 'key t
 
@@ -32,10 +29,12 @@ val create : unit -> 'key t
 val record : 'key t -> 'key -> (unit, Diagnostic.t) result outcome -> unit
 (** First fatal observation wins; successful observations are identity. The
     primary projection is a left-biased optional value: associative, idempotent
-    and noncommutative, with absence as identity. Recording a later distinct
-    exception retains a secondary, never replaces the primary. Record and
-    selection do not suspend. The reference model is the first unsuccessful
-    observation in a list. *)
+    and noncommutative, with absence as identity. Each call records an
+    independent observation. Every later non-cancellation exception retains a
+    secondary, even when it reuses an earlier exception value. Do not record a
+    selected outcome again during propagation. Record and selection do not
+    suspend. The reference model is the first unsuccessful observation in a
+    list. *)
 
 val prefer :
   'key t ->
@@ -44,7 +43,10 @@ val prefer :
 (** Empty selection returns its argument. Once selected, every preference
     returns the same original error or exception/backtrace. *)
 
-val check : 'key t -> (unit, Diagnostic.t) result
+val finish : 'key t -> (unit, Diagnostic.t) result
+(** Restore the selected outcome after the owner and its children have joined.
+    This is the only transfer of a registered exception to the caller. *)
+
 val failed : 'key t -> bool
 
 val retain : 'key t -> 'key secondary list -> unit

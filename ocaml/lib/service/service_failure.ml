@@ -9,10 +9,6 @@ let restore = function
   | Returned value -> value
   | Raised (error, backtrace) -> Printexc.raise_with_backtrace error backtrace
 
-let flatten = function
-  | Returned outcome -> outcome
-  | Raised (error, backtrace) -> Raised (error, backtrace)
-
 type 'key secondary = Secondary of 'key * exn
 
 let same_error a b =
@@ -69,13 +65,7 @@ let record t key = function
   | Raised (error, backtrace) -> begin
       match t.primary with
       | None -> t.primary <- Some (Unexpected (error, backtrace))
-      | Some previous ->
-          let primary =
-            match previous with
-            | Checked _ -> []
-            | Unexpected (original, _) -> [ original ]
-          in
-          retain t (secondary key ~primary error)
+      | Some _ -> retain t (secondary key ~primary:[] error)
     end
 
 let prefer t fallback =
@@ -84,7 +74,7 @@ let prefer t fallback =
   | Some (Checked diagnostic) -> Returned (Error diagnostic)
   | Some (Unexpected (error, backtrace)) -> Raised (error, backtrace)
 
-let check t = restore (prefer t (Returned (Ok ())))
+let finish t = restore (prefer t (Returned (Ok ())))
 
 let flush t ~describe ~report =
   let faults = List.rev t.secondary in

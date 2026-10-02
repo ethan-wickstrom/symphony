@@ -81,6 +81,11 @@ Commit service-fatal outcomes when received, before observer callbacks. The
 owner and caller share one first-failure carrier: selecting twice keeps the
 first value. This left-biased operation is associative and idempotent, with an
 empty identity; its operand order matters. Request-level errors remain Core data.
+The owner returns after joining; it does not rethrow a registered failure through
+its own scopes. Only the caller restores the final selection. Independent effects
+therefore record independent occurrences, even when they raise the same exception
+value. Subtracting an already captured primary applies only within its own Eio
+cleanup aggregate, where normalization may rebuild IO wrappers.
 Secondary cleanup defects use a typed host diagnostic sink and safe context;
 never fabricate Core.fault or expose raw exception payloads. A secondary reporter
 failure cannot replace the primary or skip releases. Preserve original exception
@@ -100,8 +105,8 @@ generation history. The independent event model consumes actual owner events.
 
 The controls cover fatal entry/drain, pre-entry cancellation, cancellation/result
 races, finalizer defects, canceled timer retirement, reused-issue admission and
-test-actor failure. Twenty-six examples and three property groups pass locally:
-300 Inbox programs, 1000 first-failure list-model programs, and 1000 causal service
+test-actor failure. Twenty-nine examples and three property groups pass locally:
+300 Inbox programs, 1000 failure-and-report list-model programs, and 1000 causal service
 programs with 50–60 gates plus joined shutdown tails, seed 20261002. Programs
 sample three issue IDs; seed uniqueness and 1000-session capacity are not claimed.
 Replay uses `dune exec test/service_replay.exe -- --seed N --prefix N`.
@@ -109,7 +114,7 @@ Replay uses `dune exec test/service_replay.exe -- --seed N --prefix N`.
 `Scenario.run` opens finalizer permissions on every actor exit, before the child
 switch joins. The actor-failure identity test failed before that scope replacement.
 `Service_failure` owns the host primary and private secondary exceptions; the
-parent receives one normalized outcome. See [the retrospective](service-retrospective.md).
+parent reads it after joining. See [the retrospective](service-retrospective.md).
 
 The next checkpoint supplies a declared 1000-session fixture. Measure physical speed
 separately under Eio_posix; virtual zero-duration ticks are not performance data.

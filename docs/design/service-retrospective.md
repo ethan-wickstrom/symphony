@@ -14,9 +14,9 @@ agent service; the closed Codex runner remains the next unverified boundary.
 - Reserved one-shot notifications remove the blocking publication edge between
   finalizers and a failed owner. The bound follows admitted effects.
 - One private `Service_failure` register selects the first fatal observation and
-  redacts secondary errors. Parent/owner transfer one normalized outcome; nested
-  restoration cannot bypass selection. Its reference model takes the first
-  unsuccessful observation from a list.
+  redacts secondary errors. The owner joins without rethrowing the selection;
+  the caller reads it afterward. The reference model takes the first failed
+  observation and retains later independent exception reports in order.
 - `Scenario.run` owns finalizer permissions and the child switch. Its constructor
   cannot be called without the bracket. Actor exit opens permissions before child
   joins; only actual finalizers emit release receipts.
@@ -30,6 +30,7 @@ agent service; the closed Codex runner remains the next unverified boundary.
 | --- | --- | --- |
 | Host reporter defects disappeared without an earlier fatal primary | New service error sink | Record the first reporter defect and continue report drainage |
 | Aggregate order and IO leaves were lost | New service decoder; an IO-order bug also existed in native cleanup | One shared Eio decoder, tested against real switch finalizers |
+| Independent effects sharing IO payloads lost reports | New arbitration reused cleanup deduplication across effects | Record each occurrence once; stop rethrowing selected failures through the owner |
 | A later cancellation replaced an earlier owner failure | New service arbitration | One canonical first-failure register |
 | Observer failure replaced a received clock error | New observation ordering | Commit fatal closure before observer callbacks |
 | Already canceled fake operations acquired resources | New fake-port lifecycle | Enter the release scope before acquisition; resolved runner cancellation acquires nothing |
@@ -45,8 +46,11 @@ could block while holding a resource required by shutdown. Backpressure belongs
 at admission here, not on closure publication.
 
 I represented caller and owner failure separately before defining their ordering
-law. More catch/restore branches followed. Normalizing one outcome at the producer
-boundary and hiding the register removes those competing representations.
+law. More catch/restore branches followed. Even after introducing the shared
+register, I retained the rethrow/recapture path and used deduplication to conceal
+it. That was the wrong abstraction: observations have identity, exception values
+do not. The owner now stops on the recorded fact and joins; only the caller
+restores it. No exception comparison is needed across independent effects.
 
 I also treated test control code as scaffolding. Its blocked finalizers are real
 Eio resources. The test actor needs the same ownership discipline as production.
@@ -59,10 +63,24 @@ mutation, shrinking it to `error,error`; restored production code passes.
 Review also exposed Eio normalization: IO exception wrappers are rebuilt, and
 multiple distinct failures can retain the same error/context fields. Suppressing
 a set of matching identities erased a later failure. Ordered occurrence
-subtraction now removes only the recorded primary occurrence. Its regression
-failed with zero remaining reports before the fix; one must remain.
+subtraction removes only the captured primary within its own cleanup aggregate.
+It must not subtract a different effect's primary. Direct and actual-service
+regressions fail against the previous implementation; the strengthened list model
+also detects the loss when separate observations reuse one exception value.
+
+I pushed once before inspecting a repeated reference gate's exit status. That
+violated the gate. An unchanged real-clock timer test missed its margin by 267 ms;
+both its isolated replay and the complete reference gate passed at the same seed
+989296. The test was not weakened. Gate results must be inspected before pushing;
+a successful command launch is not a successful check.
 
 ## Hunches and next falsifiers
+
+Two existing wall-clock tests failed once locally, then passed unchanged: the
+reference retry timer and the native watchdog's fake target. Host scheduling
+pressure is plausible but unmeasured. Their tight real-time margins are
+reproducibility debt; distinguish bounded termination from speed measurement in
+the next capacity gate.
 
 The interpreter remains large. Admission, cancellation and observation are closely
 ordered; splitting them mechanically could obscure the very edges under test.

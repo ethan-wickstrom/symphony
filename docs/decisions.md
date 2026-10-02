@@ -556,8 +556,12 @@ There is no second oracle or fabricated stream of intended events. See
 [the Eio design](design/eio-service.md) for laws and evidence boundaries.
 
 Failure arbitration lives in private `Service_failure`, outside command
-interpretation. Its left-biased primary register normalizes parent/owner results
-and owns redaction; request failures still enter the reducer. `Scenario.run`
+interpretation. Its left-biased primary register owns redaction; request failures
+still enter the reducer. The owner never rethrows a recorded selection through
+its scopes; the caller restores it after joining. Record each independent failure
+once, including reused exception values. Only cleanup settlement subtracts a
+captured primary from its own aggregate. Shared `Eio_failure` decodes both Eio
+aggregate forms in their actual observation order. `Scenario.run`
 replaces an unscoped fake-controller constructor after an actor-failure regression
 lost its exception to deadlock. It opens finalizer permissions before switch
 joins. Example, property and replay executables have separate entry points, so

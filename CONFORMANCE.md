@@ -69,14 +69,16 @@ resource closure.
 
 The Eio interpreter (`ocaml/lib/service/service.ml`) runs the same core over
 scoped loader/tracker/workspace/runner/clock ports. `service_sim_test.ml` feeds
-actual delivered envelopes through `core_bridge.ml`; 26 Alcotest examples and
+actual delivered envelopes through `core_bridge.ml`; 29 Alcotest examples and
 three actual QCheck groups pass at seed `20261002`. The groups run 300 Inbox
-programs, 1000 first-failure list-model programs and 1000 causal service programs
+programs, 1000 failure-and-report list-model programs and 1000 causal service programs
 of 50–60 gates plus joined shutdown tails. These sample three issue IDs; they do
 not demonstrate 1000 distinct seeds or 1000 simultaneous sessions. Resource
 receipts verify acquired/closing/released order and no premature redispatch.
 Actor-failure deadlock, failure precedence and pre-entry cancellation regressions
-failed before fixes. `Service_failure` owns fatal arbitration and redaction;
+failed before fixes. Independent effects retain reports even when sharing one
+exception value; three regressions and the list model reject the previous code.
+`Service_failure` owns fatal arbitration and redaction;
 `Scenario.run` owns test-gate closure before joins. Replay one script with
 `dune exec test/service_replay.exe -- --seed N --prefix N` from `ocaml/`.
 The full local OCaml gate passes with 325 source files, 17 rejected type clients,

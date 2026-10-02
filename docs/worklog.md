@@ -84,14 +84,15 @@ instances reach the runner; one owner interprets actual reducer commands.
   its finalizer gates remained closed. The scoped Scenario.run constructor now
   releases gate permissions before joining children. No public unscoped creator
   remains. RED/GREEN: _build/eio-actor-{red,green}.log.
-- Service_failure privately owns arbitration; parent/owner transfer one normalized
-  outcome. This deletes nested restoration and duplicated arbitration branches.
-- Refactored Service: 26 examples and 1000 causal programs pass (seed 20261002);
+- Service_failure privately owns arbitration. The owner joins without rethrowing
+  its recorded failure; the caller restores it once afterward. Independent
+  observations retain reports even when they reuse the same exception value.
+- Refactored Service: 29 examples and 1000 causal programs pass (seed 20261002);
   50–60 selected gates plus a joined shutdown tail. This is sampled three-issue
   coverage, not 1000 distinct seeds or simultaneous sessions.
 - Separate example/property/replay executables remove test-runner coupling.
   Direct replay: dune exec test/service_replay.exe -- --seed N --prefix N.
-  The new 1000-program failure-register list-model property and full just check
+  The 1000-program failure-and-report list model and full just check
   gate pass. Help invokes no properties; replay at prefix zero passes, and a
   negative seed returns exit 2. Receipt: _build/eio-full-check.log.
 - Self-review strengthened the failure property with distinct error/exception
@@ -108,9 +109,24 @@ order, the native helper's existing IO order, missing IO leaves, and swallowed
 host-reporter failure. `Eio_failure` now supplies one decoder to native and service
 code. Multiple is reverse order; Multiple_io is forward order. A fifth regression
 showed set filtering erasing distinct same-kind IO errors; ordered occurrence
-subtraction retains them. Twenty-six examples and the full just check gate pass, including native
-process/CLI checks, 325 sources and both 72-CMI type-client modes. Logs: _build/eio-review-red.log, eio-io-occurrence-red.log and
-eio-review-final-green.log.
+subtraction retains them within one aggregate. Further review exposed its misuse
+across effects: exception identity cannot identify an observation. The owner no
+longer rethrows registered failures, eliminating that deduplication requirement.
+Three examples and the strengthened report model fail against the prior code;
+all 29 examples/three groups pass after the redesign. Logs:
+_build/eio-prior-observation-{examples,properties}.log and
+_build/eio-independent-{ports,campaign}.log. The final full gate passes 325
+sources and both 72-CMI modes: _build/eio-observation-full-check-replay.log.
+An unchanged watchdog manifest test first exceeded its one-second fake-target
+deadline; isolated replay and both normal/optimized full-gate runs passed.
+No timeout or assertion was changed.
+
+Execution correction: commit 3706dd4 was pushed before inspecting a repeated
+reference gate failure. The unchanged real-clock timer test missed its margin by
+267 ms. Its isolated replay and the complete gate passed at seed 989296: 302
+tests, zero failures, six skips, all lint/format/coverage/Dialyzer steps passed.
+No reference source or assertion was changed. Receipt:
+_build/eio-reference-full-seed.log. Read each gate result before publication.
 
 Next: finish exact-head hosted checks/review for PR #9 and merge this checkpoint.
 Then physical capacity measurement and the real closed Codex runner;

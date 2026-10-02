@@ -499,19 +499,21 @@ struct
         end
 
   let measured t runtime computation =
-    Result.bind (Failure.check runtime.failure) (fun () ->
+    let now () =
+      if Failure.failed runtime.failure then Error ()
+      else
         match Clock.now t.clock with
-        | Error diagnostic -> Error diagnostic
-        | Ok now ->
-            Result.bind (Failure.check runtime.failure) (fun () ->
-                let value = computation now in
-                match Clock.now t.clock with
-                | Error diagnostic -> Error diagnostic
-                | Ok until ->
-                    Result.map
-                      (fun () ->
-                        (now, Clock.Pure.elapsed ~since:now ~until, value))
-                      (Failure.check runtime.failure)))
+        | Error diagnostic ->
+            Failure.record runtime.failure Owner (Returned (Error diagnostic));
+            Error ()
+        | Ok now -> if Failure.failed runtime.failure then Error () else Ok now
+    in
+    Result.bind (now ()) (fun started ->
+        let value = computation started in
+        Result.map
+          (fun until ->
+            (started, Clock.Pure.elapsed ~since:started ~until, value))
+          (now ()))
 
   let transition t (runtime : runtime) ~sw state input =
     match
@@ -519,78 +521,73 @@ struct
           let state, commands = Core.step state (Core.event ~now input) in
           (state, commands, Core.project ~now state))
     with
-    | Error diagnostic -> Error diagnostic
+    | Error () -> Error ()
     | Ok (now, elapsed, (state, commands, projection)) ->
         t.observe (Transition { now; input; projection; commands; elapsed });
         interpret t runtime ~sw commands;
         Ok state
 
   let rec loop t (runtime : runtime) ~sw state =
-    match Failure.check runtime.failure with
-    | Error diagnostic -> Error diagnostic
-    | Ok () -> (
-        match runtime.control with
-        | Shutdown_pending ->
-            runtime.control <- No_control;
-            continue t runtime ~sw state Core.Shutdown
-        | No_control | Refresh_pending -> (
-            match take runtime with
-            | Some (Entered key) ->
-                emit t (Child_entered key);
-                begin match key with
-                | Worker (issue, run) ->
-                    emit t (Delivered (key, Entry));
-                    continue t runtime ~sw state
-                      (Core.Worker_started (issue, run))
-                | Owner
-                | Controls
-                | Workflow _
-                | Tracker _
-                | Cleanup _
-                | Poll _
-                | Retry _ ->
-                    emit t (Delivered (key, Entry));
-                    loop t runtime ~sw state
-                end
-            | Some (Closed (key, result)) ->
-                emit t (Outer_closed key);
-                let delivery =
-                  match result.outcome with
-                  | Returned (Semantic _) -> Terminal
-                  | Returned (Canceled | Controls_stopped | Clock_error _)
-                  | Raised _ -> Private_close
-                in
-                emit t (Delivered (key, delivery));
-                emit t (Retired key);
-                if not (Failure.failed runtime.failure) then
-                  flush_secondary t runtime;
-                begin match result.outcome with
-                | Returned (Semantic input) ->
-                    continue t runtime ~sw state input
-                | Returned (Canceled | Controls_stopped) ->
-                    loop t runtime ~sw state
-                | Returned (Clock_error diagnostic) -> Error diagnostic
-                | Raised (error, backtrace) ->
-                    Printexc.raise_with_backtrace error backtrace
-                end
-            | None ->
-                if Core.quiescent state then begin
-                  cancel_key runtime Controls Agent_runner.Host_shutdown;
-                  if Registry.is_empty runtime.handles then Ok ()
-                  else wait t runtime ~sw state
-                end
-                else begin
-                  match runtime.control with
-                  | Refresh_pending ->
-                      runtime.control <- No_control;
-                      continue t runtime ~sw state Core.Refresh_requested
-                  | No_control -> wait t runtime ~sw state
-                  | Shutdown_pending -> loop t runtime ~sw state
-                end))
+    if not (Failure.failed runtime.failure) then
+      match runtime.control with
+      | Shutdown_pending ->
+          runtime.control <- No_control;
+          continue t runtime ~sw state Core.Shutdown
+      | No_control | Refresh_pending -> (
+          match take runtime with
+          | Some (Entered key) ->
+              emit t (Child_entered key);
+              begin match key with
+              | Worker (issue, run) ->
+                  emit t (Delivered (key, Entry));
+                  continue t runtime ~sw state
+                    (Core.Worker_started (issue, run))
+              | Owner
+              | Controls
+              | Workflow _
+              | Tracker _
+              | Cleanup _
+              | Poll _
+              | Retry _ ->
+                  emit t (Delivered (key, Entry));
+                  loop t runtime ~sw state
+              end
+          | Some (Closed (key, result)) ->
+              emit t (Outer_closed key);
+              let delivery =
+                match result.outcome with
+                | Returned (Semantic _) -> Terminal
+                | Returned (Canceled | Controls_stopped | Clock_error _)
+                | Raised _ -> Private_close
+              in
+              emit t (Delivered (key, delivery));
+              emit t (Retired key);
+              if not (Failure.failed runtime.failure) then
+                flush_secondary t runtime;
+              begin match result.outcome with
+              | Returned (Semantic input) -> continue t runtime ~sw state input
+              | Returned (Canceled | Controls_stopped) ->
+                  loop t runtime ~sw state
+              | Returned (Clock_error _) | Raised _ -> ()
+              end
+          | None ->
+              if Core.quiescent state then begin
+                cancel_key runtime Controls Agent_runner.Host_shutdown;
+                if not (Registry.is_empty runtime.handles) then
+                  wait t runtime ~sw state
+              end
+              else begin
+                match runtime.control with
+                | Refresh_pending ->
+                    runtime.control <- No_control;
+                    continue t runtime ~sw state Core.Refresh_requested
+                | No_control -> wait t runtime ~sw state
+                | Shutdown_pending -> loop t runtime ~sw state
+              end)
 
   and continue t (runtime : runtime) ~sw state input =
     match transition t runtime ~sw state input with
-    | Error diagnostic -> Error diagnostic
+    | Error () -> ()
     | Ok state -> loop t runtime ~sw state
 
   and wait t (runtime : runtime) ~sw state =
@@ -612,43 +609,37 @@ struct
                           let state, commands = Core.create ~now config in
                           (state, commands, Core.project ~now state))
                     with
-                    | Error diagnostic -> Error diagnostic
+                    | Error () -> Ok ()
                     | Ok (now, elapsed, (state, commands, projection)) ->
                         t.observe
                           (Initial { now; projection; commands; elapsed });
                         interpret t runtime ~sw commands;
-                        loop t runtime ~sw state)
+                        loop t runtime ~sw state;
+                        Ok ())
               in
               Failure.record runtime.failure Owner observed;
-              let primary = Failure.prefer runtime.failure observed in
               (* The first failure is committed before this protected drain can
                suspend. No clock, reducer or user sink participates in drain. *)
               Eio.Cancel.protect (fun () ->
                   cancel_all runtime;
                   drain runtime);
-              restore primary))
+              Ok ()))
     in
     Failure.record runtime.failure Owner actual;
-    let primary = Failure.prefer runtime.failure actual in
-    begin match primary with
-    | Returned (Ok ()) ->
-        let notified =
-          capture (fun () ->
-              emit t (Outer_closed Owner);
-              emit t (Delivered (Owner, Private_close));
-              emit t (Retired Owner))
-        in
-        begin match notified with
-        | Returned () -> ()
-        | Raised (error, backtrace) ->
-            Failure.record runtime.failure Owner (Raised (error, backtrace))
-        end;
-        flush_secondary t runtime;
-        Failure.prefer runtime.failure primary
-    | Returned (Error _) | Raised _ ->
-        flush_secondary t runtime;
-        primary
-    end
+    if not (Failure.failed runtime.failure) then begin
+      let notified =
+        capture (fun () ->
+            emit t (Outer_closed Owner);
+            emit t (Delivered (Owner, Private_close));
+            emit t (Retired Owner))
+      in
+      begin match notified with
+      | Returned () -> ()
+      | Raised (error, backtrace) ->
+          Failure.record runtime.failure Owner (Raised (error, backtrace))
+      end
+    end;
+    flush_secondary t runtime
 
   let run ~sw t ~controls config =
     Eio.Switch.check sw;
@@ -664,23 +655,24 @@ struct
     in
     let completed =
       Eio.Fiber.fork_promise ~sw (fun () ->
-          let outcome =
-            flatten (capture (fun () -> owner t runtime controls config))
-          in
-          Failure.record runtime.failure Owner outcome;
-          outcome)
+          Failure.record runtime.failure Owner
+            (capture (fun () ->
+                 owner t runtime controls config;
+                 Ok ())))
     in
     match Eio.Promise.await_exn completed with
-    | outcome -> restore (Failure.prefer runtime.failure outcome)
+    | () -> Failure.finish runtime.failure
     | exception error ->
         let backtrace = Printexc.get_raw_backtrace () in
         Failure.record runtime.failure Owner (Raised (error, backtrace));
         Eio.Condition.broadcast changed;
         Eio.Cancel.protect (fun () ->
             let joined =
-              flatten (capture (fun () -> Eio.Promise.await_exn completed))
+              capture (fun () ->
+                  Eio.Promise.await_exn completed;
+                  Ok ())
             in
             Failure.record runtime.failure Owner joined);
         flush_secondary t runtime;
-        restore (Failure.prefer runtime.failure (Raised (error, backtrace)))
+        Failure.finish runtime.failure
 end

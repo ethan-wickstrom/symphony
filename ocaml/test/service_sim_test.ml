@@ -1238,8 +1238,49 @@ let reporter_failure primary () =
                 (error == expected)
           | Returned _ -> Alcotest.fail "Host reporter failure disappeared"))
 
+type Eio.Exn.err += Shared_io
+type fault_identity = Same_exception | Same_io_payload
+
+let independent_ports identity () =
+  Eio_mock.Backend.run (fun () ->
+      S.run (fun ~sw controller ->
+          let module H = Harness (struct
+            let value = controller
+          end) in
+          let host = H.create () in
+          let _, result, scope = H.start ~sw host in
+          let worker = H.prepare controller in
+          let first = Eio.Exn.create Shared_io in
+          let second =
+            match (identity, first) with
+            | Same_exception, _ -> first
+            | Same_io_payload, Eio.Io (error, context) -> Eio.Io (error, context)
+            | Same_io_payload, _ -> Alcotest.fail "Expected an IO failure"
+          in
+          S.fail worker second;
+          workspace_closed controller (S.key worker);
+          host.H.observer <- Fail_transition first;
+          H.refresh host;
+          ignore (await controller (fun () -> host.H.origin));
+          S.close worker S.Close_ok;
+          let actual = Eio.Promise.await result in
+          ignore (Eio.Promise.await scope);
+          assert_released controller worker;
+          H.secondary_worker host worker;
+          match actual with
+          | Raised (error, backtrace) ->
+              Alcotest.(check bool)
+                "original observer failure survives independent worker failure"
+                true (error == first);
+              H.saved_backtrace host backtrace
+          | Returned _ -> Alcotest.fail "Observer failure disappeared"))
+
 let tests =
   [
+    Alcotest.test_case "independent ports may raise the same exception" `Quick
+      (independent_ports Same_exception);
+    Alcotest.test_case "independent ports may share an IO payload" `Quick
+      (independent_ports Same_io_payload);
     Alcotest.test_case "host reporter defect becomes the first fatal failure"
       `Quick
       (reporter_failure No_primary);
