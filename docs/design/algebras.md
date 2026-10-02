@@ -166,13 +166,29 @@ put(a, put(b,m)) = put(b, put(a,m))              when id(a)<>id(b)
 remove(i, remove(i,m)) = remove(i,m)
 claimed(m) = running_ids(m) union retry_ids(m)
 running_ids(m) intersect retry_ids(m) = empty
-priority_index(m) = waiting_retry_projection(m)
+retry_rank(m) = waiting_retry_projection(m)
 ```
 
 The queue model is the waiting-retry projection, sorted by exact due time then issue ID.
-Peek does not remove an owner; refreshing removes its due index entry while retaining ownership. The hidden indexed
-container uses a map and named ordered set, rather than independently stored maps or
-a scan chosen as an optimization guess.
+Peek does not remove an owner; refreshing removes its due rank while retaining
+ownership. One hidden persistent Psq stores each complete owner once, keyed by
+issue ID. Its priority comparator projects waiting due times; all other roles
+rank after waiting. Equal priorities break by the named issue-ID order. No second
+map, stale heap entry or claim history exists. Equal-rank replacement still replaces
+the complete payload, including its current issue snapshot and retry token.
+
+The compiled foundation is in `ocaml/lib/orchestration/`. Independent list and
+mathematical models check the container, comparator composition, bounded backoff
+and absolute-report joins. Production usage retains one watermark; its model
+retains reports and computes the componentwise supremum. Summed accepted deltas
+telescope to that supremum, even with duplicate/reordered reports.
+
+`Run_plan.Make` shares Tracker.Issue and the workspace/agent Path module before
+choosing representations. Success stores the original binding and immutable
+Agent_plan request once. A failed reference construction returns Unnamed scope;
+a failed request returns Named reference. Neither acquires a resource or fabricates
+a completion witness. Lifecycle will preserve the preceding retry's cleanup target
+if resumed planning fails. This last transition is still pending implementation.
 
 [Dispatch_order](interfaces/dispatch_order.mli) lexicographically composes priority
 bucket, null-last creation time and identifier. Its reference model computes a tuple

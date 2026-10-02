@@ -57,6 +57,23 @@
 
 (copy_files# ../bin/tracker_runtime.ml*)
 
+(test
+ (name orchestration)
+ (modules
+  orchestration
+  scheduler_algebra_model
+  scheduler_algebra_test
+  ownership_model
+  ownership_test
+  run_plan_test)
+ (libraries
+  symphony_orchestration
+  symphony_test_support
+  alcotest
+  qcheck-core
+  qcheck-core.runner
+  zarith))
+
 (executable
  (name native_http_test)
  (modules native_http_test tracker_runtime tracker_runtime_test)

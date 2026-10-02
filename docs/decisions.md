@@ -271,6 +271,7 @@ Approved direct runtime package families:
 | `yojson` | Existing JSON parser/encoder. Lexeme-preserving checked wrapper for exact numbers, duplicate keys, UTF-8, size/depth and standard JSON. Locked 3.0.0. |
 | `ptime` | Parsed RFC 3339/UTC values and range-checked wall projection; no ambient clock inside domain code. Locked 1.2.0. |
 | `zarith` | Exact natural token/runtime totals, preserving monoid laws beyond machine integer range. Locked 1.14; its GMP static archive must pass Linux artifact checks. Avoid saturation or hand-written big integers. |
+| `psq` | Persistent priority search queue keyed by issue ID. Store each canonical owner once; derive retry priority from that payload. Already locked transitively at 0.2.1. Avoid an unbounded stale-entry heap or separately maintained owner/claim indexes. |
 | `digestif` | SHA-256 workspace suffix/ownership digest, not Stdlib MD5. Slice 2 pins 1.3.1; eqaf 0.10 is its transitive equality helper. The selected certificate/TLS stack also requires it. |
 | `uucp` | Unicode lowercase/property tables for states/labels. Locked 17.0.0; already required by Jingoo. Normalization cases are tested. |
 | `h1`, `bstr`, `uri` | H1's maintained public incremental HTTP/1.1 codec over an Eio TLS flow, with bounded input and exact failure handling. Bstr is its existing buffer dependency, imported by the pump. Uri4.4.0 validates HTTPS endpoints. Audited H1 1.1.1 is pinned to `vendor/h1`; see its source/patch manifests and independent framing controls. |

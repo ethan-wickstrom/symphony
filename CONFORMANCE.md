@@ -21,7 +21,7 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | YAML front matter and prompt split | 1 | `workflow_document.ml`, `config_value.ml`; `workflow_parser_test.ml` workflow/YAML examples and tree/line models | Passed locally |
 | Typed defaults and `$` resolution | 1 | `config_layer.ml`, settings modules; `config_test.ml` defaults, env/path/numeric/state cases | Passed locally |
 | Dynamic workflow reload/re-apply | 1, 4 | `Config_layer.Make.apply`; `config_model.ml`, `config_test.ml` reload histories | Pure laws passed; watch/owner application pending |
-| Single-authority polling orchestrator | 4 | — | Pending |
+| Single-authority polling orchestrator | 4 | `ownership.ml`; `ownership_model.ml`, `ownership_test.ml` last-write/disjoint-claim/minimum laws; `agent_plan.ml`, `run_plan.ml`, `run_plan_test.ml` frozen authority and checked planning failures | Foundation laws passed locally; event owner/polling pending |
 | State-list and ID-refresh tracker reads | 3 | `linear_tracker.ml`, `linear_pager.ml`, `linear_record.ml`, `tracker_registry.ml`; independent boundary/pagination/binding models, `linear_tracker_test.ml`, `native_http_test.ml`, real `tracker_cli_check.py` | Reads, frozen auth/current policy, atomic failures and verified HTTPS passed locally and on both CI hosts |
 | Sanitized collision-resistant workspaces | 2 | `workspace_key.ml`, `workspace_reference.ml`, `workspace_owner.ml`, `native/workspace_directory.ml`, `workspace_store_posix.ml`; key/owner models, hash vectors, parser fuzzing, `native_directory_test.ml`, `native_store_test.ml` | Descriptor/lock/identity/replacement/rollback cases passed locally and on both CI hosts |
 | Four workspace lifecycle hooks | 2 | `workspace_manager.ml`, `workspace_hooks.ml`; policy models, fake-port hook tests and `native_host_test.ml` frozen lifecycle/cancellation/rollback cases | Fake and live cases passed locally and on both CI hosts |
@@ -29,8 +29,8 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | App-server subprocess transport/framing | 5 | — | Pending |
 | Configurable Codex launch command | 1, 5 | `agent_settings.ml`; `config_test.ml` verbatim/empty/NUL validation | Config passed; launch pending |
 | Strict issue/attempt prompt rendering | 1 | `template.ml`; `template_test.ml` strictness/scope/limits, independent AST and rational models; CLI fixture rendering | Passed locally for documented strict Jinja profile |
-| Failure backoff and continuation retries | 4 | — | Pending |
-| Configurable retry cap | 1, 4 | `scheduling_policy.ml`; `config_test.ml` defaults/positive coercion | Config passed; retry scheduling pending |
+| Failure backoff and continuation retries | 4 | `backoff.ml`; `scheduler_algebra_model.ml`, `scheduler_algebra_test.ml` closed-form, huge attempts, cap/overflow and continuation literal | Algebra passed locally; retry scheduling pending |
+| Configurable retry cap | 1, 4 | `scheduling_policy.ml`, `backoff.ml`; config tests and independent bounded-recurrence model | Config/algebra passed; retry scheduling pending |
 | Terminal/non-active reconciliation | 4 | — | Pending |
 | Terminal startup/transition cleanup | 2, 4 | — | Pending |
 | Required structured log context | 6 | — | Pending |
@@ -53,9 +53,11 @@ Seeded whole-service Eio simulation, orchestrator model agreement, static releas
 1,000-session benchmarks, HTTP API and portable harness remain pending their slices.
 Crowbar random campaigns are distinct from instrumented AFL coverage.
 
-Current local crypto refresh gate: 256 example/property tests (61 properties),
+Merged crypto refresh [PR #5](https://github.com/ethan-wickstrom/symphony/pull/5)
+at `c97cff2`: exact-head Linux/macOS PR/push CI and independent receipts pass.
+Local crypto refresh gate: 256 example/property tests (61 properties),
 239 source/interface files, 63 CLI scenarios, 39 source-gate controls and 260,000
-Crowbar invocations in 26 groups at seed `20260930` pass. Hosted refresh is pending.
+Crowbar invocations in 26 groups at seed `20260930` pass.
 `crypto_boundary_test.ml/.mli` states RSA and NIST rejection laws; bounded crypto
 fuzz targets preserve checked errors. RSA-signed loopback controls verify exact TLS
 diagnostics, no credential disclosure and bounded peer termination (FIN or RST).
