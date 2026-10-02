@@ -1,3 +1,27 @@
+module type S = sig
+  type config
+  type binding
+  type request
+  type workspace
+  type t
+  type rejection
+  type target = Unnamed of Tracker_scope.t | Named of workspace
+
+  val create :
+    config ->
+    run:Run_id.t ->
+    issue:Issue.t ->
+    attempt:Template.attempt ->
+    (t, rejection) result
+
+  val binding : t -> binding
+  val request : t -> request
+  val rejected_issue : rejection -> Issue.t
+  val rejected_attempt : rejection -> Template.attempt
+  val rejected_target : rejection -> target
+  val rejected_error : rejection -> Workspace_manager.error
+end
+
 module Make
     (Tracker : Tracker.PURE with type Issue.t = Issue.t)
     (Workspace : Workspace_manager.PURE)
@@ -8,8 +32,12 @@ module Make
          and type workspace = Workspace.reference)
     (Config : Config_layer.PURE with type tracker = Tracker.binding) =
 struct
-  type t = { binding : Tracker.binding; request : Agent.request }
-  type target = Unnamed of Tracker_scope.t | Named of Workspace.reference
+  type config = Config.t
+  type binding = Tracker.binding
+  type request = Agent.request
+  type workspace = Workspace.reference
+  type t = { binding : binding; request : request }
+  type target = Unnamed of Tracker_scope.t | Named of workspace
 
   type rejection = {
     issue : Issue.t;
