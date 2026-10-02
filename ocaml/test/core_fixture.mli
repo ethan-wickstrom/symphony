@@ -6,6 +6,11 @@ module Workspace = Lifecycle_fixture.Workspace
 module Agent = Lifecycle_fixture.Agent
 module Config = Lifecycle_fixture.Config
 
+val with_path : Workspace.reference -> (Path.t -> 'a) -> 'a
+(** The owning fixture's lexical bracket. Fake acquisition and scoped closure
+    remain the caller's responsibility; the path is only an informational
+    fixture capability. *)
+
 module Core :
     module type of
       Orchestrator.Make (Tracker_registry.Contract) (Clock.Pure) (Workspace)

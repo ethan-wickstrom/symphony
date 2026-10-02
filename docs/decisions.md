@@ -539,6 +539,31 @@ checked read policy carries current terminal membership in each request. Reload
 thus updates future eligibility decisions while retaining a running session's
 original credentials. Request/config generation fences belong to the owner.
 
+## Eio scheduling interpreter
+
+Internal effect publication uses reserved one-shot slots and a nonblocking FIFO.
+A bounded stream can deadlock when a child blocks publishing entry while the
+failed owner joins its scope. Slot publication cannot suspend; the owner retains
+each actual resource obligation until receiving its outer closure. Fatal drainage
+uses these private facts without calling the clock, reducer or failed observer.
+The service uses one domain; producer capabilities never reach native threads.
+
+The closed runner receives the exact injected clock and workspace instance.
+Resource-owning test runners have their own abstract completion witnesses; the
+empty pure fixture's completion factory cannot certify their closure. One shared
+test bridge compares actual service inputs with the existing independent model.
+There is no second oracle or fabricated stream of intended events. See
+[the Eio design](design/eio-service.md) for laws and evidence boundaries.
+
+Failure arbitration lives in private `Service_failure`, outside command
+interpretation. Its left-biased primary register normalizes parent/owner results
+and owns redaction; request failures still enter the reducer. `Scenario.run`
+replaces an unscoped fake-controller constructor after an actor-failure regression
+lost its exception to deadlock. It opens finalizer permissions before switch
+joins. Example, property and replay executables have separate entry points, so
+help and selected examples cannot silently run a campaign. No new dependency is
+needed. See [the retrospective](design/service-retrospective.md).
+
 ## Native release foundation
 
 The first macOS profile is arm64, minimum 26.0, SDK 26.5, Apple M1 CPU baseline.

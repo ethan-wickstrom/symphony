@@ -17,14 +17,20 @@ let workspace_error = function
   | Workspace_manager.Hook_timeout error -> Diagnostic.render error
 
 module Path = struct
-  type t = |
+  type t = Path of string
 
-  let display (value : t) =
-    match value with
-    | _ -> .
+  let display (Path value) = value
 end
 
 module Workspace = Workspace_reference.Make (Path)
+
+let with_path reference use =
+  let root =
+    Absolute_path.display
+      (Workspace_settings.root (Workspace.settings reference))
+  in
+  let key = Workspace_key.text (Workspace.key reference) in
+  use (Path.Path (Filename.concat root key))
 
 module Agent = struct
   module Base = Agent_plan.Make (Workspace)

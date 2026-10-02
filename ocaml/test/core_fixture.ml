@@ -3,6 +3,8 @@ module Workspace = Lifecycle_fixture.Workspace
 module Agent = Lifecycle_fixture.Agent
 module Config = Lifecycle_fixture.Config
 
+let with_path = Lifecycle_fixture.with_path
+
 module Core =
   Orchestrator.Make (Tracker_registry.Contract) (Clock.Pure) (Workspace) (Agent)
     (Config)

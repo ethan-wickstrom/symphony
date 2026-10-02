@@ -6,6 +6,13 @@
 module Path : Workspace_path.S
 module Workspace : Workspace_manager.PURE with module Path = Path
 
+val with_path : Workspace.reference -> (Path.t -> 'a) -> 'a
+(** Invoke the callback once with the checked reference's absolute root and
+    single-component key joined lexically. The resource-owning fake workspace
+    calls this inside its scope and owns closure receipts. Display remains total
+    and informational after closure. This fixture certifies neither physical
+    containment nor a linear lifetime; it acquires no native resource. *)
+
 module Agent :
   Agent_runner.PURE
     with module Issue = Issue

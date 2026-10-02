@@ -57,6 +57,43 @@
 
 (copy_files# ../bin/tracker_runtime.ml*)
 
+(copy_files# ../lib/service/service_inbox.ml*)
+
+(copy_files# ../lib/service/service_failure.ml*)
+
+(library
+ (name scheduling_test_support)
+ (wrapped false)
+ (modules lifecycle_fixture core_fixture core_model core_bridge)
+ (libraries symphony_orchestration symphony_test_support alcotest zarith))
+
+(library
+ (name service_test_support)
+ (modules
+  service_inbox
+  service_inbox_test
+  service_failure
+  service_failure_test
+  service_scenario
+  service_sim_test)
+ (libraries
+  symphony_service
+  scheduling_test_support
+  alcotest
+  qcheck-core
+  qcheck-core.runner
+  eio.mock))
+
+(tests
+ (names service_main service_properties)
+ (modules service_main service_properties)
+ (libraries service_test_support))
+
+(executable
+ (name service_replay)
+ (modules service_replay)
+ (libraries service_test_support))
+
 (test
  (name orchestration)
  (modules
@@ -66,17 +103,15 @@
   ownership_model
   ownership_test
   run_plan_test
-  lifecycle_fixture
   lifecycle_model
   lifecycle_test
-  core_fixture
   core_test
   core_coverage_test
-  core_model
   core_property_test)
  (libraries
   symphony_orchestration
   symphony_test_support
+  scheduling_test_support
   alcotest
   qcheck-core
   qcheck-core.runner

@@ -1,4 +1,4 @@
-"""Compile public clients; invalid phases must fail for their intended type error."""
+"""Compile public clients; lifecycle phases and Service brands stay distinct."""
 
 import argparse
 import hashlib
@@ -18,10 +18,11 @@ LIBRARIES = (
     ("workflow", "symphony_workflow"),
     ("workspace", "symphony_workspace"),
     ("orchestration", "symphony_orchestration"),
+    ("service", "symphony_service"),
 )
-PREFIX = "module L = Dune__exe__Lifecycle_fixture.Lifecycle\nlet () = ignore ("
+PREFIX = "module L = Lifecycle_fixture.Lifecycle\nlet () = ignore ("
 
-VALID = """module F = Dune__exe__Lifecycle_fixture
+VALID = """module F = Lifecycle_fixture
 module L = Issue_lifecycle.Make
   (Tracker_registry.Contract) (Clock.Pure) (F.Workspace) (F.Agent) (F.Plan)
 let () = ignore (fun (x : L.starting L.run) -> L.activate x)
@@ -54,6 +55,49 @@ INVALID = (
     ("own_released", "fun (x : L.released) -> L.Starting x", ("released", "starting")),
 )
 
+SERVICE_VALID = """module F = Lifecycle_fixture
+module Check
+    (C : Clock.S)
+    (W : Workspace_manager.S)
+    (A : Service.CLOSED_RUNNER
+      with module Issue = Tracker_registry.Contract.Issue
+       and module Path = W.Contract.Path
+       and type workspace = W.Contract.reference
+       and type clock = C.t
+       and type workspace_manager = W.t)
+    (B : Agent_runner.PURE
+      with module Issue = Tracker_registry.Contract.Issue
+       and module Path = W.Contract.Path
+       and type workspace = W.Contract.reference
+       and type request = A.request)
+    (Load : Service.WORKFLOW_LOAD with type config = F.Config.t) = struct
+  module Host = Service.Make (Tracker_registry) (C) (W) (A) (F.Config) (Load)
+  let () = ignore (fun (x : B.request) -> (x : Host.Core.agent_request))
+end
+module _ = Check
+"""
+
+# Each client changes one intentional equality in the valid Service assembly.
+SERVICE_INVALID = (
+    (
+        "service_clock",
+        SERVICE_VALID.replace("and type clock = C.t", "and type clock = unit"),
+        ("clock", "unit", "C.t"),
+    ),
+    (
+        "service_workspace",
+        SERVICE_VALID.replace(
+            "and type workspace_manager = W.t", "and type workspace_manager = unit"
+        ),
+        ("workspace_manager", "unit", "W.t"),
+    ),
+    (
+        "service_request",
+        SERVICE_VALID.replace("\n       and type request = A.request", ""),
+        ("B.request", "A.request"),
+    ),
+)
+
 
 def fingerprints(paths):
     return {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
@@ -67,7 +111,9 @@ class LifecycleTypes(unittest.TestCase):
             for area, library in LIBRARIES
         ]
         cls.inputs = [path for directory in directories for path in directory.glob("*.cmi")]
-        cls.inputs.append(BUILD_ROOT / "test/.orchestration.eobjs/byte/dune__exe__Lifecycle_fixture.cmi")
+        cls.inputs.append(
+            BUILD_ROOT / "test/.scheduling_test_support.objs/byte/lifecycle_fixture.cmi"
+        )
         missing = [str(path) for path in directories if not path.is_dir()]
         missing.extend(str(path) for path in cls.inputs if not path.is_file())
         if missing:
@@ -131,6 +177,23 @@ class LifecycleTypes(unittest.TestCase):
                     self.assertIn(fragment, result.stderr)
                 rejected += 1
         print(f"Rejected lifecycle clients: {rejected}/{len(INVALID)}", flush=True)
+
+    def test_service_sources(self):
+        valid = self.compile("service_valid", SERVICE_VALID)
+        self.assertEqual(valid.returncode, 0, valid.stderr)
+
+        rejected = 0
+        for name, source, expected in SERVICE_INVALID:
+            with self.subTest(client=name):
+                result = self.compile(name, source)
+                self.assertNotEqual(result.returncode, 0, f"Invalid client compiled: {name}")
+                self.assertIn("Error:", result.stderr)
+                self.assertNotIn("Unbound", result.stderr)
+                self.assertRegex(result.stderr, r"(?:is not included|has type)")
+                for fragment in expected:
+                    self.assertIn(fragment, result.stderr)
+                rejected += 1
+        print(f"Rejected Service clients: {rejected}/{len(SERVICE_INVALID)}", flush=True)
 
 
 if __name__ == "__main__":
