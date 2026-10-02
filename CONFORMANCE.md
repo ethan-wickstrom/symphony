@@ -1,8 +1,9 @@
 # OCaml conformance
 
-Status: slices 1–3, the scheduler foundation and typed lifecycle are merged.
-The pure scheduling reducer passes local example/model and repository gates;
-hosted gates remain pending for this slice.
+Status: slices 1–3, the scheduler foundation, typed lifecycle and pure scheduling
+reducer are merged. [PR #8](https://github.com/ethan-wickstrom/symphony/pull/8)
+merged as `5c892db` from reviewed head `b13aa73`; local gates and exact-head
+PR/push Linux/macOS CI pass. All four raw boundary logs were independently checked.
 Native owned workspaces, hooks, scoped process
 custody, Linear reads and verified HTTPS inspection pass local and hosted
 macOS/Linux-glibc gates in normal and optimized modes. Slice 3 merged as `98833b3`
@@ -23,8 +24,8 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | Explicit workflow path and cwd default | 1, 7 | `ocaml/bin/cli.ml`; `ocaml/test/cli_check.py` explicit/default/anchoring cases | Inspection CLI passed; daemon pending |
 | YAML front matter and prompt split | 1 | `workflow_document.ml`, `config_value.ml`; `workflow_parser_test.ml` workflow/YAML examples and tree/line models | Passed locally |
 | Typed defaults and `$` resolution | 1 | `config_layer.ml`, settings modules; `config_test.ml` defaults, env/path/numeric/state cases | Passed locally |
-| Dynamic workflow reload/re-apply | 1, 4 | `Config_layer.Make.apply`, `orchestrator.ml`; config and event models/tests cover last-good settings, epoch fencing, per-cycle preflight and scope drain | Pure reducer implemented; Eio owner/watch application pending |
-| Single-authority polling orchestrator | 4 | `ownership.ml`, `agent_plan.ml`, `run_plan.ml`, `issue_lifecycle.ml`, `orchestrator.ml`; independent owner/lifecycle/event models and `core_test.ml`, `core_property_test.ml`, `core_coverage_test.ml` | Pure state/event/command reducer implemented; Eio owner and polling effects pending |
+| Dynamic workflow reload/re-apply | 1, 4 | `Config_layer.Make.apply`, `orchestrator.ml`; config and event models/tests cover last-good settings, epoch fencing, per-cycle preflight and scope drain | Poll-driven Eio application passes fake-port simulation; live daemon pending |
+| Single-authority polling orchestrator | 4 | `ownership.ml`, `agent_plan.ml`, `run_plan.ml`, `issue_lifecycle.ml`, `orchestrator.ml`; independent owner/lifecycle/event models and `core_test.ml`, `core_property_test.ml`, `core_coverage_test.ml` | Pure reducer and Eio owner/polling pass actual-event model simulation; live runner pending |
 | State-list and ID-refresh tracker reads | 3 | `linear_tracker.ml`, `linear_pager.ml`, `linear_record.ml`, `tracker_registry.ml`; independent boundary/pagination/binding models, `linear_tracker_test.ml`, `native_http_test.ml`, real `tracker_cli_check.py` | Reads, frozen auth/current policy, atomic failures and verified HTTPS passed locally and on both CI hosts |
 | Sanitized collision-resistant workspaces | 2 | `workspace_key.ml`, `workspace_reference.ml`, `workspace_owner.ml`, `native/workspace_directory.ml`, `workspace_store_posix.ml`; key/owner models, hash vectors, parser fuzzing, `native_directory_test.ml`, `native_store_test.ml` | Descriptor/lock/identity/replacement/rollback cases passed locally and on both CI hosts |
 | Four workspace lifecycle hooks | 2 | `workspace_manager.ml`, `workspace_hooks.ml`; policy models, fake-port hook tests and `native_host_test.ml` frozen lifecycle/cancellation/rollback cases | Fake and live cases passed locally and on both CI hosts |
@@ -32,10 +33,10 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | App-server subprocess transport/framing | 5 | — | Pending |
 | Configurable Codex launch command | 1, 5 | `agent_settings.ml`; `config_test.ml` verbatim/empty/NUL validation | Config passed; launch pending |
 | Strict issue/attempt prompt rendering | 1 | `template.ml`; `template_test.ml` strictness/scope/limits, independent AST and rational models; CLI fixture rendering | Passed locally for documented strict Jinja profile |
-| Failure backoff and continuation retries | 4 | `backoff.ml`, `issue_lifecycle.ml`, `orchestrator.ml`; independent algebra/lifecycle/event models, exact success reset, failed attempts, parked reads and stale timer examples | Pure retry scheduling implemented; timer/worker interpreter pending |
-| Configurable retry cap | 1, 4 | `scheduling_policy.ml`, `backoff.ml`; config/algebra models and `core_coverage_test.ml` exponential growth, current cap and more than 16 retries | Pure policy/scheduling implemented; live timers pending |
-| Terminal/non-active reconciliation | 4 | `orchestrator.ml`; binding-group reads and closed barrier, refreshed issue, stop disposition and stale completion cases in `core_test.ml` and event model | Pure reconciliation decisions implemented; effect interpreter pending |
-| Terminal startup/transition cleanup | 2, 4 | `issue_lifecycle.ml`, `orchestrator.ml`; epoch-fenced startup, cleanup closure, original reference and absorbing Cleanup examples/models | Pure startup/cleanup barriers implemented; service execution pending |
+| Failure backoff and continuation retries | 4 | `backoff.ml`, `issue_lifecycle.ml`, `orchestrator.ml`; independent algebra/lifecycle/event models, exact success reset, failed attempts, parked reads and stale timer examples | Eio timers and closed fake workers pass model simulation; native runner pending |
+| Configurable retry cap | 1, 4 | `scheduling_policy.ml`, `backoff.ml`; config/algebra models and `core_coverage_test.ml` exponential growth, current cap and more than 16 retries | Pure policy and Eio mock timers pass; native service pending |
+| Terminal/non-active reconciliation | 4 | `orchestrator.ml`; binding-group reads and closed barrier, refreshed issue, stop disposition and stale completion cases in `core_test.ml` and event model | Pure decisions and fake-port Eio interpretation pass; native runner pending |
+| Terminal startup/transition cleanup | 2, 4 | `issue_lifecycle.ml`, `orchestrator.ml`; epoch-fenced startup, cleanup closure, original reference and absorbing Cleanup examples/models | Eio startup/cleanup barriers pass fake-port simulation; native service pending |
 | Required structured log context | 4, 6 | `Orchestrator.fault` carries checked current issue for issue-scoped failures, including owner release; global and issue tracker faults are distinct | Self-contained fault commands implemented; structured logging/session context pending |
 | Operator-visible observability | 1–7 | `diagnostic.ml`, `ocaml/bin/cli.ml`, `workspace_cli.ml`; `cli_check.py`, `workspace_cli_check.py` file/key/remedy/redaction, missing/owned/busy/foreign/symlink inspection | Workflow and workspace CLI passed; service snapshots/logs pending |
 
@@ -60,13 +61,31 @@ The local targeted suite passes 45 Alcotest examples and 27 QCheck groups at see
 The event campaign compares 200 programs of 500–600 events with no discards,
 then a forced shutdown and finite closure tail for each. Seven regression groups
 pin eleven closure-order/prior-validation programs. Source/compiler gates cover
-297 source files and 14 rejected/one valid type clients, normally and optimized.
+297 source files and 14 rejected/one valid type clients at the merged core checkpoint.
 Claimed IDs and running counts derive from its one canonical ownership queue;
 operator projections derive from reducer state.
 Fake closed-completion witnesses test the reducer contract; they do not prove native
-resource closure. Eio command execution, whole-service seeded simulation, app-server
-dispatch, static release, 1,000-session benchmarks, HTTP API and the portable
-conformance harness remain pending.
+resource closure.
+
+The Eio interpreter (`ocaml/lib/service/service.ml`) runs the same core over
+scoped loader/tracker/workspace/runner/clock ports. `service_sim_test.ml` feeds
+actual delivered envelopes through `core_bridge.ml`; 29 Alcotest examples and
+three actual QCheck groups pass at seed `20261002`. The groups run 300 Inbox
+programs, 1000 failure-and-report list-model programs and 1000 causal service programs
+of 50–60 gates plus joined shutdown tails. These sample three issue IDs; they do
+not demonstrate 1000 distinct seeds or 1000 simultaneous sessions. Resource
+receipts verify acquired/closing/released order and no premature redispatch.
+Actor-failure deadlock, failure precedence and pre-entry cancellation regressions
+failed before fixes. Independent effects retain reports even when sharing one
+exception value; three regressions and the list model reject the previous code.
+`Service_failure` owns fatal arbitration and redaction;
+`Scenario.run` owns test-gate closure before joins. Replay one script with
+`dune exec test/service_replay.exe -- --seed N --prefix N` from `ocaml/`.
+The full local OCaml gate passes with 325 source files, 17 rejected type clients,
+two valid assemblies and 72 unchanged input CMIs in both compiler-client modes.
+Hosted validation for this service checkpoint is pending.
+App-server dispatch, static release, 1,000-session benchmarks, HTTP API and the
+portable conformance harness remain pending.
 Crowbar random campaigns are distinct from instrumented AFL coverage.
 
 Merged crypto refresh [PR #5](https://github.com/ethan-wickstrom/symphony/pull/5)

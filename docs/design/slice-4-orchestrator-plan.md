@@ -1,9 +1,12 @@
 # Slice 4: orchestrator, owner and deterministic simulation
 
-Approved plan, with the algebra/ownership/launch-planning foundation now implemented
-under `ocaml/lib/orchestration/`. Audited against slice 1–3 ports and SPEC
-§§6.2–6.3, 7–8, 13.3–13.7, 16 and 17.4. The core event machine, resource-owning
-interpreter and simulator remain pending; foundation tests are not service conformance.
+Approved overall plan. Foundation, typed lifecycle and the pure event machine are
+implemented under `ocaml/lib/orchestration/`; see the concrete
+[core contract and evidence](slice-4-core-plan.md). The resource-owning Eio
+interpreter and fake-port simulator are implemented; native/live runner
+integration remains pending. Audited against slice 1–3 ports and SPEC §§6.2–6.3,
+7–8, 13.3–13.7, 16 and 17.4. The signatures below are the original overall sketch;
+the [implemented effect layer](eio-service.md) refines them against the core.
 
 ## Equalities before representations
 
