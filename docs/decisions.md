@@ -157,6 +157,21 @@ are distinct states: a parked retry has neither a due timer nor a live read.
 Fake completed values certify only their empty fixture scope; the future Host
 must publish real completions after the enclosing resource switch closes.
 
+The first reducer uses one request ledger for resource custody. Bootstrap joins
+every outstanding job, including canceled workflow loaders, before repeating
+terminal cleanup or entering Serving. This is a conservative ordering choice,
+not an additional spec requirement. A watcher replacement during preflight
+fulfills that same cycle's validation; all superseded preflight loaders must
+close before candidate reads. An invalid replacement of a candidate cycle
+finishes it and arms the normal poll interval. These choices keep trigger origin
+out of validation policy and prevent immediate failed-reload loops.
+
+Issue-scoped faults retain the checked current Issue.t in the emitted command,
+including faults whose transition releases the last owner. The logging edge can
+derive both identities without retaining stale snapshots. Retry-read failures
+have their own issue-scoped fault; startup and batch tracker failures are global.
+Session context waits for the actual Run_observation boundary.
+
 ### Workspace aliases and mutable filesystem state
 
 The allowed character set admits `.` and `..`. Case-folding filesystems alias otherwise

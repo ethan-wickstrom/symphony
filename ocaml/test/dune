@@ -68,7 +68,12 @@
   run_plan_test
   lifecycle_fixture
   lifecycle_model
-  lifecycle_test)
+  lifecycle_test
+  core_fixture
+  core_test
+  core_coverage_test
+  core_model
+  core_property_test)
  (libraries
   symphony_orchestration
   symphony_test_support

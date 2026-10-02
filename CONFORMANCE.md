@@ -1,6 +1,9 @@
 # OCaml conformance
 
-Status: slices 1–3 and the scheduler foundation are merged. Native owned workspaces, hooks, scoped process
+Status: slices 1–3, the scheduler foundation and typed lifecycle are merged.
+The pure scheduling reducer passes local example/model and repository gates;
+hosted gates remain pending for this slice.
+Native owned workspaces, hooks, scoped process
 custody, Linear reads and verified HTTPS inspection pass local and hosted
 macOS/Linux-glibc gates in normal and optimized modes. Slice 3 merged as `98833b3`
 from tested head `06ce6c5`. The historical macOS release-profile build passed
@@ -20,8 +23,8 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | Explicit workflow path and cwd default | 1, 7 | `ocaml/bin/cli.ml`; `ocaml/test/cli_check.py` explicit/default/anchoring cases | Inspection CLI passed; daemon pending |
 | YAML front matter and prompt split | 1 | `workflow_document.ml`, `config_value.ml`; `workflow_parser_test.ml` workflow/YAML examples and tree/line models | Passed locally |
 | Typed defaults and `$` resolution | 1 | `config_layer.ml`, settings modules; `config_test.ml` defaults, env/path/numeric/state cases | Passed locally |
-| Dynamic workflow reload/re-apply | 1, 4 | `Config_layer.Make.apply`; `config_model.ml`, `config_test.ml` reload histories | Pure laws passed; watch/owner application pending |
-| Single-authority polling orchestrator | 4 | `ownership.ml`; independent owner list model; `agent_plan.ml`, `run_plan.ml`, `issue_lifecycle.ml`; planning and lifecycle models/tests | Foundation and typed transitions passed locally; event owner/polling pending |
+| Dynamic workflow reload/re-apply | 1, 4 | `Config_layer.Make.apply`, `orchestrator.ml`; config and event models/tests cover last-good settings, epoch fencing, per-cycle preflight and scope drain | Pure reducer implemented; Eio owner/watch application pending |
+| Single-authority polling orchestrator | 4 | `ownership.ml`, `agent_plan.ml`, `run_plan.ml`, `issue_lifecycle.ml`, `orchestrator.ml`; independent owner/lifecycle/event models and `core_test.ml`, `core_property_test.ml`, `core_coverage_test.ml` | Pure state/event/command reducer implemented; Eio owner and polling effects pending |
 | State-list and ID-refresh tracker reads | 3 | `linear_tracker.ml`, `linear_pager.ml`, `linear_record.ml`, `tracker_registry.ml`; independent boundary/pagination/binding models, `linear_tracker_test.ml`, `native_http_test.ml`, real `tracker_cli_check.py` | Reads, frozen auth/current policy, atomic failures and verified HTTPS passed locally and on both CI hosts |
 | Sanitized collision-resistant workspaces | 2 | `workspace_key.ml`, `workspace_reference.ml`, `workspace_owner.ml`, `native/workspace_directory.ml`, `workspace_store_posix.ml`; key/owner models, hash vectors, parser fuzzing, `native_directory_test.ml`, `native_store_test.ml` | Descriptor/lock/identity/replacement/rollback cases passed locally and on both CI hosts |
 | Four workspace lifecycle hooks | 2 | `workspace_manager.ml`, `workspace_hooks.ml`; policy models, fake-port hook tests and `native_host_test.ml` frozen lifecycle/cancellation/rollback cases | Fake and live cases passed locally and on both CI hosts |
@@ -29,11 +32,11 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | App-server subprocess transport/framing | 5 | — | Pending |
 | Configurable Codex launch command | 1, 5 | `agent_settings.ml`; `config_test.ml` verbatim/empty/NUL validation | Config passed; launch pending |
 | Strict issue/attempt prompt rendering | 1 | `template.ml`; `template_test.ml` strictness/scope/limits, independent AST and rational models; CLI fixture rendering | Passed locally for documented strict Jinja profile |
-| Failure backoff and continuation retries | 4 | `backoff.ml`, `issue_lifecycle.ml`; independent algebra/lifecycle models, exact attempt/reset/requeue and parked-read examples | Algebra and source transitions passed locally; retry scheduling pending |
-| Configurable retry cap | 1, 4 | `scheduling_policy.ml`, `backoff.ml`; config tests and independent bounded-recurrence model | Config/algebra passed; retry scheduling pending |
-| Terminal/non-active reconciliation | 4 | `issue_lifecycle.ml`, `lifecycle_test.ml` first cause, absorbing Cleanup, cancellation discharge and original-reference cases | Typed stop/finish laws passed locally; reconciliation reads/decisions pending |
-| Terminal startup/transition cleanup | 2, 4 | `Issue_lifecycle.clean_startup`, `terminal_retry`, `clean_run`; startup identity and Named/Unnamed controls | Typed cleanup authority passed locally; startup/cleanup event barriers pending |
-| Required structured log context | 6 | — | Pending |
+| Failure backoff and continuation retries | 4 | `backoff.ml`, `issue_lifecycle.ml`, `orchestrator.ml`; independent algebra/lifecycle/event models, exact success reset, failed attempts, parked reads and stale timer examples | Pure retry scheduling implemented; timer/worker interpreter pending |
+| Configurable retry cap | 1, 4 | `scheduling_policy.ml`, `backoff.ml`; config/algebra models and `core_coverage_test.ml` exponential growth, current cap and more than 16 retries | Pure policy/scheduling implemented; live timers pending |
+| Terminal/non-active reconciliation | 4 | `orchestrator.ml`; binding-group reads and closed barrier, refreshed issue, stop disposition and stale completion cases in `core_test.ml` and event model | Pure reconciliation decisions implemented; effect interpreter pending |
+| Terminal startup/transition cleanup | 2, 4 | `issue_lifecycle.ml`, `orchestrator.ml`; epoch-fenced startup, cleanup closure, original reference and absorbing Cleanup examples/models | Pure startup/cleanup barriers implemented; service execution pending |
+| Required structured log context | 4, 6 | `Orchestrator.fault` carries checked current issue for issue-scoped failures, including owner release; global and issue tracker faults are distinct | Self-contained fault commands implemented; structured logging/session context pending |
 | Operator-visible observability | 1–7 | `diagnostic.ml`, `ocaml/bin/cli.ml`, `workspace_cli.ml`; `cli_check.py`, `workspace_cli_check.py` file/key/remedy/redaction, missing/owned/busy/foreign/symlink inspection | Workflow and workspace CLI passed; service snapshots/logs pending |
 
 ## Design evidence
@@ -49,8 +52,21 @@ Concrete implementation/test paths replace the pending cells as each slice lands
 
 Slice-one models, strict boundary tests, native inspection CLI, interface/source
 gates, and seeded Crowbar targets are implemented. See [slice-one evidence](docs/slice-1.md).
-Seeded whole-service Eio simulation, orchestrator model agreement, static release,
-1,000-session benchmarks, HTTP API and portable harness remain pending their slices.
+The pure reducer has an independent list-based event model, strict ordered-command
+comparisons and deterministic examples for startup, grouped reconciliation,
+preflight, sorted/capped admission, retries, reload, scope drain and shutdown.
+The local targeted suite passes 45 Alcotest examples and 27 QCheck groups at seed
+`20261001`, including fault context after release and exact-once shutdown closure.
+The event campaign compares 200 programs of 500–600 events with no discards,
+then a forced shutdown and finite closure tail for each. Seven regression groups
+pin eleven closure-order/prior-validation programs. Source/compiler gates cover
+297 source files and 14 rejected/one valid type clients, normally and optimized.
+Claimed IDs and running counts derive from its one canonical ownership queue;
+operator projections derive from reducer state.
+Fake closed-completion witnesses test the reducer contract; they do not prove native
+resource closure. Eio command execution, whole-service seeded simulation, app-server
+dispatch, static release, 1,000-session benchmarks, HTTP API and the portable
+conformance harness remain pending.
 Crowbar random campaigns are distinct from instrumented AFL coverage.
 
 Merged crypto refresh [PR #5](https://github.com/ethan-wickstrom/symphony/pull/5)

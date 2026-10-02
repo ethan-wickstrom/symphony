@@ -53,7 +53,7 @@ against an independent model, replayable simulation, parser fuzzing and measured
 
 ## Current focus
 
-Branch `ethan/typed-lifecycle` starts from merged `527da52`.
+Branch `ethan/scheduling-loop` starts from merged `5758852`.
 Crypto refresh [PR #5](https://github.com/ethan-wickstrom/symphony/pull/5) merged
 at `c97cff22f472505a18736054e33bb9cd6a141c84` on `2026-10-02T00:39:41Z`.
 Exact-head PR/push Linux/macOS CI, review and independent receipts pass:
@@ -102,11 +102,39 @@ interfaces compile with fatal warnings; all 64 library CMIs remain unchanged.
 These are pure/compiler checks, not real worker closure or event-loop conformance.
 Pinned Elixir validation passes 302 tests, zero failures, six skips and all gates.
 
-Next: pure event core and Eio simulator. Checked observations remain a later
-Run_observation gate; no placeholder progress map or production runner is added.
-Next core uses keyed issue/generation envelopes, grouped original-binding reads,
-an explicit parked retry state and startup/scope closure barriers. Superseded
-startup reads cannot build cleanup references under a later root/policy.
+Lifecycle [PR #7](https://github.com/ethan-wickstrom/symphony/pull/7) merged
+at `5758852329b51ea5724477081d1f5237dbc9f823` on `2026-10-02T02:58:22Z`.
+Exact-head `95201c9` PR/push Linux/macOS workflows pass. All four boundary logs
+contain 24 examples, seed 20261001, 19 property groups, two executions of the
+14-negative/one-valid type clients with 65 unchanged CMIs, and 285 checked sources.
+Codex, Copilot and Devin reviews report no findings. Sourcery skipped its oversized
+diff, supplying no review. The in-app browser confirms the merge.
+
+Pure scheduling reducer and independent list/integer oracle pass locally:
+45 examples and 27 property groups at seed 20261001. Startup cleanup, grouped
+original-binding reconciliation, per-cycle workflow preflight, sorted admission,
+retries, parked reads, scope changes and shutdown use one canonical owner PSQ and
+one request-custody map. Current issue/phase/count/runtime projections are derived.
+Faults carry the checked current issue through owner release. Generated traces
+finish with a fair drain checked against a separate edge-resource ledger.
+
+The first campaign found a real watcher/preflight cycle defect. Concrete examples
+and model-only negative controls also corrected seven independent-oracle errors;
+comparison of every public projection and ordered command remains strict.
+Exponential backoff covers growth, caps and attempts beyond 16. Required-label,
+routing and timestamp dispatch examples prevent vacuous generator coverage.
+Expanded test resource-ledger warning 4 failed before explicit phase coverage.
+All local OCaml gate components pass, including normal/optimized native suites,
+14 rejected/one valid type clients with 66 unchanged CMIs, 297 checked source
+files, formatting, protocol controls and release-tool controls. The full command
+first stopped on one test-runner formatting difference; the remaining gate
+components pass after formatting. Both opam lints and 26 × 10,000 Crowbar inputs
+pass. Required pinned Elixir passes 302 tests, zero failures, six skips and all
+gates. Two independent source reviews found no blocker. Hosted CI remains pending.
+
+Next: finish and merge this pure core, then implement the Eio owner and replayable
+whole-service simulator. Checked observations remain a later Run_observation gate;
+the executable cannot dispatch a real agent yet.
 Static musl/clean-host qualification remains a release gate, separate from core
 development. It no longer blocks this next original vertical slice.
 Plans: `docs/design/slice-4-orchestrator-plan.md` and

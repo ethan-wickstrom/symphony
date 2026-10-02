@@ -2,8 +2,9 @@
 
 Checked workflow loading, configuration, strict prompt rendering, last-good reload
 and native owned workspaces/hooks are implemented. `doctor`, `dry-run`, `workspace`
-and authenticated Linear `tracker` inspection work locally. Scheduling and app-server integration arrive in later
-slices; this executable does not dispatch issues yet.
+and authenticated Linear `tracker` inspection work locally. Pure scheduling and
+typed lifecycle transitions are implemented. The Eio owner and app-server
+integration remain pending; this executable does not dispatch issues yet.
 
 ## Build
 
@@ -103,8 +104,17 @@ The [design](../docs/design/README.md), [decisions](../docs/decisions.md),
 [validation](../docs/slice-1.md) and [conformance map](../CONFORMANCE.md) distinguish
 working behavior from future release requirements.
 
-The scheduler foundation is in `lib/orchestration`: dispatch ordering, bounded
-backoff, absolute token watermarks, one persistent owner PSQ and checked frozen
-launch plans. Its separate `test/orchestration.exe` checks independent mathematical
-and list models with seed `20261001`, including 200,000 owner operations. Polling,
-run lifecycle and whole-service simulation remain the next slice-4 work.
+The pure scheduler is in `lib/orchestration`: dispatch ordering, bounded backoff,
+absolute token watermarks, one persistent owner PSQ, frozen launch plans, typed
+lifecycle transitions and a `state -> event -> state * command list` reducer.
+It schedules startup cleanup, binding-group reconciliation, workflow preflight,
+candidate admission, retries, reload, scope drain and shutdown. Claimed IDs and
+running counts derive from canonical ownership; issue-scoped fault commands
+retain the checked current issue after release.
+
+Its separate `test/orchestration.exe` compares independent mathematical, list and
+event models with seed `20261001`, including 200,000 owner operations. Examples
+check label/routing eligibility, dispatch order, caps, retry growth, stale tokens
+and closure barriers. Test-port completions represent closed fake scopes. Eio command
+execution, deterministic whole-service simulation and live agent dispatch remain
+the next slice-4 work.
