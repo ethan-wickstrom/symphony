@@ -140,6 +140,31 @@ let await_close flow =
   in
   read ()
 
+let await_peer_close read =
+  (* TCP termination may be FIN or RST. Only the raw rejection read uses this. *)
+  match read () with
+  | () -> ()
+  | exception Eio.Io (Eio.Net.E (Eio.Net.Connection_reset _), _) -> ()
+
+let peer_reset () =
+  let reset = Eio_unix.Err.v Unix.ECONNRESET "readv" "" in
+  await_peer_close (fun () -> raise reset)
+
+exception Close_defect
+
+let peer_close_errors () =
+  List.iter
+    (fun expected ->
+      match await_peer_close (fun () -> raise expected) with
+      | () -> Alcotest.fail "Peer close swallowed an unrelated failure"
+      | exception actual ->
+          let backtrace = Printexc.get_raw_backtrace () in
+          Alcotest.(check bool) "failure identity" true (actual == expected);
+          Alcotest.(check bool)
+            "failure backtrace retained" true
+            (Printexc.raw_backtrace_length backtrace > 0))
+    [ Eio_unix.Err.v Unix.EACCES "readv" ""; Close_defect ]
+
 let with_server runtime ~identity ~anchors ~limits ~reply run =
   Eio_posix.run (fun host ->
       let net = Eio.Stdenv.net host in
@@ -202,9 +227,10 @@ let with_server runtime ~identity ~anchors ~limits ~reply run =
                       match identity with
                       | Matching | Wrong_name | Rsa_signed -> ()
                       | Rsa_zero | Rsa_one ->
-                          (* Observe EOF before the server's own switch closes. *)
+                          (* Observe peer termination before the server closes. *)
                           Eio.Time.with_timeout_exn (Eio.Stdenv.clock host)
-                            close_timeout_seconds (fun () -> await_close socket);
+                            close_timeout_seconds (fun () ->
+                              await_peer_close (fun () -> await_close socket));
                           client_closed := true)
                   | exception End_of_file -> client_closed := true))
             (fun () ->
@@ -523,6 +549,9 @@ let () =
           case "RSA certificate signature one rejected" (rsa_rejected Rsa_one);
           Alcotest.test_case "TLS rejection excludes other failures" `Quick
             rejection_classifier;
+          Alcotest.test_case "rejected peer reset is closure" `Quick peer_reset;
+          Alcotest.test_case "peer close preserves other failures" `Quick
+            peer_close_errors;
           case "truncated fixed body rejected" truncated;
           case "malformed status rejected" malformed;
           case "redirect rejected" redirect;

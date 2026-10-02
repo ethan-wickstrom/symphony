@@ -54,15 +54,19 @@ against an independent model, replayable simulation, parser fuzzing and measured
 ## Current focus
 
 Branch `ethan/crypto-security` starts from merged `039ce50`.
-The four locked Mirage1.2.0 packages reach code affected by OSEC-2026-14/15/17.
-Actual RED/GREEN confirms12 crypto exceptions and two real certificate exceptions
-are now checked rejections. All four Mirage packages are2.4.1; TLS/X509 stay pinned.
-The exact TLS diagnostic/EOF assertion and false-positive control pass. No public
-HTTP interface change or exception masking. Fresh generated lock and239-file source
-gate pass;256 core tests,26 ×10,000 fuzz inputs and83 native cases per mode pass.
-Required pinned Elixir302 tests pass with six explicit skips. Historical release
+The four locked Mirage 1.2.0 packages reach code affected by OSEC-2026-14/15/17.
+Actual RED/GREEN confirms 12 crypto exceptions and two real certificate exceptions
+are now checked rejections. All four Mirage packages are 2.4.1; TLS/X509 stay pinned.
+Exact TLS diagnostics, bounded peer termination and false-positive controls pass.
+Hosted macOS exposed a fixture assumption: raw TCP can end with RST rather than EOF.
+A deterministic reset control went red before the narrow typed-reset repair;
+unrelated errors/defects still escape. No public HTTP interface change or masking.
+Fresh generated lock and 239-file source gate pass; 256 core tests, 26 × 10,000
+fuzz inputs and 85 native cases per mode pass. Required pinned Elixir 302 tests
+pass with six explicit skips; an unchanged hosted retry bound failed once, then
+passed at the same head on rerun. Historical release
 recipes remain byte-identical and require explicit archival replay.
-Next: reviewed commit, owned-repository PR, exact-head CI and merge.
+Next: push the reviewed fixture repair to PR #5, verify exact-head CI and merge.
 Linux musl and clean-host qualification follow; the orchestrator follows those gates.
 Plan: `docs/design/crypto-security-plan.md`.
 No user approval is pending under the accepted recommendations/autonomy instruction.

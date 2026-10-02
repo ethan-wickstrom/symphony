@@ -155,7 +155,7 @@ downloadable from their recorded GitHub Actions runs.
 
 ## Observed Symphony build
 
-This observation used Mirage Crypto1.2.0, now covered by OSEC-2026-14/15/17.
+This observation used Mirage Crypto 1.2.0, now covered by OSEC-2026-14/15/17.
 It is historical evidence and cannot qualify the current2.4.1 dependency graph.
 The archived materializer requires explicit historical replay and labels affected
 inputs. See the [security refresh](crypto-security-plan.md).

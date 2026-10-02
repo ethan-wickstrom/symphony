@@ -275,7 +275,7 @@ Approved direct runtime package families:
 | `uucp` | Unicode lowercase/property tables for states/labels. Locked 17.0.0; already required by Jingoo. Normalization cases are tested. |
 | `h1`, `bstr`, `uri` | H1's maintained public incremental HTTP/1.1 codec over an Eio TLS flow, with bounded input and exact failure handling. Bstr is its existing buffer dependency, imported by the pump. Uri4.4.0 validates HTTPS endpoints. Audited H1 1.1.1 is pinned to `vendor/h1`; see its source/patch manifests and independent framing controls. |
 | `angstrom` | Direct use of Uri's existing parser dependency for full-input URI/IPv6 parsing. A small raw-syntax guard rejects the malformed input that Uri canonicalizes. Locked 0.16.1; no HTTP implementation. |
-| `tls-eio`, `tls`, `x509`, `mirage-crypto-rng`, `domain-name`, `ipaddr` | Eio TLS flow, configuration, checked peer identity/trust and supported Getentropy activation. Named direct imports even where transitively required. tls-eio/tls2.1.3, X5091.2.0, RNG2.4.1, domain-name0.5.0 and ipaddr5.6.2. Fail closed on trust/hostname errors; destination-bound credentials never redirect. Hostnames/IPs are checked once at the boundary. |
+| `tls-eio`, `tls`, `x509`, `mirage-crypto-rng`, `domain-name`, `ipaddr` | Eio TLS flow, configuration, checked peer identity/trust and supported Getentropy activation. Named direct imports even where transitively required. tls-eio/tls 2.1.3, X509 1.2.0, RNG 2.4.1, domain-name 0.5.0 and ipaddr 5.6.2. Fail closed on trust/hostname errors; destination-bound credentials never redirect. Hostnames/IPs are checked once at the boundary. |
 | `cmdliner` | Existing argument parsing, help and exit handling for run/doctor/dry-run; locked 2.1.1. |
 
 Do not call `ca-certs`' ambient helpers: its
@@ -295,26 +295,26 @@ for that. Scalars remain exact through parsing and JSON output.
 
 ## Crypto security refresh
 
-Mirage1.2.0 is affected by official OSEC-2026-14/15/17. RSA certificate verification
+Mirage 1.2.0 is affected by official OSEC-2026-14/15/17. RSA certificate verification
 and NIST key decode/exchange/scalar operations are reached by the actual TLS client.
-Upgrade the complete four-package family to2.4.1; retain TLS2.1.3/X5091.2.0.
+Upgrade the complete four-package family to 2.4.1; retain TLS 2.1.3/X509 1.2.0.
 `mirage-crypto-pk`/`mirage-crypto-ec` are direct test imports for rejection laws.
 Upstream version equalities make each family version equal to the unconditionally
 pinned RNG version, including builds with tests disabled. Do not duplicate those
-constraints as conflict floors; all24 published PK/EC records were checked.
+constraints as conflict floors; all 24 published PK/EC records were checked.
 The generated lock records the actual installed graph. No new production module,
 TLS implementation, public HTTP signature or broad exception catcher is needed.
 
-The old RSA0/1 and short-point controls raised unchecked exceptions; valid controls
+The old RSA 0/1 and short-point controls raised unchecked exceptions; valid controls
 passed. The real loopback certificate tests also went red before upgrading. Fixed
 upstream point parsing returns `Invalid_format` for malformed compressed lengths.
 The scalar-table remediation relies on upstream fix/source review; these tests do
 not prove constant-time execution. Sources and target hashes are in the
 [security plan](design/crypto-security-plan.md).
 
-Preserve the historical macOS1.2.0 recipes/profile exactly. Their materializer
+Preserve the historical macOS 1.2.0 recipes/profile exactly. Their materializer
 requires `--purpose historical-replay` and labels its output archival and affected.
-Development2.4.1 requires fresh release qualification; old link/artifact receipts
+Development 2.4.1 requires fresh release qualification; old link/artifact receipts
 cannot establish it. The current lock is the dependency input for that next build;
 do not create a second unused candidate format or copy qualification metadata.
 [H1 codec](https://github.com/robur-coop/ocaml-h1/blob/d5fff216c28fe379c3abaa355b679ffb35d98d07/lib/h1.mli),

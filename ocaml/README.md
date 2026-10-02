@@ -34,8 +34,8 @@ before installing. The current macOS development binary requires Homebrew GMP
 and macOS 26.0. A clean-host macOS binary and a fully static Linux musl binary
 remain release gates; see the [release plan](../docs/design/static-release-plan.md).
 The historical macOS profile produced an executable importing only libSystem.
-Its [archived recipes](release/README.md) contain affected Crypto1.2.0 and require
-explicit historical replay. Development locks the four Mirage packages at2.4.1;
+Its [archived recipes](release/README.md) contain affected Crypto 1.2.0 and require
+explicit historical replay. Development locks the four Mirage packages at 2.4.1;
 fresh static/clean-host qualification of that graph remains pending.
 
 ## Inspect a workflow
