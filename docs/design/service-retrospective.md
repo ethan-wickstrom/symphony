@@ -28,6 +28,8 @@ agent service; the closed Codex runner remains the next unverified boundary.
 
 | Finding | Origin | Correction |
 | --- | --- | --- |
+| Host reporter defects disappeared without an earlier fatal primary | New service error sink | Record the first reporter defect and continue report drainage |
+| Aggregate order and IO leaves were lost | New service decoder; an IO-order bug also existed in native cleanup | One shared Eio decoder, tested against real switch finalizers |
 | A later cancellation replaced an earlier owner failure | New service arbitration | One canonical first-failure register |
 | Observer failure replaced a received clock error | New observation ordering | Commit fatal closure before observer callbacks |
 | Already canceled fake operations acquired resources | New fake-port lifecycle | Enter the release scope before acquisition; resolved runner cancellation acquires nothing |
@@ -53,6 +55,12 @@ The actor-failure regression demonstrated the mistake before the API replacement
 The first failure-register property reused error identities. That could miss
 same-kind replacement. Distinct observations now reject a deliberate last-wins
 mutation, shrinking it to `error,error`; restored production code passes.
+
+Review also exposed Eio normalization: IO exception wrappers are rebuilt, and
+multiple distinct failures can retain the same error/context fields. Suppressing
+a set of matching identities erased a later failure. Ordered occurrence
+subtraction now removes only the recorded primary occurrence. Its regression
+failed with zero remaining reports before the fix; one must remain.
 
 ## Hunches and next falsifiers
 

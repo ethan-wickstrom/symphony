@@ -15,13 +15,39 @@ let flatten = function
 
 type 'key secondary = Secondary of 'key * exn
 
-let rec secondary key ~primary = function
-  | Eio.Exn.Multiple errors ->
-      List.concat_map (fun (error, _) -> secondary key ~primary error) errors
-  | Eio.Cancel.Cancelled _ -> []
-  | error ->
-      if List.exists (fun original -> original == error) primary then []
-      else [ Secondary (key, error) ]
+let same_error a b =
+  if a == b then true
+  else
+    match (a, b) with
+    | Eio.Io (a, ca), Eio.Io (b, cb) -> a == b && ca == cb
+    | _ -> false
+
+let rec consume error = function
+  | [] -> None
+  | original :: rest ->
+      if same_error error original then Some rest
+      else
+        Option.map (fun remaining -> original :: remaining) (consume error rest)
+
+let secondary key ~primary error =
+  let leaves error =
+    List.map fst (Eio_failure.leaves (error, Printexc.get_callstack 0))
+  in
+  (* Eio erases IO wrapper identity. Subtract occurrences, not a set of identities:
+     a later independent IO error may share the same error/context pair. *)
+  let primary = List.concat_map leaves primary in
+  let _, reversed =
+    List.fold_left
+      (fun (remaining, faults) error ->
+        match error with
+        | Eio.Cancel.Cancelled _ -> (remaining, faults)
+        | error -> (
+            match consume error remaining with
+            | Some remaining -> (remaining, faults)
+            | None -> (remaining, Secondary (key, error) :: faults)))
+      (primary, []) (leaves error)
+  in
+  List.rev reversed
 
 type primary =
   | Checked of Diagnostic.t
@@ -72,5 +98,7 @@ let flush t ~describe ~report =
           ~remedy:"Inspect the owning port's cleanup and cancellation handlers."
       in
       match capture (fun () -> report key diagnostic) with
-      | Returned () | Raised _ -> ())
+      | Returned () -> ()
+      | Raised (error, backtrace) ->
+          if not (failed t) then record t key (Raised (error, backtrace)))
     faults

@@ -100,7 +100,7 @@ generation history. The independent event model consumes actual owner events.
 
 The controls cover fatal entry/drain, pre-entry cancellation, cancellation/result
 races, finalizer defects, canceled timer retirement, reused-issue admission and
-test-actor failure. Nineteen examples and three property groups pass locally:
+test-actor failure. Twenty-six examples and three property groups pass locally:
 300 Inbox programs, 1000 first-failure list-model programs, and 1000 causal service
 programs with 50–60 gates plus joined shutdown tails, seed 20261002. Programs
 sample three issue IDs; seed uniqueness and 1000-session capacity are not claimed.

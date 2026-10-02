@@ -18,9 +18,12 @@ type 'key secondary
 
 val secondary : 'key -> primary:exn list -> exn -> 'key secondary list
 (** Flatten Eio's cleanup aggregation, removing cancellation wrappers and exact
-    primary exception identities. Distribution over an aggregate preserves its
-    order. Raw exceptions stay private until their constructor names are
-    rendered. *)
+    primary occurrences. Normalized IO uses retained error/context identities;
+    one primary occurrence removes at most one matching leaf, preserving later
+    independent failures with the same IO fields. For each non-cancellation
+    identity, [count(result) = max 0 (count(leaves) - count(primary))].
+    Distribution over an aggregate preserves observation order. Raw exceptions
+    stay private until their constructor names are rendered. *)
 
 type 'key t
 
@@ -55,5 +58,7 @@ val flush :
   unit
 (** Drain retained secondaries once, in observation order. Only constructor
     names and the supplied context are visible; exception payloads stay private.
-    Reporter failure cannot replace the primary or recursively report itself.
-    Repeated flush without new observations is identity. *)
+    The first reporter defect becomes primary when none exists; all remaining
+    reports are still attempted. It cannot replace an existing primary or
+    recursively report itself. Repeated flush without new observations is
+    identity. *)

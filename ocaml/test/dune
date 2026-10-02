@@ -78,6 +78,7 @@
   service_sim_test)
  (libraries
   symphony_service
+  symphony_io
   scheduling_test_support
   alcotest
   qcheck-core

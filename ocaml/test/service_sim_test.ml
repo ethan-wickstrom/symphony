@@ -4,6 +4,7 @@ module S = Service_scenario
 exception Observer_defect of int
 exception Parent_defect of int
 exception Cleanup_defect of int
+exception Reporter_defect of int
 
 type 'a captured = Returned of 'a | Raised of exn * Printexc.raw_backtrace
 
@@ -103,6 +104,8 @@ let workspace_closed controller key =
 let service_issue =
   F.issue ~state:"Doing" ~id:"service-0" ~identifier:"SERVICE-0" ()
 
+type reporter_mode = Report | Fail_report of exn
+
 type observer_mode =
   | Observe
   | Fail_transition of exn
@@ -127,6 +130,7 @@ struct
     controls : Host.control Eio.Stream.t;
     mutable bridge : Bridge.t option;
     mutable observer : observer_mode;
+    mutable reporter : reporter_mode;
     mutable effects : Host.effect_event list;
     mutable secondary : Host.host_fault list;
     mutable origin : Printexc.raw_backtrace option;
@@ -137,6 +141,7 @@ struct
       controls = Eio.Stream.create 1;
       bridge = None;
       observer = Observe;
+      reporter = Report;
       effects = [];
       secondary = [];
       origin = None;
@@ -296,7 +301,10 @@ struct
                       ~load:Controller.value
                       ~report:(fun _ -> ())
                       ~report_host:(fun fault ->
-                        t.secondary <- fault :: t.secondary)
+                        t.secondary <- fault :: t.secondary;
+                        match t.reporter with
+                        | Report -> ()
+                        | Fail_report error -> raise error)
                       ~observe:(observe t)
                   in
                   let outcome =
@@ -1186,8 +1194,58 @@ let replay ~seed ~prefix =
     Ok ()
   end
 
+type reporter_primary = No_primary | Owner_primary
+
+let reporter_failure primary () =
+  Eio_mock.Backend.run (fun () ->
+      S.run (fun ~sw controller ->
+          let module H = Harness (struct
+            let value = controller
+          end) in
+          let host = H.create () in
+          let _, result, scope = H.start ~sw host in
+          let reporter = Reporter_defect 501 in
+          let owner = Observer_defect 502 in
+          host.H.reporter <- Fail_report reporter;
+          begin match primary with
+          | No_primary ->
+              complete (reading controller) (F.reply []);
+              let loader = loading controller in
+              H.shutdown host;
+              workspace_closed controller (S.key loader);
+              S.close loader (S.Close_defect (Cleanup_defect 503))
+          | Owner_primary ->
+              let worker = H.prepare controller in
+              host.H.observer <- Fail_transition owner;
+              H.refresh host;
+              workspace_closed controller (S.key worker);
+              S.close worker (S.Close_defect (Cleanup_defect 504))
+          end;
+          let actual = Eio.Promise.await result in
+          ignore (Eio.Promise.await scope);
+          Alcotest.(check int)
+            "all resources close before reporter failure" 0
+            (List.length (S.pending controller));
+          match actual with
+          | Raised (error, _) ->
+              let expected =
+                match primary with
+                | No_primary -> reporter
+                | Owner_primary -> owner
+              in
+              Alcotest.(check bool)
+                "first fatal identity survives reporting" true
+                (error == expected)
+          | Returned _ -> Alcotest.fail "Host reporter failure disappeared"))
+
 let tests =
   [
+    Alcotest.test_case "host reporter defect becomes the first fatal failure"
+      `Quick
+      (reporter_failure No_primary);
+    Alcotest.test_case "host reporter defect cannot replace an earlier primary"
+      `Quick
+      (reporter_failure Owner_primary);
     Alcotest.test_case "actor failure releases owned finalizer gates" `Quick
       actor_failure;
     Alcotest.test_case

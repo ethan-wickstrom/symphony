@@ -59,3 +59,118 @@ let properties =
          (Gen.oneof_list [ Success; Error; Defect ]))
       agrees;
   ]
+
+exception First_cleanup of string
+exception Last_cleanup of string
+
+type Eio.Exn.err += First_io | Middle_io | Last_io
+
+let aggregate failures =
+  Eio_mock.Backend.run (fun () ->
+      match
+        F.capture (fun () ->
+            Eio.Switch.run (fun sw ->
+                List.iter
+                  (fun error ->
+                    Eio.Switch.on_release sw (fun () -> raise error))
+                  (List.rev failures)))
+      with
+      | F.Raised (error, backtrace) -> (error, backtrace)
+      | F.Returned () -> Alcotest.fail "Cleanup failures disappeared")
+
+let io_order () =
+  let first = Eio.Exn.create First_io in
+  let middle = Eio.Exn.create Middle_io in
+  let last = Eio.Exn.create Last_io in
+  let values = Eio_failure.leaves (aggregate [ first; middle; last ]) in
+  let labels =
+    List.map
+      (function
+        | Eio.Io (First_io, _), _ -> "first"
+        | Eio.Io (Middle_io, _), _ -> "middle"
+        | Eio.Io (Last_io, _), _ -> "last"
+        | _ -> "unexpected")
+      values
+  in
+  Alcotest.(check (list string))
+    "actual IO cleanup observation order"
+    [ "first"; "middle"; "last" ]
+    labels
+
+let reported ~primary error =
+  let register = F.create () in
+  F.retain register (F.secondary () ~primary error);
+  let messages = ref [] in
+  F.flush register
+    ~describe:(fun () -> "test")
+    ~report:(fun () diagnostic ->
+      messages := Diagnostic.render diagnostic :: !messages);
+  List.rev !messages
+
+let aggregate_order () =
+  let first = First_cleanup "private-first" in
+  let last = Last_cleanup "private-last" in
+  let aggregate, _ = aggregate [ first; last ] in
+  Alcotest.(check (list string))
+    "actual cleanup order and redacted leaves"
+    (reported ~primary:[] first @ reported ~primary:[] last)
+    (reported ~primary:[] aggregate)
+
+let io_primary () =
+  let first = Eio.Exn.create First_io in
+  let last = Eio.Exn.create Last_io in
+  let aggregate, _ = aggregate [ first; last ] in
+  Alcotest.(check int)
+    "normalized IO primary is not reported again" 1
+    (List.length (reported ~primary:[ first ] aggregate));
+  Alcotest.(check int)
+    "both IO cleanup leaves are retained" 2
+    (List.length (reported ~primary:[] aggregate))
+
+let io_occurrences () =
+  let first = Eio.Exn.create First_io in
+  let second =
+    match first with
+    | Eio.Io (error, context) -> Eio.Io (error, context)
+    | _ -> Alcotest.fail "Expected an IO failure"
+  in
+  Alcotest.(check bool) "independent IO wrapper identity" false (first == second);
+  let errors, _ = aggregate [ first; second ] in
+  Alcotest.(check int)
+    "suppress one primary, retain the later identical IO" 1
+    (List.length (reported ~primary:[ first ] errors))
+
+let reporter_drain () =
+  let register = F.create () in
+  let original = Callback_defect 83 in
+  let reports = ref [] in
+  let report key _diagnostic =
+    reports := key :: !reports;
+    if key = 1 then raise original
+  in
+  F.retain register (F.secondary 1 ~primary:[] (First_cleanup "private"));
+  F.retain register (F.secondary 2 ~primary:[] (Last_cleanup "private"));
+  F.flush register ~describe:string_of_int ~report;
+  F.flush register ~describe:string_of_int ~report;
+  Alcotest.(check (list int))
+    "remaining reports run once after reporter failure" [ 1; 2 ]
+    (List.rev !reports);
+  match F.prefer register (F.Returned (Ok ())) with
+  | F.Raised (error, _) ->
+      Alcotest.(check bool)
+        "first reporter failure retained" true (error == original)
+  | F.Returned _ -> Alcotest.fail "Reporter failure disappeared"
+
+let tests =
+  [
+    Alcotest.test_case "normalization retains distinct same-kind IO occurrences"
+      `Quick io_occurrences;
+    Alcotest.test_case "reporter failure drains remaining reports exactly once"
+      `Quick reporter_drain;
+    Alcotest.test_case "actual IO aggregates retain observation order" `Quick
+      io_order;
+    Alcotest.test_case "actual exception aggregates retain observation order"
+      `Quick aggregate_order;
+    Alcotest.test_case "IO aggregation preserves leaves and primary identity"
+      `Quick io_primary;
+  ]

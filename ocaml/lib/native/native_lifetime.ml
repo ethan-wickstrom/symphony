@@ -54,15 +54,7 @@ let finish t id closed =
           | Closing _ | Released -> ());
           Eio.Promise.resolve closed ()))
 
-let rec failures (ex, bt) =
-  match ex with
-  | Eio.Exn.Multiple values -> List.concat_map failures (List.rev values)
-  | Eio.Io (Eio.Exn.Multiple_io values, _) ->
-      List.concat_map
-        (fun (error, context, trace) ->
-          failures (Eio.Io (error, context), trace))
-        (List.rev values)
-  | _ -> [ (ex, bt) ]
+let failures = Eio_failure.leaves
 
 let with_scope t f =
   Eio.Cancel.sub (fun cancel ->

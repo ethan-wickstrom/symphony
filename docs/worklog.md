@@ -86,7 +86,7 @@ instances reach the runner; one owner interprets actual reducer commands.
   remains. RED/GREEN: _build/eio-actor-{red,green}.log.
 - Service_failure privately owns arbitration; parent/owner transfer one normalized
   outcome. This deletes nested restoration and duplicated arbitration branches.
-- Refactored Service: 19 examples and 1000 causal programs pass (seed 20261002);
+- Refactored Service: 26 examples and 1000 causal programs pass (seed 20261002);
   50–60 selected gates plus a joined shutdown tail. This is sampled three-issue
   coverage, not 1000 distinct seeds or simultaneous sessions.
 - Separate example/property/replay executables remove test-runner coupling.
@@ -99,9 +99,18 @@ instances reach the runner; one owner interprets actual reducer commands.
   `error,error`; restoring production code passes all three property groups.
   Logs: _build/eio-same-kind-mutant.log and eio-distinct-failure-final.log.
 - Current type gate: 14 lifecycle/three Service clients rejected, two valid
-  assemblies accepted, 71 input CMIs unchanged, normal and optimized. Source
-  pairing/policy checks 323 files. Formatting, native, CLI and release-tool gates
+  assemblies accepted, 72 input CMIs unchanged, normal and optimized. Source
+  pairing/policy checks 325 files. Formatting, native, CLI and release-tool gates
   pass. Pinned Elixir reference gate also passes. Hosted publication is next.
+
+Review fixes reproduced four failures before correction: exception aggregate
+order, the native helper's existing IO order, missing IO leaves, and swallowed
+host-reporter failure. `Eio_failure` now supplies one decoder to native and service
+code. Multiple is reverse order; Multiple_io is forward order. A fifth regression
+showed set filtering erasing distinct same-kind IO errors; ordered occurrence
+subtraction retains them. Twenty-six examples and the full just check gate pass, including native
+process/CLI checks, 325 sources and both 72-CMI type-client modes. Logs: _build/eio-review-red.log, eio-io-occurrence-red.log and
+eio-review-final-green.log.
 
 Next: finish exact-head hosted checks/review for PR #9 and merge this checkpoint.
 Then physical capacity measurement and the real closed Codex runner;
