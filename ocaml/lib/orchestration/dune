@@ -1,0 +1,4 @@
+(library
+ (name symphony_orchestration)
+ (wrapped false)
+ (libraries symphony_workspace psq))

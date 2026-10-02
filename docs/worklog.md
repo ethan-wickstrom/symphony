@@ -53,22 +53,39 @@ against an independent model, replayable simulation, parser fuzzing and measured
 
 ## Current focus
 
-Branch `ethan/crypto-security` starts from merged `039ce50`.
-The four locked Mirage 1.2.0 packages reach code affected by OSEC-2026-14/15/17.
-Actual RED/GREEN confirms 12 crypto exceptions and two real certificate exceptions
-are now checked rejections. All four Mirage packages are 2.4.1; TLS/X509 stay pinned.
-Exact TLS diagnostics, bounded peer termination and false-positive controls pass.
-Hosted macOS exposed a fixture assumption: raw TCP can end with RST rather than EOF.
-A deterministic reset control went red before the narrow typed-reset repair;
-unrelated errors/defects still escape. No public HTTP interface change or masking.
-Fresh generated lock and 239-file source gate pass; 256 core tests, 26 × 10,000
-fuzz inputs and 85 native cases per mode pass. Required pinned Elixir 302 tests
-pass with six explicit skips; an unchanged hosted retry bound failed once, then
-passed at the same head on rerun. Historical release
-recipes remain byte-identical and require explicit archival replay.
-Next: push the reviewed fixture repair to PR #5, verify exact-head CI and merge.
-Linux musl and clean-host qualification follow; the orchestrator follows those gates.
-Plan: `docs/design/crypto-security-plan.md`.
+Branch `ethan/orchestrator-core` starts from merged `c97cff2`.
+Crypto refresh [PR #5](https://github.com/ethan-wickstrom/symphony/pull/5) merged
+at `c97cff22f472505a18736054e33bb9cd6a141c84` on `2026-10-02T00:39:41Z`.
+Exact-head PR/push Linux/macOS CI, review and independent receipts pass:
+eight native manifests with 85 cases/160 source hashes each, 20,000 custody
+scenarios, 8,000 stable closes and 30 retained matching control tokens.
+Local full OCaml, pinned Elixir and 26 × 10,000 fuzz inputs pass. Prior failures
+remain recorded; these receipts do not attest source-to-binary correspondence.
+
+Implemented slice-4 foundation: exact branded tokens/protocol IDs, dispatch preorder,
+bounded backoff, usage watermark, one persistent keyed owner PSQ and checked frozen
+launch planning. 17 examples and 18 seeded property groups pass; ownership includes
+100 streams of 2,000 operations with independent list comparison after every step.
+The initial combined harness exited before QCheck; an output probe failed, then
+explicit non-exiting Alcotest and an injected Random.State ran all properties.
+No service orchestration or simulation conformance is inferred from these laws.
+
+Full OCaml gates, format and both opam lints pass. The source gate checks 273 files.
+One public functor assembly compiles; 11 intentional ID/workspace brand swaps fail
+with the expected type errors. Independent source review found no blocker.
+Required pinned Elixir validation passes: 302 tests, six skips, coverage,
+formatting, lint and Dialyzer.
+The sandbox denied native fixture PID probes; the scoped unconfined full rerun
+passes without a source change. Both outcomes remain recorded.
+
+Current: publish/merge the foundation, then typed lifecycle,
+independent event model, core and Eio simulator. Correct the audited signatures
+before implementation: monotonic stamps, original binding, checked observations,
+planning failures, retry causes and post-drain completion.
+Static musl/clean-host qualification remains a release gate, separate from core
+development. It no longer blocks this next original vertical slice.
+Plans: `docs/design/slice-4-orchestrator-plan.md` and
+`docs/design/static-release-plan.md`.
 No user approval is pending under the accepted recommendations/autonomy instruction.
 
 ## Current release foundation evidence
@@ -308,3 +325,7 @@ only origin/default repository `ethan-wickstrom/symphony` remains. Specification
 links retain provenance. Latest autonomy instruction authorizes architectural
 repairs and rapid iteration, superseding needless permission stops while preserving
 safety boundaries, verification and green vertical-slice delivery.
+After the crypto repair merged, restore the original slice-4 build order: release
+host qualification must not become a prerequisite for the pure scheduling core.
+This supersedes the earlier release-before-orchestrator ordering, not its release
+acceptance requirements.

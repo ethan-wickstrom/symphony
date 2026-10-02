@@ -1,7 +1,7 @@
 type t = Count.t
 
-let equal a b = Count.compare a b = 0
 let compare = Count.compare
+let equal a b = compare a b = 0
 let text = Count.decimal
 
 module Order = struct
@@ -19,7 +19,7 @@ module Allocator = struct
 
   let empty = Count.zero
 
-  let fresh n =
-    let next = Count.add n Count.one in
+  let fresh last =
+    let next = Count.add last Count.one in
     (next, next)
 end

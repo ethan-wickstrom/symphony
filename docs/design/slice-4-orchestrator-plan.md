@@ -1,8 +1,9 @@
 # Slice 4: orchestrator, owner and deterministic simulation
 
-Approved planning scope only. Audit of the interfaces against the implemented slice 1–3
-ports and SPEC §§6.2–6.3, 7–8, 13.3–13.7, 16 and 17.4. This is a refinement
-proposal, not implemented orchestration or evidence of conformance.
+Approved plan, with the algebra/ownership/launch-planning foundation now implemented
+under `ocaml/lib/orchestration/`. Audited against slice 1–3 ports and SPEC
+§§6.2–6.3, 7–8, 13.3–13.7, 16 and 17.4. The core event machine, resource-owning
+interpreter and simulator remain pending; foundation tests are not service conformance.
 
 ## Equalities before representations
 
@@ -141,9 +142,10 @@ passed 100 replayable seeds of 2,000 operations against an independent list mode
 checking keyed payloads, lookups, minimum and size after every operation. Controls
 covered equal-rank payload replacement, retained ownership on refresh and due/ID
 ties. This is sampled library evidence, not a proof or orchestration conformance.
-The actual Ownership instance still needs comparator laws and QCheck/model tests
-over its checked types. Declare Psq directly when implementing this slice; it is
-already installed and pinned transitively, so no new package choice is needed.
+The implemented Ownership instance now passes its algebra properties and 200,000
+generated operations against a separate list model over checked values. Psq is
+declared directly and remains pinned at 0.2.1. These checks establish sampled
+queue behavior; lifecycle and event-machine laws remain the next gate.
 
 Primary sources: [versioned public interface](https://github.com/pqwy/psq/blob/v0.2.1/src/psq.mli),
 [versioned implementation](https://github.com/pqwy/psq/blob/v0.2.1/src/psq.ml),
@@ -153,6 +155,26 @@ confirms key tie-breaking and same-key replacement. No performance baseline has
 been measured for Symphony's owner values.
 
 ## Frozen launch, current policy
+
+The implemented `Agent_plan.Make` owns checked request construction and launch
+observers. `Run_plan.Make` composes it with the same Tracker.Issue and workspace
+Path module plus Config's tracker-binding equality. A successful plan stores only
+binding and request. Its pure failure is an abstract rejection carrying issue,
+attempt, error and a closed Unnamed scope/Named reference target. No request is
+invented when key construction fails. This planning boundary is separate from a
+resource-closed worker completion.
+
+`Agent_runner.PURE` will include this checked Agent_plan contract; runner protocol
+phases stay in the runner layer. Its old standalone request factory with frozen
+scheduling policy is superseded. The owner keeps current scheduling policy.
+
+Before lifecycle implementation, incorporate planning rejections explicitly:
+initial rejection can queue without a reference; resumed rejection retains the
+previous retry's cleanup target. Retry refresh/no-slot rejection increments the
+positive attempt and stores a closed cause. A fresh terminal reconciliation while
+already stopping upgrades the after-close disposition to cleanup and preserves
+the original stop cause. Scope change still drains before new admission. A retry
+uses current same-scope binding; pure rejection needs no obsolete credential.
 
 A run plan stores Agent.request and its original Tracker.binding once. The agent
 request already freezes workspace reference, child environment, agent settings,
@@ -240,10 +262,9 @@ Do not retry the whole worker merely because its continuation read was supersede
 ## Fences and effect custody
 
 All request/run/retry tokens come from the owner's immutable allocator chains;
-never reset an allocator within a Core instance. Add named Order/Map/Set exports
-for these token modules before choosing request/host containers. Existing token
-interfaces expose only equal/text, unlike Checked_id.S. A map needs an explicit
-total comparator; never use dispatch ordering or polymorphic compare.
+never reset an allocator within a Core instance. Run_id, Retry_id and Request_id
+now export named Order/Map/Set instances. Use those explicit total comparators
+for request/host containers; never use dispatch ordering or polymorphic compare.
 
 Pending requests form a closed sum: Workflow_load, Startup_terminal_read,
 Reconcile_read, Candidate_read, Retry_read, Continuation_read and Workspace_cleanup.

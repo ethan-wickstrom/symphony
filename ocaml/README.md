@@ -102,3 +102,9 @@ fatal; warning 42 alone is disabled because it asks for pre-4.01 compatibility.
 The [design](../docs/design/README.md), [decisions](../docs/decisions.md),
 [validation](../docs/slice-1.md) and [conformance map](../CONFORMANCE.md) distinguish
 working behavior from future release requirements.
+
+The scheduler foundation is in `lib/orchestration`: dispatch ordering, bounded
+backoff, absolute token watermarks, one persistent owner PSQ and checked frozen
+launch plans. Its separate `test/orchestration.exe` checks independent mathematical
+and list models with seed `20261001`, including 200,000 owner operations. Polling,
+run lifecycle and whole-service simulation remain the next slice-4 work.
