@@ -83,15 +83,24 @@ Branch ethan/codex-runner implements the stable JSONL session and closed runner
 over the existing Agent_process bracket. Progress is acknowledged by the owner;
 continuation reads are fenced by issue/run/turn/epoch; typed stalls retain worker
 custody until closure. Late usage updates accounting without refreshing activity.
-Targeted local gates pass 86 protocol/runner cases, 57 core examples/29 properties,
-35 service examples, 67 schema fixtures/42 controls in both modes and nine native
+Targeted local gates pass 88 protocol/runner cases, 65 core examples/29 properties,
+36 service examples, 67 schema fixtures/42 controls in both modes and nine native
 agent cases. Workspace/runner cleanup regressions failed before their corrections;
 the mandatory workspace mapper preserves caller errors through lease closure.
 Continuation replies retain accepted read failures after competing operations join.
 Codec fixtures, validator receipts and identity manifests are retained in CI.
-The final local gate passes 375 source files, 39 source controls, 17 rejected
+PR #11 is published at a788681. Linux boundaries passed; macOS failed because
+Python 3.12 lacks waitid/WNOWAIT there. CI now selects Python 3.14; macOS support
+was added in [Python 3.13](https://docs.python.org/3/library/os.html#os.waitid).
+Review regressions reproduced and fixed stall starvation during reads/refreshes,
+deferred terminal reconciliation across both worker/read closure orders, workspace
+acquisition after Preparing interruption, and completed-turn usage refreshing
+activity. One cadence timer remains live through reads; the existing request
+ledger retains exact deferred authority. A held-read capacity regression failed
+before timing moved from timer rearming to actual cycle completion.
+The final local gate passes 379 source files, 39 source controls, 17 rejected
 type clients, two valid assemblies and 73 unchanged CMIs in both modes.
-Receipts: _build/runner-full-check-final.log and runner-reference-full.log.
+Receipts: _build/runner-review-full-check.log and runner-reference-review.log.
 
 - [x] Record current schema provenance and consumed codecs/framing contracts.
 - [x] Add causal progress/continuation/stall to the existing owner/service boundary.

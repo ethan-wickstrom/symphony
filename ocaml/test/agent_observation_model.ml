@@ -202,7 +202,8 @@ let current_usage entries progress =
   match progress.event with
   | Usage_report { turn; _ } -> (
       match fst (identity entries) with
-      | Some (_, current) -> String.equal turn current
+      | Some (_, current) ->
+          String.equal (phase entries) "running" && String.equal turn current
       | None -> false)
   | Preparing
   | Workspace_ready
@@ -240,8 +241,8 @@ let protocol = function
   | Unsupported_tool _ -> true
 
 let facts entries =
-  (* Replay only to determine which usage report referred to the displayed turn.
-     The accepted history, rather than a cached observation carrier, is oracle. *)
+  (* Replay display authority at each report's accepted turn phase. The complete
+     history remains the accounting and causal-clock oracle. *)
   let rec walk preceding = function
     | [] -> []
     | Observed progress :: rest ->

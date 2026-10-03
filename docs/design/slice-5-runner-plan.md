@@ -18,6 +18,8 @@ The process callback ends before native pipe/group closure. The workspace callba
 ends after the process bracket; after_run and lease release follow it. Only then
 can Codex_runner construct its opaque completed value. Service publishes it after
 the enclosing worker switch closes. A wire turn terminal never attests closure.
+After Preparing is acknowledged, the runner checks interruption before acquiring
+the workspace; watcher scheduling cannot authorize a stopped invocation.
 
 ```text
 Service owner → checked request → Codex_runner
@@ -36,8 +38,9 @@ Embed one Agent_observation value alongside Life.owned in the canonical owner
 PSQ. Preserve it only for the same run; clear it when the run closes. It holds
 sequence/emission time, preparation/protocol phase, current session/turn, success
 and answer barriers, activity, bounded display facts and one run/thread watermark.
-Known turn IDs are bounded by the frozen turn cap. Old known-turn cumulative
-usage can advance accounting without refreshing activity or current display.
+Known turn IDs are bounded by the frozen turn cap. Completed or older known-turn
+usage advances accounting and emission fences without refreshing activity or
+current display. Only the current In_turn report has activity authority.
 
 Worker_progress carries its emission clock stamp. The owner rejects future or
 regressing stamps; stale sequence cannot become fresh activity at dequeue.
@@ -59,6 +62,16 @@ Stall is a typed interruption. Check current policy with exact monotonic time:
 elapsed strictly greater than the limit; nonpositive disables it. Stopping keeps
 its slot until closure. Disposition joins Retry < Release < Cleanup so terminal
 reconciliation still cleans during a stall/continuation race.
+One retained poll timer checks stalls through pending reads; explicit refreshes
+perform the same check without replacing that timer. Busy ticks cannot start an
+overlapping reconciliation cycle.
+Canceled continuations retain original-binding reconciliation in the request
+ledger. Worker closure retargets that obligation to its exact retry receipt.
+Fresh terminal reconciliation can clean either closure order without shortening
+nonterminal backoff. Scope drain and shutdown discard deferred authority.
+The observational Idle/Busy cycle projection drives capacity timing. A sample
+ends after full cycle closure; a held-read regression rejects timer rearming as
+a completion boundary.
 
 ## Protocol bounds and evidence
 

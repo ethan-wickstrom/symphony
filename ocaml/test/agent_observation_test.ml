@@ -451,6 +451,61 @@ let barrier_examples () =
     | Some value -> Thread_id.text value
     | None -> Alcotest.fail "Missing thread")
 
+type usage_barrier = Completed_usage | Queued_usage | Answered_usage
+
+let late_usage barrier () =
+  let harness = running () in
+  let harness = accept ~sequence:6 harness (report (totals 10 20 30)) in
+  let active = O.view harness.actual in
+  check_option "Active usage retains display authority" (Some "usage_report")
+    active.O.last_event;
+  check_bool "Active usage advances activity" true
+    (Option.fold ~none:false
+       ~some:(fun time -> Clock.Pure.compare time (F.instant 6) = 0)
+       active.O.last_activity);
+  let harness = accept ~sequence:7 harness (completed first_turn) in
+  let harness =
+    accept ~sequence:8 harness
+      (output ~message:"Finished response" "final-output")
+  in
+  let harness =
+    match barrier with
+    | Completed_usage -> harness
+    | Queued_usage -> expect Accepted (queue harness first_turn)
+    | Answered_usage ->
+        answer (expect Accepted (queue harness first_turn)) first_turn
+  in
+  let before = O.view harness.actual in
+  let need = Option.map Turn_id.text (O.need harness.actual) in
+
+  (* Late cumulative usage remains causally accepted but cannot refresh a
+     completed turn's display or silence deadline. *)
+  let harness =
+    accept ~sequence:9 ~emitted:20 harness (report (totals 15 28 40))
+  in
+  let after = O.view harness.actual in
+  Alcotest.(check string)
+    "Late usage advances the accepted sequence" "9"
+    (Count.decimal after.O.sequence);
+  check_bool "Late usage advances the cumulative watermark" true
+    (same_totals (totals 15 28 40) (model_totals after.O.usage));
+  check_bool "Late usage preserves the continuation barrier" true
+    (before.O.phase = after.O.phase);
+  check_option "Late usage preserves the refresh need" need
+    (Option.map Turn_id.text (O.need harness.actual));
+  check_option "Late usage preserves the latest display" before.O.last_event
+    after.O.last_event;
+  check_option "Late usage preserves the latest message" before.O.last_message
+    after.O.last_message;
+  check_bool "Late usage preserves the silence deadline" true
+    (Option.equal
+       (fun left right -> Clock.Pure.compare left right = 0)
+       before.O.last_activity after.O.last_activity);
+  ignore
+    (expect (Rejected M.Regressing_time)
+       (emit ~sequence:10 ~emitted:19 ~now:20 harness
+          (output "regressing-emission")))
+
 let usage_examples () =
   let harness = running () in
   let harness = accept ~sequence:6 harness (report (totals 10 20 17)) in
@@ -476,6 +531,16 @@ let usage_examples () =
     (Option.equal
        (fun left right -> Clock.Pure.compare left right = 0)
        before.O.last_activity after.O.last_activity);
+  Alcotest.(check string)
+    "old-turn usage advances the accepted sequence" "13"
+    (Count.decimal after.O.sequence);
+  check_bool "old-turn usage advances thread accounting" true
+    (same_totals (totals 15 25 19) (model_totals after.O.usage));
+  let harness =
+    expect (Rejected M.Regressing_time)
+      (emit ~sequence:14 ~emitted:19 ~now:20 harness
+         (output ~turn:second_turn "regressing-emission"))
+  in
   let harness =
     accept ~sequence:14 ~emitted:20 harness
       (report ~turn_name:second_turn (totals 12 28 18))
@@ -609,6 +674,14 @@ let tests =
       causal_examples;
     Alcotest.test_case "Completed queued answered continuation barrier" `Quick
       barrier_examples;
+    Alcotest.test_case "Completed-turn usage preserves activity and display"
+      `Quick
+      (late_usage Completed_usage);
+    Alcotest.test_case "Queued-turn usage preserves activity and display" `Quick
+      (late_usage Queued_usage);
+    Alcotest.test_case "Answered-turn usage preserves activity and display"
+      `Quick
+      (late_usage Answered_usage);
     Alcotest.test_case "Usage repeats reorder and prior-turn accounting" `Quick
       usage_examples;
     Alcotest.test_case "Frozen turn cap" `Quick turn_limit_examples;

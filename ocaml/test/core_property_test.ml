@@ -546,21 +546,77 @@ let selected_read commands =
   | Some id -> id
   | None -> fail "Invalid replacement control did not start a read"
 
+let model_step ~now input (state, edges) =
+  let state, commands = M.step ~now input state in
+  let edges =
+    List.fold_left register_edge (close_edges now input edges) commands
+  in
+  ((state, edges), commands)
+
+let live_poll edges =
+  match
+    List.filter_map
+      (function
+        | Poll_edge (token, due) -> Some (token, due)
+        | Load_edge _
+        | Read_edge _
+        | Remove_edge _
+        | Worker_edge _
+        | Retry_edge _ -> None)
+      edges
+  with
+  | [ poll ] -> poll
+  | [] | _ :: _ :: _ -> fail "Exactly one live cadence timer is required"
+
+let preflight_effect file = function
+  | M.Load_workflow (_, selected) -> String.equal file selected
+  | M.Read_tracker _
+  | M.Start_worker _
+  | M.Stop_worker _
+  | M.Remove_workspace _
+  | M.Cancel_request _
+  | M.Arm_poll _
+  | M.Cancel_poll _
+  | M.Arm_retry _
+  | M.Cancel_retry _
+  | M.Report _ -> false
+
+let reconcile_effect binding selection = function
+  | M.Read_tracker read ->
+      read.M.binding = binding && read.M.selection = selection
+  | M.Load_workflow _
+  | M.Start_worker _
+  | M.Stop_worker _
+  | M.Remove_workspace _
+  | M.Cancel_request _
+  | M.Arm_poll _
+  | M.Cancel_poll _
+  | M.Arm_retry _
+  | M.Cancel_retry _
+  | M.Report _ -> false
+
 let model_invalid_reload () =
   let check order =
     let initial, commands = M.create ~now:0 (config F.A) in
     let startup = selected_read commands in
+    let initial = (initial, List.fold_left register_edge [] commands) in
     let serving, _ =
-      M.step ~now:1 (M.Tracker_completed (startup, Ok [])) initial
+      model_step ~now:1 (M.Tracker_completed (startup, Ok [])) initial
     in
-    let checking, commands = M.step ~now:2 M.Refresh_requested serving in
+    let retained = live_poll (snd serving) in
+    let checking, commands = model_step ~now:2 M.Refresh_requested serving in
+    if
+      commands
+      <> [ M.Load_workflow (selected_load commands, (config F.A).M.file) ]
+      || live_poll (snd checking) <> retained
+    then fail "Explicit refresh must retain its one cadence timer";
     let fetching, commands =
-      M.step ~now:3
+      model_step ~now:3
         (M.Workflow_loaded (selected_load commands, Ok (config F.A)))
         checking
     in
     let candidate = selected_read commands in
-    let canceled, commands = M.step ~now:4 M.Workflow_changed fetching in
+    let canceled, commands = model_step ~now:4 M.Workflow_changed fetching in
     let loader = selected_load commands in
     let first, second =
       match order with
@@ -569,38 +625,55 @@ let model_invalid_reload () =
       | Loader_first ->
           (M.Workflow_loaded (loader, Error ()), M.Request_canceled candidate)
     in
-    let interim, first_commands = M.step ~now:5 first canceled in
-    let closed, last_commands = M.step ~now:6 second interim in
-    let effects = first_commands @ last_commands in
-    let expected_due = 6 + (config F.A).M.poll_ms in
-    let arms_interval =
-      List.exists
-        (function
-          | M.Arm_poll (_, due) -> due = expected_due
-          | M.Load_workflow _
-          | M.Read_tracker _
-          | M.Start_worker _
-          | M.Stop_worker _
-          | M.Remove_workspace _
-          | M.Cancel_request _
-          | M.Cancel_poll _
-          | M.Arm_retry _
-          | M.Cancel_retry _
-          | M.Report _ -> false)
-        effects
-    in
+    let interim, first_commands = model_step ~now:5 first canceled in
     if
-      List.length effects <> 2
-      || (not arms_interval)
-      || (not (List.mem (M.Report M.Config_failure) effects))
-      || (M.project ~now:6 closed).M.readiness <> M.Invalid
+      live_poll (snd interim) <> retained
+      || (M.project ~now:5 (fst interim)).M.cycle <> M.Busy
     then
       fail
-        "Invalid candidate replacement (%s) must report and arm interval:\n%s"
+        "Half-closed invalid replacement must retain cadence and read custody";
+    let ticked, tick_commands =
+      model_step ~now:5 (M.Poll_due (fst retained)) interim
+    in
+    let next, due = live_poll (snd ticked) in
+    if
+      tick_commands <> [ M.Arm_poll (next, due) ]
+      || next = fst retained
+      || due <> 5 + (config F.A).M.poll_ms
+    then
+      fail "Busy invalid replacement must rearm once without overlapping reads";
+    let repeated, repeated_commands =
+      model_step ~now:5 (M.Poll_due (fst retained)) ticked
+    in
+    if repeated_commands <> [] || live_poll (snd repeated) <> (next, due) then
+      fail "Retired cadence token cannot reserve a second timer";
+    let closed, last_commands = model_step ~now:6 second repeated in
+    let effects = first_commands @ last_commands in
+    if
+      effects <> [ M.Report M.Config_failure ]
+      || snd closed <> [ Poll_edge (next, due) ]
+      || (M.project ~now:6 (fst closed)).M.readiness <> M.Invalid
+      || (M.project ~now:6 (fst closed)).M.cycle <> M.Idle
+    then
+      fail
+        "Invalid candidate replacement (%s) must close custody and retain one \
+         poll:\n\
+         %s"
         (match order with
         | Candidate_first -> "candidate-first"
         | Loader_first -> "loader-first")
-        (String.concat "\n" (List.map show_command effects))
+        (String.concat "\n" (List.map show_command effects));
+    let next_tick, commands = model_step ~now:11 (M.Poll_due next) closed in
+    let timer, next_due = live_poll (snd next_tick) in
+    let paced =
+      match commands with
+      | [ poll; preflight ] ->
+          poll = M.Arm_poll (timer, next_due)
+          && preflight_effect (config F.A).M.file preflight
+      | [] | [ _ ] | _ :: _ :: _ :: _ -> false
+    in
+    if (not paced) || next_due <> 11 + (config F.A).M.poll_ms then
+      fail "Invalid readiness must retain the accepted cadence before preflight"
   in
   let errors =
     List.filter_map
@@ -776,19 +849,21 @@ let model_borrowed_preflight () =
       }
     in
     let initial, commands = M.create ~now:0 (config F.A) in
+    let initial = (initial, List.fold_left register_edge [] commands) in
     let serving, _ =
-      M.step ~now:1
+      model_step ~now:1
         (M.Tracker_completed (selected_read commands, Ok []))
         initial
     in
-    let checking, commands = M.step ~now:2 M.Refresh_requested serving in
+    let retained = live_poll (snd serving) in
+    let checking, commands = model_step ~now:2 M.Refresh_requested serving in
     let fetching, commands =
-      M.step ~now:3
+      model_step ~now:3
         (M.Workflow_loaded (selected_load commands, Ok (config F.A)))
         checking
     in
     let starting, commands =
-      M.step ~now:4
+      model_step ~now:4
         (M.Tracker_completed (selected_read commands, Ok [ current ]))
         fetching
     in
@@ -813,16 +888,18 @@ let model_borrowed_preflight () =
       | None -> fail "Borrowed validation control did not start its worker"
     in
     let active, _ =
-      M.step ~now:5 (M.Worker_started (current.M.id, worker.M.run)) starting
+      model_step ~now:5 (M.Worker_started (current.M.id, worker.M.run)) starting
     in
-    let reconciling, commands = M.step ~now:6 M.Refresh_requested active in
+    let reconciling, commands = model_step ~now:6 M.Refresh_requested active in
     let reconcile = selected_read commands in
-    let loading, commands = M.step ~now:7 M.Workflow_changed reconciling in
+    let loading, commands = model_step ~now:7 M.Workflow_changed reconciling in
     let borrowed = selected_load commands in
     let validating, _ =
-      M.step ~now:8 (M.Tracker_completed (reconcile, Ok [ current ])) loading
+      model_step ~now:8
+        (M.Tracker_completed (reconcile, Ok [ current ]))
+        loading
     in
-    let replacing, commands = M.step ~now:9 M.Workflow_changed validating in
+    let replacing, commands = model_step ~now:9 M.Workflow_changed validating in
     let latest = selected_load commands in
     let first, second, expected_early =
       match order with
@@ -833,36 +910,58 @@ let model_borrowed_preflight () =
             M.Request_canceled borrowed,
             [ M.Report M.Config_failure ] )
     in
-    let interim, early = M.step ~now:10 first replacing in
+    let interim, early = model_step ~now:10 first replacing in
     if early <> expected_early then
       fail "Borrowed preflight (%s) advanced before both loaders closed:\n%s"
         (match order with
         | Old_load_first -> "old-load-first"
         | Invalid_load_first -> "invalid-load-first")
         (String.concat "\n" (List.map show_command early));
-    let closed, effects = M.step ~now:200 second interim in
-    let expected_due = 200 + (config F.A).M.poll_ms in
+    if
+      live_poll (snd interim) <> retained
+      || (M.project ~now:10 (fst interim)).M.cycle <> M.Busy
+    then
+      fail
+        "Unclosed borrowed preflight must retain cadence and its remaining \
+         loader";
+    let ticked, commands =
+      model_step ~now:10 (M.Poll_due (fst retained)) interim
+    in
+    let next, due = live_poll (snd ticked) in
+    if
+      commands <> [ M.Arm_poll (next, due) ]
+      || next = fst retained
+      || due <> 10 + (config F.A).M.poll_ms
+    then
+      fail "Busy borrowed preflight must rearm once without overlapping reads";
+    let closed, effects = model_step ~now:200 second ticked in
+    let surviving =
+      [
+        Worker_edge (current.M.id, worker.M.run, Child_running);
+        Poll_edge (next, due);
+      ]
+    in
+    if
+      early @ effects <> [ M.Report M.Config_failure ]
+      || snd closed <> surviving
+      || (M.project ~now:200 (fst closed)).M.readiness <> M.Invalid
+      || (M.project ~now:200 (fst closed)).M.cycle <> M.Idle
+    then
+      fail
+        "Closed borrowed preflight must retain one worker and one cadence timer";
+    let next_tick, commands = model_step ~now:200 (M.Poll_due next) closed in
+    let timer, next_due = live_poll (snd next_tick) in
     let paced =
-      match early @ effects with
-      | [ report; poll ] -> (
-          report = M.Report M.Config_failure
-          &&
-          match poll with
-          | M.Arm_poll (_, due) -> due = expected_due
-          | M.Load_workflow _
-          | M.Read_tracker _
-          | M.Start_worker _
-          | M.Stop_worker _
-          | M.Remove_workspace _
-          | M.Cancel_request _
-          | M.Cancel_poll _
-          | M.Arm_retry _
-          | M.Cancel_retry _
-          | M.Report _ -> false)
+      match commands with
+      | [ poll; reconcile ] ->
+          poll = M.Arm_poll (timer, next_due)
+          && reconcile_effect (config F.A).M.binding (M.Ids [ current.M.id ])
+               reconcile
       | [] | [ _ ] | _ :: _ :: _ :: _ -> false
     in
-    if (not paced) || (M.project ~now:200 closed).M.readiness <> M.Invalid then
-      fail "Closed borrowed preflight must report and reserve one paced poll"
+    if (not paced) || next_due <> 200 + (config F.A).M.poll_ms then
+      fail
+        "Accepted cadence must reconcile the original worker before preflight"
   in
   let errors =
     List.filter_map

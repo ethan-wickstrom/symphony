@@ -99,18 +99,24 @@ Crowbar random campaigns are distinct from instrumented AFL coverage.
 
 The closed runner uses the pinned stable Codex 0.159.2 JSONL protocol under the
 existing native process/workspace brackets. Targeted local evidence passes
-86 protocol/session/runner cases, 57 core examples and 29 core property groups,
-35 service examples and nine actual owned fake-server subprocess cases.
+88 protocol/session/runner cases, 65 core examples and 29 core property groups,
+36 service examples and nine actual owned fake-server subprocess cases.
 The schema gate validates 67 actual encoded fixtures and rejects 42 controls in
 normal and optimized Python modes. Native cases check three turns on one thread,
 one-byte pipe writes, stderr backpressure, exact usage above 2^53, interruption,
 malformed/truncated frames, separate response/silence deadlines and child reaping
-before after_run and lease release. These local results precede the final full
-gate and hosted review; they do not establish live Codex authentication, model
+before after_run and lease release. The full local gate checks 379 source files
+and 73 unchanged CMIs; hosted review remains a merge gate. These results do not
+establish live Codex authentication, model
 behavior or sandbox enforcement. Closed fake runners and the native fake server
 remain separate evidence from a dispatching service.
 Codec receipts retain actual messages, validator logs, schema provenance and
 exporter/checker/lock/Python identities without claiming binary attestation.
+Review regressions cover retained stall cadence during tracker reads and repeated
+refreshes, both worker/read closure orders, terminal cleanup during shutdown,
+Preparing interruption before acquisition, and accounting-only completed-turn
+usage. Whole-cycle capacity timing follows Idle completion; a held scoped
+read/finalizer cannot be replaced by a timer-rearming sample.
 
 Merged crypto refresh [PR #5](https://github.com/ethan-wickstrom/symphony/pull/5)
 at `c97cff2`: exact-head Linux/macOS PR/push CI and independent receipts pass.

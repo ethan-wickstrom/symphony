@@ -53,7 +53,8 @@ jobs:
           opam-pin: false
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          # macOS waitid(WNOWAIT) requires Python 3.13 or newer.
+          python-version: "3.14"
       - name: Pin audited boundaries and install locked dependencies
         run: |
           opam pin add yaml.3.2.0 ../vendor/yaml --no-action --yes

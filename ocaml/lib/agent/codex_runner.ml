@@ -142,8 +142,7 @@ struct
     in
     let stage = ref Preparing_scope in
     let result, resolve = Eio.Promise.create () in
-    let execute () =
-      emit Preparing;
+    let acquire () =
       let value =
         match
           Workspace.with_workspace manager (workspace request)
@@ -200,6 +199,13 @@ struct
         | Ok value | Error value -> value
       in
       value
+    in
+    let execute () =
+      emit Preparing;
+      (* Receipt callbacks may resolve interruption before the watcher runs. *)
+      match Eio.Promise.peek interrupt with
+      | Some cause -> stopped cause
+      | None -> acquire ()
     in
     let invoke () =
       let value = capture execute in

@@ -254,6 +254,60 @@ let pre_resolved_interrupt () =
       Alcotest.check Alcotest.int "no refresh after prior cancellation" 0
         !refreshed)
 
+let interrupt_after_preparing cause () =
+  Eio_mock.Backend.run (fun () ->
+      let trace = D.trace () in
+      let _, clock = D.clock () in
+      let interrupt, resolver = Eio.Promise.create () in
+      let turns = ref 0 in
+      let process = D.process trace (D.server ~turn:(turn_handler turns)) in
+      let runner = Runner.create ~process ~version:D.version in
+      let notices = ref [] in
+      let refreshed = ref 0 in
+      let emit progress =
+        notices := notice_tag progress :: !notices;
+        match Runner.notice progress with
+        | Runner.Preparing ->
+            (* Returning without yielding leaves the watcher unscheduled. *)
+            Eio.Promise.resolve resolver cause
+        | Runner.Workspace_ready _
+        | Runner.Rendering
+        | Runner.Starting
+        | Runner.Protocol _ -> ()
+      in
+      let completed =
+        Runner.run runner ~clock ~workspace:(D.workspace trace) ~interrupt ~emit
+          ~refresh:(fun ~turn:_ ->
+            incr refreshed;
+            Ok Agent_runner.Stop)
+          (request ())
+      in
+      (match (cause, Runner.outcome completed) with
+      | ( Agent_runner.Cancel reason,
+          Agent_runner.Canceled { reason = actual; remote_error } ) ->
+          Alcotest.check Alcotest.bool "original cancellation cause" true
+            (actual = reason);
+          Alcotest.check Alcotest.bool "no remote error before acquisition" true
+            (Option.is_none remote_error)
+      | Agent_runner.Stall, Agent_runner.Stalled -> ()
+      | ( (Agent_runner.Cancel _ | Agent_runner.Stall),
+          ( Agent_runner.Succeeded
+          | Agent_runner.Failed _
+          | Agent_runner.Timed_out _
+          | Agent_runner.Stalled
+          | Agent_runner.Canceled _ ) ) ->
+          Alcotest.fail "Expected interruption resolved by Preparing receipt");
+      Alcotest.check
+        (Alcotest.list Alcotest.string)
+        "no workspace, hook or process acquisition" []
+        (List.map event_tag (D.events trace));
+      Alcotest.check
+        (Alcotest.list Alcotest.string)
+        "receipt interruption stops preparation" [ "preparing" ]
+        (List.rev !notices);
+      Alcotest.check Alcotest.int "no refresh after receipt interruption" 0
+        !refreshed)
+
 let cancellation_in_refresh () =
   Eio_mock.Backend.run (fun () ->
       Eio.Switch.run (fun sw ->
@@ -1160,6 +1214,11 @@ let suite () =
         completion_after_closure;
       example "prior cancellation acquires no scope" `Quick
         pre_resolved_interrupt;
+      example "Preparing receipt cancellation acquires no scope" `Quick
+        (interrupt_after_preparing
+           (Agent_runner.Cancel Agent_runner.Reconciliation));
+      example "Preparing receipt stall acquires no scope" `Quick
+        (interrupt_after_preparing Agent_runner.Stall);
       example "cancellation wakes a blocked fenced refresh" `Quick
         cancellation_in_refresh;
       example "late completed-turn usage reaches progress during fenced refresh"

@@ -114,6 +114,7 @@ type mode = Startup | Serving | Draining_scope | Shutting_down
 type readiness = Ready | Loading | Invalid
 type worker_phase = Starting | Active | Stopping
 type retry_phase = Waiting of int | Refreshing | Parked
+type cycle_status = Idle | Busy
 
 type worker = {
   issue : issue;
@@ -135,6 +136,7 @@ type owner = Worker of worker | Retry of retry | Cleaning of issue
 type projection = {
   mode : mode;
   readiness : readiness;
+  cycle : cycle_status;
   owners : owner list;
   running : int;
   available_slots : int;

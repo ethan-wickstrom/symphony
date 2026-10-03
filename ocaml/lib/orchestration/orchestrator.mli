@@ -104,6 +104,7 @@ module type S = sig
   type readiness = Ready | Loading | Invalid
   type worker_phase = Starting | Active | Stopping
   type retry_phase = Waiting of instant | Refreshing | Parked
+  type cycle_status = Idle | Busy
 
   type worker = {
     issue : Issue.t;
@@ -133,6 +134,7 @@ module type S = sig
   type projection = {
     mode : mode;
     readiness : readiness;
+    cycle : cycle_status;
     owners : owner list;
     running : int;
     available_slots : int;
@@ -145,7 +147,8 @@ module type S = sig
   (** Operator/conformance read side, derived once per read. Rows are ordered by
       Issue_id.compare and use canonical current issues. Starting, Active and
       Stopping count as running; Cleaning consumes a claim but no slot. Total
-      runtime joins one ended aggregate with current worker intervals. No
+      runtime joins one ended aggregate with current worker intervals. Busy
+      lasts through reconciliation, preflight and candidate resource closure. No
       binding, reference, pending ledger, epoch or acquired Path escapes.
       Reading changes no state; equal states/time yield equal observations. *)
 

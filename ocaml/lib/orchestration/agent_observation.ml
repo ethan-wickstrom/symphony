@@ -241,11 +241,13 @@ module Make (Clock : Clock.PURE) (Agent : Agent_runner.PURE) = struct
                   let next =
                     { value with state = Session { current with watermark } }
                   in
-                  (* Older admitted turns still carry thread totals, not activity
-                     or display authority for the current turn. *)
+                  (* Late reports retain thread totals without renewing a
+                     completed turn's display or silence deadline. *)
                   let next =
-                    if Turn_id.equal current.turn turn then
-                      active next "usage_report" None
+                    if
+                      current.barrier = In_turn
+                      && Turn_id.equal current.turn turn
+                    then active next "usage_report" None
                     else next
                   in
                   finish next delta

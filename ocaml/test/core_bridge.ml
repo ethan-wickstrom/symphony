@@ -253,8 +253,14 @@ let show_projection (value : M.projection) =
     | M.Loading -> "loading"
     | M.Invalid -> "invalid"
   in
-  Printf.sprintf "mode=%s readiness=%s running=%d slots=%d runtime=%dms\n%s"
-    mode readiness value.M.running value.M.available_slots
+  let cycle =
+    match value.M.cycle with
+    | M.Idle -> "idle"
+    | M.Busy -> "busy"
+  in
+  Printf.sprintf
+    "mode=%s readiness=%s cycle=%s running=%d slots=%d runtime=%dms\n%s" mode
+    readiness cycle value.M.running value.M.available_slots
     value.M.total_runtime_ms
     (String.concat "\n" (List.map show_owner value.M.owners))
 
@@ -591,6 +597,10 @@ struct
         | C.Ready -> M.Ready
         | C.Loading -> M.Loading
         | C.Invalid -> M.Invalid);
+      M.cycle =
+        (match value.C.cycle with
+        | C.Idle -> M.Idle
+        | C.Busy -> M.Busy);
       M.owners = List.map (owner tokens) value.C.owners;
       M.running = value.C.running;
       M.available_slots = value.C.available_slots;
