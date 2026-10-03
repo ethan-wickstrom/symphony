@@ -61,6 +61,13 @@ jobs:
           opam install . --deps-only --locked --with-test --with-dev-setup --yes
       - run: opam exec -- dune build @all @fmt @test/native-http-inputs
       - run: opam exec -- dune runtest
+      - name: Bounded native service capacity
+        run: |
+          python3 test/capacity_check_test.py
+          python3 -O test/capacity_check_test.py
+          for sessions in 1 10 100 1000; do
+            python3 tools/capacity_check.py --binary "$PWD/_build/default/test/capacity_main.exe" --sessions "$sessions" --out "$RUNNER_TEMP/symphony-capacity/$sessions"
+          done
       - name: Reject illegal lifecycle calls
         run: |
           opam exec -- python3 test/lifecycle_types_test.py
@@ -106,3 +113,5 @@ jobs:
             ${{ runner.temp }}/symphony-workspace/*.json
             ${{ runner.temp }}/symphony-workspace-optimized/*.log
             ${{ runner.temp }}/symphony-workspace-optimized/*.json
+            ${{ runner.temp }}/symphony-capacity/*/*.log
+            ${{ runner.temp }}/symphony-capacity/*/*.json

@@ -116,19 +116,14 @@ switch joins. The actor-failure identity test failed before that scope replaceme
 `Service_failure` owns the host primary and private secondary exceptions; the
 parent reads it after joining. See [the retrospective](service-retrospective.md).
 
-The next checkpoint supplies a declared 1000-session fixture. Measure physical speed
-separately under Eio_posix; virtual zero-duration ticks are not performance data.
-No successful fake runner enters the live CLI.
-
-The physical capacity checkpoint will inject Clock_posix.t into the same fake
-ports, with manual clock ownership outside those ports for simulation. A separate
-checked workload holds 1000 acquired workers through warmup and measured poll
-cycles, then checks all closures and joins. Native step latency, poll-cycle
-latency, startup, managed heap/stack bytes and resident bytes have separate units
-and populations. Per-session memory retains baseline and plateau readings and
-includes fake-port overhead. Paired accepted/candidate binaries run on the same
-runner; numerical regression limits follow measured baselines. No physical
-capacity or latency result exists yet.
+The [physical capacity checkpoint](service-capacity.md) injects Clock_posix into
+the same fake ports. Manual simulations retain external mock-clock ownership.
+Native 1/10/100/1000-session macOS runs pass actual acquisitions, owner receipts,
+100 measured cycles, all releases and joined shutdown. Step/cycle latency,
+startup, heap/stack and parent RSS retain distinct units and populations. The
+fake resource observer timestamps actual acquisition; entry receipts may arrive
+first. Paired accepted/candidate runs remain required for relative regression
+limits. No successful fake runner enters the live CLI.
 
 ## Testing references
 

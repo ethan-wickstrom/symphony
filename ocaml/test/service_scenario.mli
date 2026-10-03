@@ -30,17 +30,22 @@ type 'answer call
 type pending = Pending : 'answer call -> pending
 type t
 
-val run : (sw:Eio.Switch.t -> t -> 'a) -> 'a
-(** Own the manual mock clocks, controller and every child on [sw]. The actor
-    must join its service before normal return. On any actor exit, permit every
-    finalizer before joining children. Actor failure thus cannot strand a gate
-    that only the failed actor could release. Permission never fabricates
+val run :
+  clock:Clock_posix.t ->
+  observe:(resource_event -> unit) ->
+  (sw:Eio.Switch.t -> t -> 'a) ->
+  'a
+(** Capture the supplied clock, own the controller and every child on [sw]. The
+    actor must join its service before normal return. On any actor exit, permit
+    every finalizer before joining children. Actor failure thus cannot strand a
+    gate that only the failed actor could release. Permission never fabricates
     [Released]: the actual finalizer still emits it after [Closing].
 
     Opening a gate twice is identity; the first explicit close outcome wins. No
     new operation may enter after the actor exits. Trace inspection remains
     valid after join. Exceptions from the actor propagate after child closure.
-*)
+    The resource observer runs synchronously at the actual scope boundary; it
+    must neither suspend nor change controller state. *)
 
 val key : 'answer call -> key
 val invocation : 'answer call -> 'answer invocation
@@ -66,17 +71,13 @@ val notify : t -> unit
 val await_change : t -> after:int -> unit
 (** Predicate-based notification; safe against already committed changes. *)
 
-val advance : t -> Clock.Pure.instant -> unit
-(** Manually advance the supplied Eio_mock monotonic clock. Backward/native-
-    horizon inputs are fixture defects; generated tests use bounded ticks. *)
-
 val fail_next_now : t -> Diagnostic.t -> unit
 val defect_next_now : t -> exn -> unit
 val fail_next_sleep : t -> Diagnostic.t -> unit
 
 val defect_next_sleep : t -> exn -> unit
 (** One-shot source failures; unaffected operations use Clock_posix over the
-    same explicit Eio_mock clock capabilities. No ambient clock is sampled. *)
+    same explicit clock capabilities. No ambient clock is sampled. *)
 
 module Clock : Clock.S with module Pure = Clock.Pure and type t = t
 

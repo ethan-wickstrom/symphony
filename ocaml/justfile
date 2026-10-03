@@ -19,6 +19,7 @@ check-format:
     opam exec --switch . -- dune build @fmt
 
 check: test check-format
+    just capacity
     opam exec --switch . -- python3 test/lifecycle_types_test.py
     opam exec --switch . -- python3 -O test/lifecycle_types_test.py
     opam exec --switch . -- dune exec tools/check_source.exe -- .
@@ -29,6 +30,17 @@ check: test check-format
     python3 tools/check_h1.py ../vendor/h1
     PYTHONOPTIMIZE=1 python3 tools/check_h1.py ../vendor/h1
     just release-tools
+
+capacity: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 test/capacity_check_test.py
+    python3 -O test/capacity_check_test.py
+    evidence="$(mktemp -d "$PWD/_build/capacity-XXXXXX")"
+    for sessions in 1 10 100 1000; do
+      python3 tools/capacity_check.py --binary "$PWD/_build/default/test/capacity_main.exe" --sessions "$sessions" --out "$evidence/$sessions" > "$evidence/$sessions.json"
+    done
+    printf '%s\n' "$evidence"
 
 release-tools:
     python3 test/release_process_test.py -v

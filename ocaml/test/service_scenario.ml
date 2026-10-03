@@ -39,8 +39,8 @@ type clock_fault = Healthy | Reject of Diagnostic.t | Crash of exn
 type lifetime = Controlling | Ended
 
 type t = {
-  mono : Eio_mock.Clock.Mono.t;
   base : Clock_posix.t;
+  observe : resource_event -> unit;
   changed : Eio.Condition.t;
   mutable revision : int;
   mutable pending : pending list;
@@ -50,12 +50,10 @@ type t = {
   mutable lifetime : lifetime;
 }
 
-let create () =
-  let mono = Eio_mock.Clock.Mono.make () in
-  let wall = Eio_mock.Clock.make () in
+let create clock observe =
   {
-    mono;
-    base = Clock_posix.create ~mono ~wall;
+    base = clock;
+    observe;
     changed = Eio.Condition.create ();
     revision = 0;
     pending = [];
@@ -98,7 +96,8 @@ let invocation_key : type a. a invocation -> key = function
 
 let record (t : t) event =
   t.trace <- event :: t.trace;
-  notify t
+  notify t;
+  t.observe event
 
 let begin_call : type a. t -> a invocation -> a call =
  fun t invocation ->
@@ -119,8 +118,8 @@ let fail call error =
 let close call closure =
   ignore (Eio.Promise.try_resolve call.close closure : bool)
 
-let run actor =
-  let controller = create () in
+let run ~clock ~observe actor =
+  let controller = create clock observe in
   Eio.Switch.run (fun sw ->
       Fun.protect
         (fun () ->
@@ -166,19 +165,6 @@ let scoped t invocation work =
       work call)
 
 let perform t invocation = scoped t invocation answer
-
-let advance t instant =
-  let current = Eio.Time.Mono.now t.mono in
-  let requested = Clock.Pure.nanoseconds instant in
-  let current = Count.of_uint64_bits (Mtime.to_uint64_ns current) in
-  if Count.compare requested current < 0 then
-    invalid_arg "backward fake-clock advance";
-  match Count.to_uint64_bits requested with
-  | None -> invalid_arg "fake-clock native horizon"
-  | Some tick ->
-      Eio_mock.Clock.Mono.set_time t.mono (Mtime.of_uint64_ns tick);
-      notify t
-
 let fail_next_now t diagnostic = t.clock_fault <- Reject diagnostic
 let defect_next_now t error = t.clock_fault <- Crash error
 let fail_next_sleep t diagnostic = t.sleep_fault <- Reject diagnostic

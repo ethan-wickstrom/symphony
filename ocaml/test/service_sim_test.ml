@@ -112,8 +112,29 @@ type observer_mode =
   | Fail_poll_close of exn
   | Fail_worker_entry of exn
 
+let run actor =
+  let mono = Eio_mock.Clock.Mono.make () in
+  let wall = Eio_mock.Clock.make () in
+  let clock = Clock_posix.create ~mono ~wall in
+  S.run ~clock ~observe:ignore (fun ~sw controller ->
+      actor ~sw ~mono controller)
+
+let advance mono controller instant =
+  let requested = Clock.Pure.nanoseconds instant in
+  let current =
+    Count.of_uint64_bits (Mtime.to_uint64_ns (Eio.Time.Mono.now mono))
+  in
+  if Count.compare requested current < 0 then
+    invalid_arg "backward fake-clock advance";
+  match Count.to_uint64_bits requested with
+  | None -> invalid_arg "fake-clock native horizon"
+  | Some tick ->
+      Eio_mock.Clock.Mono.set_time mono (Mtime.of_uint64_ns tick);
+      S.notify controller
+
 module Harness (Controller : sig
   val value : S.t
+  val mono : Eio_mock.Clock.Mono.t
 end) =
 struct
   module P = S.Ports (struct
@@ -428,7 +449,7 @@ struct
           | Ok value -> value
           | Error diagnostic -> Alcotest.fail (Diagnostic.render diagnostic)
         in
-        S.advance Controller.value
+        advance Controller.mono Controller.value
           (if Clock.Pure.compare requested current < 0 then current
            else requested);
         Eio.Fiber.yield ();
@@ -492,9 +513,10 @@ let assert_released controller call =
 
 let earlier_owner primary () =
   Eio_mock.Backend.run (fun () ->
-      S.run (fun ~sw controller ->
+      run (fun ~sw ~mono controller ->
           let module H = Harness (struct
             let value = controller
+            let mono = mono
           end) in
           let host = H.create () in
           let child, result, scope = H.start ~sw host in
@@ -530,9 +552,10 @@ let earlier_owner primary () =
 
 let earlier_caller () =
   Eio_mock.Backend.run (fun () ->
-      S.run (fun ~sw controller ->
+      run (fun ~sw ~mono controller ->
           let module H = Harness (struct
             let value = controller
+            let mono = mono
           end) in
           let host = H.create () in
           let child, result, scope = H.start ~sw host in
@@ -556,7 +579,7 @@ let earlier_caller () =
 
 let canceled_load () =
   Eio_mock.Backend.run (fun () ->
-      S.run (fun ~sw:_ controller ->
+      run (fun ~sw:_ ~mono:_ controller ->
           let id, _ = Request_id.Allocator.fresh Request_id.Allocator.empty in
           let request = { S.Load.id; file = F.Config.file (F.config F.A) } in
           let cause = Parent_defect 203 in
@@ -584,9 +607,10 @@ let canceled_load () =
 
 let poll_error_before_observer () =
   Eio_mock.Backend.run (fun () ->
-      S.run (fun ~sw controller ->
+      run (fun ~sw ~mono controller ->
           let module H = Harness (struct
             let value = controller
+            let mono = mono
           end) in
           let host = H.create () in
           let _, result, scope = H.start ~sw host in
@@ -609,7 +633,7 @@ let poll_error_before_observer () =
 
 let first_resolved_cancel () =
   Eio_mock.Backend.run (fun () ->
-      S.run (fun ~sw controller ->
+      run (fun ~sw ~mono:_ controller ->
           let run, _ = Run_id.Allocator.fresh Run_id.Allocator.empty in
           let plan =
             Lifecycle_fixture.plan (F.config F.A) ~run ~issue:service_issue
@@ -693,9 +717,10 @@ let graceful_result = function
 
 let cancel_losing_loader () =
   Eio_mock.Backend.run (fun () ->
-      S.run (fun ~sw controller ->
+      run (fun ~sw ~mono controller ->
           let module H = Harness (struct
             let value = controller
+            let mono = mono
           end) in
           let host = H.create () in
           let _, result, scope = H.start ~sw host in
@@ -713,9 +738,10 @@ let cancel_losing_loader () =
 
 let success_close_defect () =
   Eio_mock.Backend.run (fun () ->
-      S.run (fun ~sw controller ->
+      run (fun ~sw ~mono controller ->
           let module H = Harness (struct
             let value = controller
+            let mono = mono
           end) in
           let host = H.create () in
           let _, result, scope = H.start ~sw host in
@@ -737,9 +763,10 @@ let success_close_defect () =
 
 let pre_entry_defect () =
   Eio_mock.Backend.run (fun () ->
-      S.run (fun ~sw controller ->
+      run (fun ~sw ~mono controller ->
           let module H = Harness (struct
             let value = controller
+            let mono = mono
           end) in
           let host = H.create () in
           let _, result, scope = H.start ~sw host in
@@ -771,9 +798,10 @@ let pre_entry_defect () =
 
 let full_controls () =
   Eio_mock.Backend.run (fun () ->
-      S.run (fun ~sw controller ->
+      run (fun ~sw ~mono controller ->
           let module H = Harness (struct
             let value = controller
+            let mono = mono
           end) in
           let host = H.create () in
           let _, result, scope = H.start ~sw host in
@@ -835,9 +863,10 @@ let full_controls () =
 
 let reused_issue () =
   Eio_mock.Backend.run (fun () ->
-      S.run (fun ~sw controller ->
+      run (fun ~sw ~mono controller ->
           let module H = Harness (struct
             let value = controller
+            let mono = mono
           end) in
           let host = H.create () in
           let _, result, scope = H.start ~sw host in
@@ -886,7 +915,7 @@ let reused_issue () =
                         | Core_model.Report _ -> None)
                       (List.rev (H.Bridge.history bridge)))
           in
-          S.advance controller (F.instant due);
+          advance mono controller (F.instant due);
           let replacement =
             F.issue ~state:"Doing" ~title:"Second snapshot" ~id:"service-0"
               ~identifier:"SERVICE-0" ()
@@ -955,10 +984,11 @@ let actor_failure () =
   let actual =
     capture (fun () ->
         Eio_mock.Backend.run (fun () ->
-            S.run (fun ~sw value ->
+            run (fun ~sw ~mono value ->
                 controller := Some value;
                 let module H = Harness (struct
                   let value = value
+                  let mono = mono
                 end) in
                 let host = H.create () in
                 ignore (H.start ~sw host);
@@ -1003,9 +1033,10 @@ let program seed length =
   in
   try
     Eio_mock.Backend.run (fun () ->
-        S.run (fun ~sw controller ->
+        run (fun ~sw ~mono controller ->
             let module H = Harness (struct
               let value = controller
+              let mono = mono
             end) in
             let host = H.create () in
             let _, result, scope = H.start ~sw host in
@@ -1198,9 +1229,10 @@ type reporter_primary = No_primary | Owner_primary
 
 let reporter_failure primary () =
   Eio_mock.Backend.run (fun () ->
-      S.run (fun ~sw controller ->
+      run (fun ~sw ~mono controller ->
           let module H = Harness (struct
             let value = controller
+            let mono = mono
           end) in
           let host = H.create () in
           let _, result, scope = H.start ~sw host in
@@ -1243,9 +1275,10 @@ type fault_identity = Same_exception | Same_io_payload
 
 let independent_ports identity () =
   Eio_mock.Backend.run (fun () ->
-      S.run (fun ~sw controller ->
+      run (fun ~sw ~mono controller ->
           let module H = Harness (struct
             let value = controller
+            let mono = mono
           end) in
           let host = H.create () in
           let _, result, scope = H.start ~sw host in

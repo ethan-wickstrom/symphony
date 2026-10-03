@@ -83,8 +83,14 @@ exception value; three regressions and the list model reject the previous code.
 `dune exec test/service_replay.exe -- --seed N --prefix N` from `ocaml/`.
 The full local OCaml gate passes with 325 source files, 17 rejected type clients,
 two valid assemblies and 72 unchanged input CMIs in both compiler-client modes.
-Hosted validation for this service checkpoint is pending.
-App-server dispatch, static release, 1,000-session benchmarks, HTTP API and the
+PR #9 merged as d88f0df; exact-head Linux/macOS PR and push logs pass these
+counts. Native capacity now holds 1/10/100/1000 actual scoped fake workers under
+the host clock, checks independent acquisition/owner-entry facts, measures 100
+poll cycles and joins complete shutdown. All four local macOS cases pass;
+1000 releases/completions match, 1427 handles retire and no call remains pending.
+See [physical capacity evidence](docs/design/service-capacity.md) for the measured
+units and limits. Capacity Linux/macOS hosted checks remain pending.
+App-server dispatch, static release, latency regression baselines, HTTP API and the
 portable conformance harness remain pending.
 Crowbar random campaigns are distinct from instrumented AFL coverage.
 
