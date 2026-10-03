@@ -3,8 +3,9 @@
 Checked workflow loading, configuration, strict prompt rendering, last-good reload
 and native owned workspaces/hooks are implemented. `doctor`, `dry-run`, `workspace`
 and authenticated Linear `tracker` inspection work locally. Pure scheduling and
-typed lifecycle transitions are implemented. The Eio owner and app-server
-integration remain pending; this executable does not dispatch issues yet.
+typed lifecycle transitions and the scoped Eio owner are implemented. Native
+fake-session capacity is measured; app-server integration remains pending.
+This executable does not dispatch issues yet.
 
 ## Build
 
@@ -88,6 +89,11 @@ The native suites include 1,000 seeded lifetime scenarios with replay via
 `SYMPHONY_LIFETIME_SEED`. Retained logs/manifests are in `_build/native-evidence`;
 optimized Python checks have a separate directory. `just fuzz` runs the seeded Crowbar
 campaign. Without `just`, use the commands in [justfile](justfile).
+
+The [native capacity gate](../docs/design/service-capacity.md) runs the same
+service with 1000 held fake scopes, native timings, sampled producer RSS and joined
+shutdown. It measures service/runtime overhead; real Codex processes remain
+outside this workload.
 `just release-tools` checks the immutable input materializer and physical binary
 verifier. Native verifier controls explicitly skip hosts without the selected
 macOS/SDK profile locally; macOS CI requires it and fails on missing coverage.
@@ -115,6 +121,7 @@ retain the checked current issue after release.
 Its separate `test/orchestration.exe` compares independent mathematical, list and
 event models with seed `20261001`, including 200,000 owner operations. Examples
 check label/routing eligibility, dispatch order, caps, retry growth, stale tokens
-and closure barriers. Test-port completions represent closed fake scopes. Eio command
-execution, deterministic whole-service simulation and live agent dispatch remain
-the next slice-4 work.
+and closure barriers. Test-port completions represent closed fake scopes. Eio
+command execution and deterministic service simulation pass the independent
+event model. Native capacity holds 1000 scoped fake sessions through measured
+polling and joined shutdown. Live agent dispatch remains the next slice-4 work.

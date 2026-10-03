@@ -95,6 +95,22 @@
  (modules service_replay)
  (libraries service_test_support))
 
+(executable
+ (name capacity_main)
+ (modules capacity_main)
+ (libraries capacity_support service_test_support eio_posix yojson))
+
+(library
+ (name capacity_support)
+ (wrapped false)
+ (modules capacity_fixture capacity_measurements)
+ (libraries scheduling_test_support))
+
+(test
+ (name capacity_test_main)
+ (modules capacity_test_main capacity_measurements_test)
+ (libraries capacity_support alcotest qcheck-core qcheck-core.runner))
+
 (test
  (name orchestration)
  (modules
