@@ -77,15 +77,23 @@ numeric samples remain bounded. The parent owns the PID, group guard, ACK/RSS
 checkpoints and final reap. Missing evidence, timeouts and sampled RSS above
 128 MiB fail. Native controls exposed wrong ps path, normalized-state mismatch
 and owner-entry/acquisition ordering before fixes. Independent source reviews
-found no blocker; CI/docs review is finishing.
+found no blocker. PR and push Linux/macOS gates pass at implementation head
+f4cb776. All 16 capacity manifests match digests/logs, lifecycle counts and
+reaped producers. Four raw boundary logs confirm the example/property/type
+counts and 335 sources. Receipt: _build/capacity-ci-audit.json.
+Codex reports no findings. Review's missing-latency-budget note matches the
+documented scope; OCaml 5.5 sources disprove the requested extra major GC.
+Both threads have evidence-backed replies and are resolved. Sourcery exhausted
+its review quota and supplied no source review.
 
 - [x] Implement native workload, measurement laws and parent failure controls.
 - [x] Run all four physical workloads and full local OCaml gate.
 - [x] Pinned Elixir 1.19.5/OTP 28 gate: 302 tests, zero failures, six skips;
   formatting/lint/coverage/Dialyzer pass. Receipt: _build/capacity-reference-full.log.
-- [ ] Publish the reviewed checkpoint.
-- [ ] Audit exact-head hosted Linux/macOS logs/manifests and address reviews.
-- [ ] Merge green capacity checkpoint, then implement the closed Codex runner.
+- [x] Publish [PR #10](https://github.com/ethan-wickstrom/symphony/pull/10).
+- [x] Audit implementation-head hosted logs/manifests and address reviews.
+- [ ] Finish exact-head checks for this evidence update and merge the checkpoint.
+- [ ] Implement the closed Codex runner after the reviewed capacity merge.
 
 No live dispatch CLI before progress/continuation/stall contracts pass.
 

@@ -89,7 +89,10 @@ the host clock, checks independent acquisition/owner-entry facts, measures 100
 poll cycles and joins complete shutdown. All four local macOS cases pass;
 1000 releases/completions match, 1427 handles retire and no call remains pending.
 See [physical capacity evidence](docs/design/service-capacity.md) for the measured
-units and limits. Capacity Linux/macOS hosted checks remain pending.
+units and limits. Linux/macOS PR and push capacity gates pass at implementation
+head f4cb776; all 16 archived manifests and four raw boundary logs were checked.
+The current source gate covers 335 files; 12 measurement examples/laws and 23
+parent controls in both Python modes pass. These are scoped fake workers.
 App-server dispatch, static release, latency regression baselines, HTTP API and the
 portable conformance harness remain pending.
 Crowbar random campaigns are distinct from instrumented AFL coverage.

@@ -26,8 +26,8 @@ producer at baseline, all acquired/owner-started workers, after five warmup and
 100 measured cycles, and after successful joined shutdown. The parent samples
 its owned PID, adds RSS and retains bounded stdout/stderr plus a manifest.
 The 60 s watchdog, output/event/sample budgets and 128 MiB sampled-RSS ceiling
-fail explicitly. The ceiling has over threefold headroom against the first
-macOS steady sample; Linux calibration remains pending hosted execution.
+fail explicitly. The ceiling has over threefold headroom against the largest
+local and hosted samples below.
 
 The launcher retains the native executable's PID and forks a quiet group guard.
 The guard closes inherited protocol pipes before exec proceeds. Final group
@@ -65,6 +65,30 @@ entry-before-acquisition assumption; the corrected ten-session run passed.
 Receipts: `_build/capacity-entry-order-red`, `capacity-order-red`,
 `capacity-start-order-red` and `capacity-10-first`.
 
+## Hosted capacity evidence
+
+At implementation head `f4cb776`, all four workloads pass on Linux x86_64
+and macOS arm64 in both [PR](https://github.com/ethan-wickstrom/symphony/actions/runs/37107154522)
+and [push](https://github.com/ethan-wickstrom/symphony/actions/runs/37107130651)
+workflows. All 16 manifests match supervisor/launcher digests and retained log
+hashes, record a reaped zero-exit producer, and match lifecycle/handle counts.
+Raw logs confirm 12 measurement examples/laws, 23 parent controls in both modes,
+29 service examples, three service property groups and 335 source files.
+
+The 1000-session samples use OCaml 5.5.0 on Linux 6.17/glibc 2.39 and macOS 26.6.2.
+Each row is a separate hosted process, without matched runner/load controls.
+
+| Host/event | All acquired, ms | Reducer step p95, ms | Full poll p95, ms | Plateau RSS, MiB | Maximum sampled RSS, MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Linux PR | 264.49 | 1.844 | 5.68 | 27.44 | 32.20 |
+| Linux push | 205.04 | 1.517 | 4.65 | 27.58 | 32.34 |
+| macOS PR | 185.69 | 1.403 | 6.26 | 25.08 | 29.73 |
+| macOS push | 185.15 | 3.843 | 12.21 | 25.06 | 29.70 |
+
+The `custody-*` artifacts retain each workload's manifest/stdout/stderr.
+Independent local audit: `_build/capacity-ci-audit.json` and
+`_build/capacity-ci-f4cb776-{pr,push}.log` from the repository root.
+
 ## Measurement laws and limits
 
 Reducer samples cover actual step/projection cost. Full-cycle samples span
@@ -75,8 +99,10 @@ Exact nearest-rank p50/p95/p99/max and counts remain separate for startup,
 steady reducer steps and full cycles. Seven examples and five independent
 500-case laws check rank thresholds, permutations, bounds and GC arithmetic.
 
-`Gc.stat` supplies whole-program lifetime allocation and live heap/stack/cache
-words. Each floating source counter must be finite, integral and below 2^53;
+[OCaml 5.5.0 `Gc.stat`](https://github.com/ocaml/ocaml/blob/5.5.0/stdlib/gc.mli)
+performs full major collection and supplies whole-program lifetime allocation
+and live heap/stack/cache words. Each floating source counter must be finite,
+integral and below 2^53;
 Zarith combines them before byte conversion. Checkpoint allocation counters may
 not reverse. Negative endpoint differences are reported as invalid samples,
 never clamped. RSS uses Linux smaps_rollup or macOS `/bin/ps`, with 1024-byte
