@@ -90,7 +90,10 @@ server-request branches, deny approvals, fail unsupported tools, cancel MCP/inpu
 without fabricated answers, and reject auth/attestation requests. Separate client
 and server correlation identities; completion and interruption acknowledgments do
 not release resources. Pending and active turns reject conflicting terminal
-outcomes; identical replays retain one completion barrier.
+outcomes; identical replays retain one completion barrier. Every stored terminal
+settles the accepted batch before return. Closing preserves its fixed deadline
+and local interruption while recording buffered protocol faults; it never waits
+for a future packet after a terminal.
 
 Required evidence: independent framing/observation/accounting models; outbound
 fixtures against retained generated schemas; causally fenced service scenarios;

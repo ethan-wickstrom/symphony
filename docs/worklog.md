@@ -83,7 +83,7 @@ Branch ethan/codex-runner implements the stable JSONL session and closed runner
 over the existing Agent_process bracket. Progress is acknowledged by the owner;
 continuation reads are fenced by issue/run/turn/epoch; typed stalls retain worker
 custody until closure. Late usage updates accounting without refreshing activity.
-Targeted local gates pass 94 protocol/runner cases, 65 core examples/29 properties,
+Targeted local gates pass 110 protocol/runner cases, 65 core examples/29 properties,
 36 service examples, 67 schema fixtures/42 controls in both modes and nine native
 agent cases. Workspace/runner cleanup regressions failed before their corrections;
 the mandatory workspace mapper preserves caller errors through lease closure.
@@ -114,6 +114,15 @@ receipt: _build/runner-terminal-full-check.log. Fresh hosted review and merge
 remain pending.
 Pinned Elixir also passes 302 tests, zero failures and six skips plus all
 formatting/lint/coverage/Dialyzer checks (_build/runner-terminal-reference.log).
+
+The next review reproduced eight active/Closing suffix failures. All 22 terminal
+matrix/closure cases pass after settlement gained explicit mode/deadline custody.
+Every stored terminal checks buffered frames; Closing preserves cancellation or
+stall and records conflicting/malformed suffixes without waiting for new packets.
+Independent review found no further issue. Full local OCaml and pinned Elixir
+gates pass; receipts: _build/runner-terminal-drain-full-check.log and
+runner-terminal-drain-reference.log. Fresh final-head hosted checks, artifact
+audits and review remain the merge gate.
 
 - [x] Record current schema provenance and consumed codecs/framing contracts.
 - [x] Add causal progress/continuation/stall to the existing owner/service boundary.

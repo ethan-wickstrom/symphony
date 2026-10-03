@@ -706,49 +706,32 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
     let* until = deadline t in
     rpc t mode (Some until) call
 
-  let rec settle t =
-    (* Finish the accepted batch before reporting success. A terminal prefix
+  let rec settle t mode fixed =
+    (* Finish the accepted batch before returning a terminal. A terminal prefix
        cannot hide its known malformed suffix or trailing usage observations. *)
     match t.frames with
     | _ :: _ ->
-        let* json = next t Active None in
+        let* json = next t mode fixed in
         let* envelope =
           Result.map_error
             (fun e -> protocol_error "continuation" (Protocol_codec.Envelope e))
             (Protocol_envelope.decode json)
         in
-        let* () = dispatch t Active None envelope in
-        settle t
+        let* () = dispatch t mode fixed envelope in
+        settle t mode fixed
     | [] -> (
-        match (t.frame_error, t.input) with
-        | Some error, _ -> Error error
-        | None, Some d -> Error (failure (Agent_runner.Turn_input_required d))
-        | None, None -> Ok ())
+        match (t.frame_error, mode, t.input) with
+        | Some error, _, _ -> Error error
+        | None, Active, Some d ->
+            Error (failure (Agent_runner.Turn_input_required d))
+        | None, (Active | Closing), None | None, Closing, Some _ -> Ok ())
 
   let rec wait_turn t mode fixed =
     match (mode, t.input, t.current) with
     | Active, Some d, _ -> Ok (Input_required d)
-    | Active, _, Some { terminal = Some Completed; _ } ->
-        let* () = settle t in
-        Ok Completed
-    | ( Closing,
-        _,
-        Some
-          {
-            terminal =
-              Some
-                ((Completed | Failed _ | Interrupted _ | Input_required _) as
-                 terminal);
-            _;
-          } )
-    | ( Active,
-        _,
-        Some
-          {
-            terminal =
-              Some ((Failed _ | Interrupted _ | Input_required _) as terminal);
-            _;
-          } ) -> Ok terminal
+    | (Active | Closing), _, Some { terminal = Some terminal; _ } ->
+        let* () = settle t mode fixed in
+        Ok terminal
     | (Active | Closing), _, Some { terminal = None; _ } ->
         let* json = next t mode fixed in
         let* envelope =
@@ -775,7 +758,9 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
           None
     in
     match terminal with
-    | Some terminal -> Ok terminal
+    | Some terminal ->
+        let* () = settle t Closing fixed in
+        Ok terminal
     | None ->
         let* json = next t Closing fixed in
         let* envelope =
@@ -949,7 +934,7 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
   let turn t ~prompt ~emit:callback =
     t.emit <- callback;
     let result =
-      let* () = settle t in
+      let* () = settle t Active None in
       let* () = start_turn t prompt in
       let* outcome = wait_turn t Active None in
       match t.current with
@@ -998,7 +983,7 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
       let answer, resolve = Eio.Promise.create () in
       let result =
         Eio.Switch.run (fun sw ->
-            let* () = settle t in
+            let* () = settle t Active None in
             Eio.Fiber.fork_daemon ~sw (fun () ->
                 let value = capture callback in
                 Eio.Promise.resolve resolve value;
@@ -1016,11 +1001,11 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
                     | None -> Ok ()
                   in
                   guard t Active None (fun () ->
-                      let* () = settle t in
+                      let* () = settle t Active None in
                       Ok value)
             in
             let rec loop () =
-              let* () = settle t in
+              let* () = settle t Active None in
               match Eio.Promise.peek answer with
               | Some value -> finish value
               | None -> (

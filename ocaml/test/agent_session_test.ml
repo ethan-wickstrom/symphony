@@ -228,7 +228,28 @@ let terminal_before_ack () =
 
 type terminal_order = Before_ack | After_ack
 
-let terminal_replay order status expected () =
+let terminal_frame status =
+  let error =
+    if String.equal status "failed" then
+      D.json
+        {|{"message":"conflicting terminal","codexErrorInfo":null,"additionalDetails":null}|}
+    else D.json "null"
+  in
+  D.obj
+    [
+      ("method", D.text "turn/completed");
+      ( "params",
+        D.obj
+          [
+            ("threadId", D.text "thread-9");
+            ("turn", D.turn ~id:"turn-9" ~status ~error ());
+          ] );
+    ]
+
+let batch_frames frames =
+  String.concat "" (List.map (fun json -> Json.encode json ^ "\n") frames)
+
+let terminal_replay order first_status status expected () =
   let completions = ref 0 in
   let emit = function
     | Agent_runner.Turn_completed _ -> incr completions
@@ -249,34 +270,15 @@ let terminal_replay order status expected () =
               ("result", D.obj [ ("turn", D.turn ~id ~status:"inProgress" ()) ]);
             ]
         in
-        let terminal status =
-          let error =
-            if String.equal status "failed" then
-              D.json
-                {|{"message":"conflicting terminal","codexErrorInfo":null,"additionalDetails":null}|}
-            else D.json "null"
-          in
-          D.obj
-            [
-              ("method", D.text "turn/completed");
-              ( "params",
-                D.obj
-                  [
-                    ("threadId", D.text "thread-9");
-                    ("turn", D.turn ~id ~status ~error ());
-                  ] );
-            ]
-        in
-        let first = terminal "completed" and repeated = terminal status in
+        let first = terminal_frame first_status
+        and repeated = terminal_frame status in
         let messages =
           match order with
           | Before_ack -> [ first; repeated; ack ]
           | After_ack -> [ ack; first; repeated ]
         in
         (* One accepted batch makes every duplicate precede the success barrier. *)
-        D.send peer
-          (String.concat ""
-             (List.map (fun json -> Json.encode json ^ "\n") messages)))
+        D.send peer (batch_frames messages))
   in
   Alcotest.check Alcotest.bool "replay scope is closed before return" true
     (has_event trace "process-closed");
@@ -300,7 +302,8 @@ let terminal_replay order status expected () =
     Alcotest.check Alcotest.int "conflicting replay publishes no completion" 0
       !completions)
   else
-    Alcotest.check Alcotest.int "identical replay publishes one completion" 1
+    Alcotest.check Alcotest.int "identical replay preserves completion count"
+      (if String.equal expected "completed" then 1 else 0)
       !completions
 
 let remote_terminals () =
@@ -870,6 +873,61 @@ let active_interrupt requested () =
       Alcotest.check Alcotest.int "one bounded interrupt request" 1
         (List.length (calls trace "turn/interrupt")))
 
+type closing_suffix = Conflicting_terminal | Malformed_frame
+
+let closing_batch requested suffix () =
+  let active = D.gate () in
+  let progress = ref 0 in
+  let emit = function
+    | Agent_runner.Session_started _ | Agent_runner.Turn_started _ ->
+        D.release active
+    | Agent_runner.Turn_completed _ -> incr progress
+    | Agent_runner.Output _
+    | Agent_runner.Usage_report _
+    | Agent_runner.Rate_limits _
+    | Agent_runner.Unsupported_tool _ -> ()
+  in
+  scheduled ~emit
+    ~on_write:(fun peer call ->
+      match D.method_name call with
+      | Some "turn/interrupt" ->
+          let ack =
+            D.obj [ ("id", D.field "id" call); ("result", D.json "{}") ]
+          in
+          let first = terminal_frame "interrupted" in
+          let bytes =
+            match suffix with
+            | Conflicting_terminal ->
+                batch_frames [ ack; first; terminal_frame "completed" ]
+            | Malformed_frame -> batch_frames [ ack; first ] ^ "{broken}\n"
+          in
+          D.send peer bytes
+      | Some _ | None ->
+          D.server
+            ~turn:(fun peer call ->
+              D.reply peer call
+                (D.obj
+                   [ ("turn", D.turn ~id:"turn-9" ~status:"inProgress" ()) ]))
+            peer call)
+    (fun ~trace ~mono:_ ~resolver ~result ~peer:_ ->
+      D.await active;
+      Eio.Promise.resolve resolver requested;
+      let actual = Eio.Promise.await result in
+      Alcotest.check Alcotest.bool "closing batch closes process before return"
+        true
+        (has_event trace "process-closed");
+      (match actual with
+      | Error (App_server.Stopped { interrupt; remote_error = Some _ }) ->
+          Alcotest.check Alcotest.bool "closing retains local interrupt" true
+            (interrupt = requested)
+      | Error (App_server.Stopped { remote_error = None; _ }) ->
+          Alcotest.fail "closing terminal hid the accepted faulty suffix"
+      | Ok _ | Error (App_server.Failure _ | App_server.Deadline _) ->
+          Alcotest.fail "closing suffix replaced the local interrupt");
+      Alcotest.check Alcotest.int "closing publishes no completion" 0 !progress;
+      Alcotest.check Alcotest.int "closing sends one interrupt request" 1
+        (List.length (calls trace "turn/interrupt")))
+
 let interrupt_rpc_failure () =
   let active = D.gate () in
   let requested = Agent_runner.Cancel Agent_runner.Scope_change in
@@ -1270,17 +1328,53 @@ let suite () =
       example "early terminals, duplicates and foreign thread" `Quick
         terminal_before_ack;
       example "pending completed then failed is rejected" `Quick
-        (terminal_replay Before_ack "failed" "failure");
+        (terminal_replay Before_ack "completed" "failed" "failure");
       example "pending completed then interrupted is rejected" `Quick
-        (terminal_replay Before_ack "interrupted" "failure");
+        (terminal_replay Before_ack "completed" "interrupted" "failure");
       example "active completed then failed is rejected" `Quick
-        (terminal_replay After_ack "failed" "failure");
+        (terminal_replay After_ack "completed" "failed" "failure");
       example "active completed then interrupted is rejected" `Quick
-        (terminal_replay After_ack "interrupted" "failure");
+        (terminal_replay After_ack "completed" "interrupted" "failure");
       example "identical pending completed replay succeeds once" `Quick
-        (terminal_replay Before_ack "completed" "completed");
+        (terminal_replay Before_ack "completed" "completed" "completed");
       example "identical active completed replay succeeds once" `Quick
-        (terminal_replay After_ack "completed" "completed");
+        (terminal_replay After_ack "completed" "completed" "completed");
+      example "pending failed then completed is rejected" `Quick
+        (terminal_replay Before_ack "failed" "completed" "failure");
+      example "pending failed then interrupted is rejected" `Quick
+        (terminal_replay Before_ack "failed" "interrupted" "failure");
+      example "pending interrupted then completed is rejected" `Quick
+        (terminal_replay Before_ack "interrupted" "completed" "failure");
+      example "pending interrupted then failed is rejected" `Quick
+        (terminal_replay Before_ack "interrupted" "failed" "failure");
+      example "active failed then completed is rejected" `Quick
+        (terminal_replay After_ack "failed" "completed" "failure");
+      example "active failed then interrupted is rejected" `Quick
+        (terminal_replay After_ack "failed" "interrupted" "failure");
+      example "active interrupted then completed is rejected" `Quick
+        (terminal_replay After_ack "interrupted" "completed" "failure");
+      example "active interrupted then failed is rejected" `Quick
+        (terminal_replay After_ack "interrupted" "failed" "failure");
+      example "identical pending failed replay retains failure" `Quick
+        (terminal_replay Before_ack "failed" "failed" "failed-turn");
+      example "identical active failed replay retains failure" `Quick
+        (terminal_replay After_ack "failed" "failed" "failed-turn");
+      example "identical pending interrupted replay retains interruption" `Quick
+        (terminal_replay Before_ack "interrupted" "interrupted"
+           "interrupted-turn");
+      example "identical active interrupted replay retains interruption" `Quick
+        (terminal_replay After_ack "interrupted" "interrupted"
+           "interrupted-turn");
+      example "cancel closing reports conflicting terminal suffix" `Quick
+        (closing_batch (Agent_runner.Cancel Agent_runner.Reconciliation)
+           Conflicting_terminal);
+      example "stall closing reports conflicting terminal suffix" `Quick
+        (closing_batch Agent_runner.Stall Conflicting_terminal);
+      example "cancel closing reports malformed suffix" `Quick
+        (closing_batch (Agent_runner.Cancel Agent_runner.Reconciliation)
+           Malformed_frame);
+      example "stall closing reports malformed suffix" `Quick
+        (closing_batch Agent_runner.Stall Malformed_frame);
       example "remote failed and interrupted terminals retain their outcomes"
         `Quick remote_terminals;
       example "interleaved colliding request IDs replay before turn ack" `Quick

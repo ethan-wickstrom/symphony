@@ -99,7 +99,7 @@ Crowbar random campaigns are distinct from instrumented AFL coverage.
 
 The closed runner uses the pinned stable Codex 0.159.2 JSONL protocol under the
 existing native process/workspace brackets. Targeted local evidence passes
-94 protocol/session/runner cases, 65 core examples and 29 core property groups,
+110 protocol/session/runner cases, 65 core examples and 29 core property groups,
 36 service examples and nine actual owned fake-server subprocess cases.
 The schema gate validates 67 actual encoded fixtures and rejects 42 controls in
 normal and optimized Python modes. Native cases check three turns on one thread,
@@ -115,8 +115,10 @@ exporter/checker/lock/Python identities without claiming binary attestation.
 Review regressions cover retained stall cadence during tracker reads and repeated
 refreshes, both worker/read closure orders, terminal cleanup during shutdown,
 Preparing interruption before acquisition, and accounting-only completed-turn
-usage. Pending/active terminal replay regressions reject conflicting outcomes
-and preserve one completion for identical replays. Whole-cycle capacity timing
+usage. All ordered pending/active terminal pairs reject conflicting outcomes
+and preserve identical replays. Closing checks buffered conflicts/malformed
+suffixes under the original cancellation/stall cause and deadline.
+Whole-cycle capacity timing
 follows Idle completion; a held scoped read/finalizer cannot be replaced by a
 timer-rearming sample.
 
