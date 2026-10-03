@@ -89,7 +89,8 @@ turn/start on the same thread, and turn/interrupt on stop. Handle all ten stable
 server-request branches, deny approvals, fail unsupported tools, cancel MCP/input
 without fabricated answers, and reject auth/attestation requests. Separate client
 and server correlation identities; completion and interruption acknowledgments do
-not release resources.
+not release resources. Pending and active turns reject conflicting terminal
+outcomes; identical replays retain one completion barrier.
 
 Required evidence: independent framing/observation/accounting models; outbound
 fixtures against retained generated schemas; causally fenced service scenarios;

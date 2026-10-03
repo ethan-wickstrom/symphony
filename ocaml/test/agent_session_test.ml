@@ -226,6 +226,83 @@ let terminal_before_ack () =
         (Turn_id.text ended.App_server.turn)
   | Error _ -> Alcotest.fail "matching early terminal was lost"
 
+type terminal_order = Before_ack | After_ack
+
+let terminal_replay order status expected () =
+  let completions = ref 0 in
+  let emit = function
+    | Agent_runner.Turn_completed _ -> incr completions
+    | Agent_runner.Session_started _
+    | Agent_runner.Turn_started _
+    | Agent_runner.Output _
+    | Agent_runner.Usage_report _
+    | Agent_runner.Rate_limits _
+    | Agent_runner.Unsupported_tool _ -> ()
+  in
+  let result, trace =
+    run ~emit (fun peer call ->
+        let id = "turn-9" in
+        let ack =
+          D.obj
+            [
+              ("id", D.field "id" call);
+              ("result", D.obj [ ("turn", D.turn ~id ~status:"inProgress" ()) ]);
+            ]
+        in
+        let terminal status =
+          let error =
+            if String.equal status "failed" then
+              D.json
+                {|{"message":"conflicting terminal","codexErrorInfo":null,"additionalDetails":null}|}
+            else D.json "null"
+          in
+          D.obj
+            [
+              ("method", D.text "turn/completed");
+              ( "params",
+                D.obj
+                  [
+                    ("threadId", D.text "thread-9");
+                    ("turn", D.turn ~id ~status ~error ());
+                  ] );
+            ]
+        in
+        let first = terminal "completed" and repeated = terminal status in
+        let messages =
+          match order with
+          | Before_ack -> [ first; repeated; ack ]
+          | After_ack -> [ ack; first; repeated ]
+        in
+        (* One accepted batch makes every duplicate precede the success barrier. *)
+        D.send peer
+          (String.concat ""
+             (List.map (fun json -> Json.encode json ^ "\n") messages)))
+  in
+  Alcotest.check Alcotest.bool "replay scope is closed before return" true
+    (has_event trace "process-closed");
+  check_tag expected result;
+  if String.equal expected "failure" then (
+    (match result with
+    | Error (App_server.Failure (Agent_runner.Response_error _)) -> ()
+    | Ok _
+    | Error
+        ( App_server.Failure
+            ( Agent_runner.Codex_not_found _
+            | Agent_runner.Invalid_workspace_cwd _
+            | Agent_runner.Port_exit _
+            | Agent_runner.Turn_failed _
+            | Agent_runner.Turn_input_required _
+            | Agent_runner.Template_error _
+            | Agent_runner.Workspace_error _
+            | Agent_runner.Tracker_error _ )
+        | App_server.Deadline _ | App_server.Stopped _ ) ->
+        Alcotest.fail "conflicting terminal must be a response error");
+    Alcotest.check Alcotest.int "conflicting replay publishes no completion" 0
+      !completions)
+  else
+    Alcotest.check Alcotest.int "identical replay publishes one completion" 1
+      !completions
+
 let remote_terminals () =
   let failure =
     D.json
@@ -1192,6 +1269,18 @@ let suite () =
         handshake_and_policy;
       example "early terminals, duplicates and foreign thread" `Quick
         terminal_before_ack;
+      example "pending completed then failed is rejected" `Quick
+        (terminal_replay Before_ack "failed" "failure");
+      example "pending completed then interrupted is rejected" `Quick
+        (terminal_replay Before_ack "interrupted" "failure");
+      example "active completed then failed is rejected" `Quick
+        (terminal_replay After_ack "failed" "failure");
+      example "active completed then interrupted is rejected" `Quick
+        (terminal_replay After_ack "interrupted" "failure");
+      example "identical pending completed replay succeeds once" `Quick
+        (terminal_replay Before_ack "completed" "completed");
+      example "identical active completed replay succeeds once" `Quick
+        (terminal_replay After_ack "completed" "completed");
       example "remote failed and interrupted terminals retain their outcomes"
         `Quick remote_terminals;
       example "interleaved colliding request IDs replay before turn ack" `Quick

@@ -507,6 +507,23 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
              (Agent_runner.Response_error
                 (diagnostic "A completed notification reported an active turn.")))
 
+  let merge_terminal previous incoming =
+    (* A replay preserves the first outcome; a conflicting terminal is invalid. *)
+    match (previous, incoming) with
+    | None, terminal -> Ok (Some terminal)
+    | Some Completed, Completed
+    | Some (Failed _), Failed _
+    | Some (Interrupted _), Interrupted _
+    | Some (Input_required _), Input_required _ -> Ok previous
+    | Some Completed, (Failed _ | Interrupted _ | Input_required _)
+    | Some (Failed _), (Completed | Interrupted _ | Input_required _)
+    | Some (Interrupted _), (Completed | Failed _ | Input_required _)
+    | Some (Input_required _), (Completed | Failed _ | Interrupted _) ->
+        Error
+          (failure
+             (Agent_runner.Response_error
+                (diagnostic "The turn reported conflicting terminal outcomes.")))
+
   let notice t mode fixed envelope method_name params =
     let* notice =
       Result.map_error
@@ -563,8 +580,8 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
               let* () =
                 if String.equal method_name "turn/completed" then (
                   let* terminal = terminal_of turn in
-                  if Option.is_none t.pending_terminal then
-                    t.pending_terminal <- Some terminal;
+                  let* merged = merge_terminal t.pending_terminal terminal in
+                  t.pending_terminal <- merged;
                   Ok ())
                 else Ok ()
               in
@@ -573,8 +590,8 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
             when Turn_id.equal current.id turn.Protocol_codec.id ->
               if String.equal method_name "turn/completed" then (
                 let* terminal = terminal_of turn in
-                if Option.is_none current.terminal then
-                  current.terminal <- Some terminal;
+                let* merged = merge_terminal current.terminal terminal in
+                current.terminal <- merged;
                 Ok ())
               else Ok ()
           | (Ready | Awaiting _), Some _
