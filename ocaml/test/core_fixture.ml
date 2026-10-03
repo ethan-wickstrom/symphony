@@ -30,7 +30,7 @@ let retry_cap_ms = 40
 let growing_retry_cap_ms = 45000
 let initial_cap = 2
 
-let resolve profile =
+let resolve ?(stall_ms = 0) profile =
   let tag, project, prompt =
     match profile with
     | A | Tight | New_policy | Required | Growing_retry ->
@@ -94,9 +94,11 @@ let resolve profile =
       \  after_run: finish-%s\n\
        codex:\n\
       \  command: agent-%s app-server\n\
+      \  stall_timeout_ms: %d\n\
        ---\n\
        %s"
-      terminal required_labels project interval cap retry_cap tag tag tag prompt
+      terminal required_labels project interval cap retry_cap tag tag tag
+      stall_ms prompt
   in
   let document =
     match Workflow_document.parse ~file source with
@@ -126,6 +128,8 @@ let config profile =
   match List.assoc_opt profile profiles with
   | Some value -> value
   | None -> Alcotest.fail "Unknown core fixture profile"
+
+let with_stall ~milliseconds profile = resolve ~stall_ms:milliseconds profile
 
 let binding_profile binding =
   match

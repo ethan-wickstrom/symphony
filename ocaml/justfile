@@ -5,8 +5,8 @@ test: build
     opam exec --switch . -- dune runtest
     python3 test/native_check_test.py
     PYTHONOPTIMIZE=1 python3 test/native_check_test.py
-    python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --out _build/native-evidence
-    PYTHONOPTIMIZE=1 python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --out _build/native-evidence-optimized
+    python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --agent _build/default/test/native_agent_test.exe --out _build/native-evidence
+    PYTHONOPTIMIZE=1 python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --agent _build/default/test/native_agent_test.exe --out _build/native-evidence-optimized
     python3 test/cli_check.py _build/default/bin/main.exe
     PYTHONOPTIMIZE=1 python3 test/cli_check.py _build/default/bin/main.exe
     python3 test/tracker_cli_check.py _build/default/bin/main.exe
@@ -20,6 +20,7 @@ check-format:
 
 check: test check-format
     just capacity
+    just protocol-codec
     opam exec --switch . -- python3 test/lifecycle_types_test.py
     opam exec --switch . -- python3 -O test/lifecycle_types_test.py
     opam exec --switch . -- dune exec tools/check_source.exe -- .
@@ -30,6 +31,13 @@ check: test check-format
     python3 tools/check_h1.py ../vendor/h1
     PYTHONOPTIMIZE=1 python3 tools/check_h1.py ../vendor/h1
     just release-tools
+
+protocol-codec: build
+    python3 -m venv _build/codec-venv
+    _build/codec-venv/bin/python -m pip install --require-hashes --only-binary=:all: --no-cache-dir --disable-pip-version-check -r tools/protocol_codec_requirements.lock
+    opam exec --switch . -- dune exec test/protocol_fixtures.exe > _build/codec-fixtures.jsonl
+    _build/codec-venv/bin/python tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir _build/codec-evidence/normal
+    _build/codec-venv/bin/python -O tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir _build/codec-evidence/optimized
 
 capacity: build
     #!/usr/bin/env bash

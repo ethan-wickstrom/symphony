@@ -22,18 +22,25 @@ module type CLOSED_RUNNER = sig
     t ->
     clock:clock ->
     workspace:workspace_manager ->
-    cancel:Agent_runner.cancel_reason Eio.Promise.t ->
+    interrupt:Agent_runner.interrupt Eio.Promise.t ->
+    emit:(progress -> unit) ->
+    refresh:
+      (turn:Turn_id.t -> (Agent_runner.continuation, Tracker_error.t) result) ->
     request ->
     completed
   (** Use exactly the supplied clock and workspace instance. Return only after
       this invocation's workspace/process/hook scopes close. A previously
-      resolved cancellation promise reaches the runner, which must discharge it
-      with a matching Canceled completion and no workspace/process/hook
+      resolved interruption promise reaches the runner, which must discharge it
+      with a matching Canceled/Stalled completion and no workspace/process/hook
       acquisition, after its empty invocation scope closes. Only the runner
       constructs its opaque completion. Unrequested cancellation and defects
-      drain then propagate with the supplied exception identity/backtrace. No
-      progress/continuation/stall input is added to the first service operation
-      language. *)
+      drain then propagate with the supplied exception identity/backtrace.
+      Progress publication is acknowledged or interrupted before the next
+      publication. Refresh registers its turn-fenced waiter before owner
+      delivery. Each completed turn permits one refresh callback; repeating it
+      is a port defect rejected before publication. Recheck interruption after
+      either callback before acquiring more resources or starting another turn.
+      Callbacks never run from protected finalizers. *)
 end
 
 module Make
@@ -56,6 +63,7 @@ module Make
        and type tracker_request = Tracker.Contract.request
        and type tracker_reply = Tracker.Contract.reply
        and type agent_request = Agent.request
+       and type agent_progress = Agent.progress
        and type agent_completed = Agent.completed
        and type workspace_cleanup = Workspace.Contract.cleanup
 

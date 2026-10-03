@@ -34,6 +34,7 @@ let tracker = function
   | C.Load_workflow _
   | C.Start_worker _
   | C.Stop_worker _
+  | C.Continue_worker _
   | C.Remove_workspace _
   | C.Cancel_request _
   | C.Arm_poll _
@@ -47,6 +48,7 @@ let load = function
   | C.Read_tracker _
   | C.Start_worker _
   | C.Stop_worker _
+  | C.Continue_worker _
   | C.Remove_workspace _
   | C.Cancel_request _
   | C.Arm_poll _
@@ -61,6 +63,7 @@ let poll = function
   | C.Read_tracker _
   | C.Start_worker _
   | C.Stop_worker _
+  | C.Continue_worker _
   | C.Remove_workspace _
   | C.Cancel_request _
   | C.Cancel_poll _
@@ -74,6 +77,7 @@ let removal = function
   | C.Load_workflow _
   | C.Start_worker _
   | C.Stop_worker _
+  | C.Continue_worker _
   | C.Cancel_request _
   | C.Arm_poll _
   | C.Cancel_poll _
@@ -87,6 +91,7 @@ let worker = function
   | C.Load_workflow _
   | C.Remove_workspace _
   | C.Stop_worker _
+  | C.Continue_worker _
   | C.Cancel_request _
   | C.Arm_poll _
   | C.Cancel_poll _
@@ -124,7 +129,8 @@ let actual_reply issues = function
 
 (* This driver closes only fixture reads/loads; worker and cleanup closure stay
    explicit so an inner terminal cannot silently release an owner. *)
-let close_reads ~profile ~issues harness =
+let close_reads ?config ~profile ~issues harness =
+  let config = Option.value config ~default:(F.config profile) in
   let rec loop budget pending harness =
     match pending with
     | [] -> harness
@@ -133,12 +139,12 @@ let close_reads ~profile ~issues harness =
         let next =
           match command with
           | C.Load_workflow { id; _ } ->
-              Some
-                (send harness (C.Workflow_loaded (id, Ok (F.config profile))))
+              Some (send harness (C.Workflow_loaded (id, Ok config)))
           | C.Read_tracker request ->
               Some (respond harness request (actual_reply issues request))
           | C.Start_worker _
           | C.Stop_worker _
+          | C.Continue_worker _
           | C.Remove_workspace _
           | C.Cancel_request _
           | C.Arm_poll _
@@ -153,8 +159,8 @@ let close_reads ~profile ~issues harness =
   in
   loop 64 harness.commands harness
 
-let cycle ?(profile = F.A) ~issues harness =
-  close_reads ~profile ~issues (send harness C.Refresh_requested)
+let cycle ?config ?(profile = F.A) ~issues harness =
+  close_reads ?config ~profile ~issues (send harness C.Refresh_requested)
 
 let started_since harness = List.filter_map worker harness.history
 let started_id request = Issue_id.text (Issue.id (F.Agent.issue request))
@@ -277,6 +283,7 @@ let retry_due () =
         | C.Load_workflow _
         | C.Start_worker _
         | C.Stop_worker _
+        | C.Continue_worker _
         | C.Remove_workspace _
         | C.Cancel_request _
         | C.Arm_poll _
@@ -372,6 +379,7 @@ let parked_reload () =
         | C.Load_workflow _
         | C.Start_worker _
         | C.Stop_worker _
+        | C.Continue_worker _
         | C.Remove_workspace _
         | C.Cancel_request _
         | C.Arm_poll _
@@ -617,6 +625,7 @@ let invalid_candidate_reload () =
           | C.Read_tracker _
           | C.Start_worker _
           | C.Stop_worker _
+          | C.Continue_worker _
           | C.Remove_workspace _
           | C.Cancel_request _
           | C.Cancel_poll _
@@ -807,6 +816,7 @@ let fault_context () =
     | C.Read_tracker _
     | C.Start_worker _
     | C.Stop_worker _
+    | C.Continue_worker _
     | C.Remove_workspace _
     | C.Cancel_request _
     | C.Arm_poll _
@@ -868,6 +878,349 @@ let fault_context () =
   let failed = respond reading read (Error F.tracker_error) in
   check issue_a failed
 
+let checked = function
+  | Ok value -> value
+  | Error message -> Alcotest.fail message
+
+let thread = checked (Thread_id.parse "thread-core")
+let first_turn = checked (Turn_id.parse "turn-a")
+let next_turn = checked (Turn_id.parse "turn-b")
+let first_session = checked (Session_id.parse "thread-core-turn-a")
+let next_session = checked (Session_id.parse "thread-core-turn-b")
+
+let emit ?now ?emitted_at harness request sequence notice =
+  let now = Option.value now ~default:harness.now in
+  let emitted_at = Option.value emitted_at ~default:now in
+  let sequence = checked (Positive_count.parse (string_of_int sequence)) in
+  send ~now harness
+    (C.Worker_progress
+       {
+         issue = Issue.id (F.Agent.issue request);
+         run = F.Agent.run_id request;
+         progress = F.Agent.progress ~sequence notice;
+         emitted_at = F.instant emitted_at;
+       })
+
+let session harness request =
+  let harness = emit harness request 1 F.Agent.Preparing in
+  let harness =
+    F.with_path (F.Agent.workspace request) (fun path ->
+        emit harness request 2 (F.Agent.Workspace_ready path))
+  in
+  let harness = emit harness request 3 F.Agent.Rendering in
+  let harness = emit harness request 4 F.Agent.Starting in
+  emit harness request 5
+    (F.Agent.Protocol
+       (Agent_runner.Session_started
+          { session = first_session; thread; turn = first_turn }))
+
+let completed_turn harness request sequence session turn =
+  emit harness request sequence
+    (F.Agent.Protocol (Agent_runner.Turn_completed { session; turn }))
+
+let continue harness request turn =
+  send harness
+    (C.Worker_continue
+       (Issue.id (F.Agent.issue request), F.Agent.run_id request, turn))
+
+let continuation = function
+  | C.Continue_worker (issue, run, turn, answer) ->
+      Some (issue, run, turn, answer)
+  | C.Load_workflow _
+  | C.Read_tracker _
+  | C.Start_worker _
+  | C.Stop_worker _
+  | C.Remove_workspace _
+  | C.Cancel_request _
+  | C.Arm_poll _
+  | C.Cancel_poll _
+  | C.Arm_retry _
+  | C.Cancel_retry _
+  | C.Report _ -> None
+
+let stopping = function
+  | C.Stop_worker (_, _, reason) -> Some reason
+  | C.Load_workflow _
+  | C.Read_tracker _
+  | C.Start_worker _
+  | C.Continue_worker _
+  | C.Remove_workspace _
+  | C.Cancel_request _
+  | C.Arm_poll _
+  | C.Cancel_poll _
+  | C.Arm_retry _
+  | C.Cancel_retry _
+  | C.Report _ -> None
+
+let continuation_serialization () =
+  let started = cycle ~issues:[ issue_a ] (startup F.A) in
+  let request = run "opaque-a" started in
+  let active = session started request in
+  let older = send active C.Refresh_requested in
+  let old_read = choose "Older reconciliation missing" tracker older.commands in
+  let completed = completed_turn older request 6 first_session first_turn in
+  running 1 completed;
+  no_command "Protocol terminal cannot close worker" removal completed;
+  let queued = continue completed request first_turn in
+  no_command "Post-turn refresh waits older issue read" tracker queued;
+  let repeated = continue queued request first_turn in
+  Alcotest.check Alcotest.int "Duplicate continuation is identity" 0
+    (List.length repeated.commands);
+  let reading = respond repeated old_read (F.reply [ issue_a ]) in
+  let fresh = choose "Fresh post-turn read missing" tracker reading.commands in
+  Alcotest.check Alcotest.bool "Earlier read cannot satisfy turn" false
+    (Request_id.equal (request_id old_read) (request_id fresh));
+  no_command "Cycle waits post-turn refresh before preflight" load reading;
+  let current =
+    F.issue ~state:"Doing" ~title:"After turn" ~id:"opaque-a"
+      ~identifier:"CORE-1" ()
+  in
+  let answered = respond reading fresh (F.reply [ current ]) in
+  let _, run, turn, answer =
+    choose "Continuation answer missing" continuation answered.commands
+  in
+  Alcotest.check Alcotest.bool "Answer fences current run" true
+    (Run_id.equal run (F.Agent.run_id request));
+  Alcotest.check Alcotest.bool "Answer fences completed turn" true
+    (Turn_id.equal turn first_turn);
+  (match answer with
+  | Ok (Agent_runner.Continue issue) ->
+      Alcotest.check Alcotest.string "Refreshed current issue" "After turn"
+        (Issue.title issue)
+  | Ok Agent_runner.Stop | Error _ ->
+      Alcotest.fail "Active refresh must continue");
+  let repeated = continue answered request first_turn in
+  no_command "Answered turn cannot reread" tracker repeated;
+  no_command "Answered turn cannot reply twice" continuation repeated;
+  let changed = send repeated C.Workflow_changed in
+  let id =
+    choose "Continuation authority reload missing" load changed.commands
+  in
+  let changed = send changed (C.Workflow_loaded (id, Ok (F.config F.B))) in
+  let next =
+    emit changed request 7
+      (F.Agent.Protocol
+         (Agent_runner.Turn_started { session = next_session; turn = next_turn }))
+  in
+  let next = completed_turn next request 8 next_session next_turn in
+  let next = continue next request next_turn in
+  let next_read =
+    choose "Distinct turn refresh missing" tracker next.commands
+  in
+  Alcotest.check Alcotest.bool "Next turn keeps original launch binding" true
+    (T.equal (request_binding next_read) (F.Config.tracker (F.config F.A)));
+  Alcotest.check Alcotest.bool
+    "Latest credentials cannot replace launch authority" false
+    (T.equal (request_binding next_read) (F.Config.tracker (F.config F.B)))
+
+let continuation_epoch () =
+  let started = cycle ~issues:[ issue_a ] (startup F.A) in
+  let request = run "opaque-a" started in
+  let active =
+    completed_turn (session started request) request 6 first_session first_turn
+  in
+  let reading = continue active request first_turn in
+  let stale = choose "Continuation read missing" tracker reading.commands in
+  let changed = send reading C.Workflow_changed in
+  let id = choose "Reload missing" load changed.commands in
+  let changed =
+    send changed (C.Workflow_loaded (id, Ok (F.config F.New_policy)))
+  in
+  no_command "Canceled read retains custody" tracker changed;
+  let closed =
+    respond changed stale
+      (F.reply [ F.issue ~state:"Done" ~id:"opaque-a" ~identifier:"CORE-1" () ])
+  in
+  no_command "Superseded terminal cannot stop worker" stopping closed;
+  no_command "Superseded read cannot answer continuation" continuation closed;
+  let fresh =
+    choose "Current policy continuation reread missing" tracker closed.commands
+  in
+  Alcotest.check Alcotest.bool "Superseded read gets a new request" false
+    (Request_id.equal (request_id stale) (request_id fresh));
+  let terminal =
+    F.issue ~state:"Closed" ~id:"opaque-a" ~identifier:"CORE-1" ()
+  in
+  let stopped = respond closed fresh (F.reply [ terminal ]) in
+  running 1 stopped;
+  (match choose "Terminal answer missing" continuation stopped.commands with
+  | _, _, _, Ok Agent_runner.Stop -> ()
+  | _, _, _, (Ok (Agent_runner.Continue _) | Error _) ->
+      Alcotest.fail "New terminal policy must stop");
+  let shutdown = send stopped C.Shutdown in
+  let closed = close_worker shutdown request Agent_runner.Succeeded in
+  running 0 closed;
+  ignore (choose "Terminal cleanup survives shutdown" removal closed.commands)
+
+let accepted_usage () =
+  let started = cycle ~issues:[ issue_a ] (startup F.A) in
+  let request = run "opaque-a" started in
+  let active = session started request in
+  let usage input output total =
+    Usage.make
+      ~input:(checked (Count.parse input))
+      ~output:(checked (Count.parse output))
+      ~total:(checked (Count.parse total))
+  in
+  let report harness sequence absolute =
+    emit harness request sequence
+      (F.Agent.Protocol
+         (Agent_runner.Usage_report { thread; turn = first_turn; absolute }))
+  in
+  let observed = report active 6 (usage "5" "7" "20") in
+  let observed = report observed 7 (usage "2" "9" "15") in
+  let stale = report observed 6 (usage "999" "999" "999") in
+  let rates = checked (Json.parse "{\"remaining\":null}") in
+  let observed =
+    emit stale request 8 (F.Agent.Protocol (Agent_runner.Rate_limits rates))
+  in
+  let check harness =
+    let totals = (projection harness).total_usage in
+    Alcotest.check Alcotest.string "Joined input" "5"
+      (Count.decimal (Usage.input totals));
+    Alcotest.check Alcotest.string "Joined output" "9"
+      (Count.decimal (Usage.output totals));
+    Alcotest.check Alcotest.string "Joined total" "20"
+      (Count.decimal (Usage.total totals));
+    Alcotest.check Alcotest.bool "Rate observation persists" true
+      ((projection harness).latest_rate_limits = Some rates)
+  in
+  check observed;
+  let closed = close_worker observed request Agent_runner.Succeeded in
+  check closed;
+  check (close_worker closed request Agent_runner.Succeeded)
+
+let configured config =
+  let state, commands = C.create ~now:(F.instant 0) config in
+  let harness = { state; now = 0; commands; history = commands } in
+  respond_first harness []
+
+let retired_continuation_barrier () =
+  let started = cycle ~issues:[ issue_a ] (startup F.A) in
+  let request = run "opaque-a" started in
+  let active =
+    completed_turn (session started request) request 6 first_session first_turn
+  in
+  let reading = continue active request first_turn in
+  let unfinished =
+    choose "Continuation read missing" tracker reading.commands
+  in
+  let retired =
+    close_worker reading request
+      (Agent_runner.Failed (Agent_runner.Response_error F.diagnostic))
+  in
+  let retry =
+    match owner "opaque-a" retired with
+    | C.Retry retry -> retry.retry
+    | C.Worker _ | C.Cleaning _ ->
+        Alcotest.fail "Failed run must wait for retry"
+  in
+  let due = send ~now:1000 retired (C.Retry_due (Issue.id issue_a, retry)) in
+  no_command "Retry cannot cross retained continuation custody" tracker due;
+  let closed = send due (C.Request_canceled (request_id unfinished)) in
+  let refreshed =
+    choose "Closed continuation wakes its due retry" tracker closed.commands
+  in
+  let restarted = respond closed refreshed (F.reply [ issue_a ]) in
+  let next =
+    choose "Retry starts after read closure" worker restarted.commands
+  in
+  Alcotest.check Alcotest.bool "Closed prior run gets a fresh generation" false
+    (Run_id.equal (F.Agent.run_id request) (F.Agent.run_id next))
+
+let stall_closure () =
+  let config = F.with_stall ~milliseconds:10 F.A in
+  let started = cycle ~config ~issues:[ issue_a ] (configured config) in
+  let request = run "opaque-a" started in
+  let preparing = emit ~now:9 started request 1 F.Agent.Preparing in
+  let token, _ = choose "Poll missing" poll started.commands in
+  let equal = send ~now:10 preparing (C.Poll_due token) in
+  no_command "Stall boundary is strict" stopping equal;
+  let equal = close_reads ~config ~profile:F.A ~issues:[ issue_a ] equal in
+  let token, _ = choose "Next poll missing" poll equal.commands in
+  let stalled = send ~now:15 equal (C.Poll_due token) in
+  Alcotest.check Alcotest.bool "Preparation does not reset protocol silence"
+    true
+    (choose "Stall interruption missing" stopping stalled.commands
+    = Agent_runner.Stall);
+  running 1 stalled;
+  let read = choose "Stall reconciliation missing" tracker stalled.commands in
+  let terminal = F.issue ~state:"Done" ~id:"opaque-a" ~identifier:"CORE-1" () in
+  let refined = respond stalled read (F.reply [ terminal ]) in
+  no_command "Cleanup upgrade does not issue another interruption" stopping
+    refined;
+  let closed = close_worker refined request Agent_runner.Succeeded in
+  running 0 closed;
+  ignore
+    (choose "Terminal upgrade requires cleanup after close" removal
+       closed.commands);
+  no_command "Cleanup upgrade cannot retry"
+    (function
+      | C.Arm_retry _ -> Some ()
+      | C.Load_workflow _
+      | C.Read_tracker _
+      | C.Start_worker _
+      | C.Stop_worker _
+      | C.Continue_worker _
+      | C.Remove_workspace _
+      | C.Cancel_request _
+      | C.Arm_poll _
+      | C.Cancel_poll _
+      | C.Cancel_retry _
+      | C.Report _ -> None)
+    closed
+
+let stall_activity () =
+  let config = F.with_stall ~milliseconds:10 F.A in
+  let started = cycle ~config ~issues:[ issue_a ] (configured config) in
+  let request = run "opaque-a" started in
+  let active = session started request in
+  let active =
+    emit ~now:8 active request 6
+      (F.Agent.Protocol
+         (Agent_runner.Output
+            {
+              session = first_session;
+              event_name = "delta";
+              message = Some "progress";
+            }))
+  in
+  let token, _ = choose "Poll missing" poll started.commands in
+  let checked = send ~now:10 active (C.Poll_due token) in
+  no_command "Accepted protocol activity resets silence" stopping checked;
+  let checked = close_reads ~config ~profile:F.A ~issues:[ issue_a ] checked in
+  let token, _ = choose "Next poll missing" poll checked.commands in
+  let equal = send ~now:18 checked (C.Poll_due token) in
+  no_command "Activity boundary is strict" stopping equal;
+  let equal = close_reads ~config ~profile:F.A ~issues:[ issue_a ] equal in
+  let stale =
+    emit ~now:19 equal request 5
+      (F.Agent.Protocol
+         (Agent_runner.Output
+            { session = first_session; event_name = "old"; message = None }))
+  in
+  let token, _ = choose "Final poll missing" poll equal.commands in
+  let stalled = send ~now:23 stale (C.Poll_due token) in
+  ignore
+    (choose "Stale progress cannot postpone stall" stopping stalled.commands);
+  let closed = close_worker stalled request Agent_runner.Succeeded in
+  ignore
+    (choose "Stall retains retry disposition after racing success"
+       (function
+         | C.Arm_retry (_, _, due) -> Some due
+         | C.Load_workflow _
+         | C.Read_tracker _
+         | C.Start_worker _
+         | C.Stop_worker _
+         | C.Continue_worker _
+         | C.Remove_workspace _
+         | C.Cancel_request _
+         | C.Arm_poll _
+         | C.Cancel_poll _
+         | C.Cancel_retry _
+         | C.Report _ -> None)
+       closed.commands)
+
 let tests =
   [
     Alcotest.test_case "startup cleanup closure barrier" `Quick startup_barrier;
@@ -899,4 +1252,15 @@ let tests =
       keyed_retry_closure;
     Alcotest.test_case "fault context survives owner release" `Quick
       fault_context;
+    Alcotest.test_case "post-turn read serializes and answers once" `Quick
+      continuation_serialization;
+    Alcotest.test_case "continuation rereads after policy epoch" `Quick
+      continuation_epoch;
+    Alcotest.test_case "accepted usage retires once" `Quick accepted_usage;
+    Alcotest.test_case "retired continuation custody gates retry" `Quick
+      retired_continuation_barrier;
+    Alcotest.test_case "stall retains custody and cleanup absorbs" `Quick
+      stall_closure;
+    Alcotest.test_case "stall follows accepted protocol activity" `Quick
+      stall_activity;
   ]

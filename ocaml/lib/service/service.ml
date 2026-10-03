@@ -22,18 +22,24 @@ module type CLOSED_RUNNER = sig
     t ->
     clock:clock ->
     workspace:workspace_manager ->
-    cancel:Agent_runner.cancel_reason Eio.Promise.t ->
+    interrupt:Agent_runner.interrupt Eio.Promise.t ->
+    emit:(progress -> unit) ->
+    refresh:
+      (turn:Turn_id.t -> (Agent_runner.continuation, Tracker_error.t) result) ->
     request ->
     completed
   (** Use exactly the supplied clock and workspace instance. Return only after
       this invocation's workspace/process/hook scopes close. A previously
-      resolved cancellation promise reaches the runner, which must discharge it
-      with a matching Canceled completion and no workspace/process/hook
+      resolved interruption promise reaches the runner, which must discharge it
+      with a matching Canceled/Stalled completion and no workspace/process/hook
       acquisition, after its empty invocation scope closes. Only the runner
       constructs its opaque completion. Unrequested cancellation and defects
-      drain then propagate with the supplied exception identity/backtrace. No
-      progress/continuation/stall input is added to the first service operation
-      language. *)
+      drain then propagate with the supplied exception identity/backtrace.
+      Progress publication is acknowledged or interrupted before the next
+      publication. Refresh registers its turn-fenced waiter before owner
+      delivery. Recheck interruption after either callback before acquiring more
+      resources or starting another turn. Callbacks never run from protected
+      finalizers. *)
 end
 
 module Make
@@ -170,16 +176,34 @@ struct
     secondary : effect_key Failure.secondary list;
   }
 
-  type message = Entered of effect_key | Closed of effect_key * closed
+  type continuation_reply = (Agent_runner.continuation, Tracker_error.t) result
+  type continuation_waiter = Turn_id.t * continuation_reply Eio.Promise.u
+
+  type message =
+    | Entered of effect_key
+    | Closed of effect_key * closed
+    | Update of effect_key * Core.input * continuation_waiter option
+
+  type ticket = {
+    writer : message Service_inbox.producer;
+    receipt : ticket Eio.Promise.t;
+  }
+
+  type update_channel = {
+    mutable slot : message Service_inbox.slot;
+    mutable acknowledge : ticket Eio.Promise.u;
+  }
 
   type cancellation =
     | Job_cancel of unit Eio.Promise.u
-    | Worker_cancel of Agent_runner.cancel_reason Eio.Promise.u
+    | Worker_cancel of Agent_runner.interrupt Eio.Promise.u
 
   type handle = {
     entry : message Service_inbox.slot;
     closed : message Service_inbox.slot;
     cancel : cancellation;
+    updates : update_channel option;
+    mutable continuation : continuation_waiter option;
   }
 
   type control_fact = No_control | Refresh_pending | Shutdown_pending
@@ -233,7 +257,10 @@ struct
         ( Core.Poll_due _ | Core.Refresh_requested | Core.Workflow_changed
         | Core.Workflow_loaded (_, Ok _)
         | Core.Tracker_completed (_, Ok _)
-        | Core.Worker_started _ | Core.Retry_due _
+        | Core.Worker_started _
+        | Core.Worker_progress _
+        | Core.Worker_continue _
+        | Core.Retry_due _
         | Core.Workspace_removed (_, Ok _)
         | Core.Shutdown ) -> false
 
@@ -298,10 +325,10 @@ struct
     in
     settle key selected actual
 
-  let resolve_cancel reason = function
+  let resolve_cancel interruption = function
     | Job_cancel resolver -> ignore (Eio.Promise.try_resolve resolver () : bool)
     | Worker_cancel resolver ->
-        ignore (Eio.Promise.try_resolve resolver reason : bool)
+        ignore (Eio.Promise.try_resolve resolver interruption : bool)
 
   let emit t event = t.observe (Effect event)
 
@@ -310,23 +337,27 @@ struct
       ~report:(fun key diagnostic ->
         t.report_host (Secondary_defect { key; diagnostic }))
 
-  let reserve (runtime : runtime) key cancel =
+  let reserve (runtime : runtime) key cancel updates =
     if Registry.mem key runtime.handles then
       raise (Broken_contract "duplicate live effect generation");
     let entry, entry_writer = Service_inbox.reserve runtime.inbox in
     let closed, closed_writer = Service_inbox.reserve runtime.inbox in
-    let handle = { entry; closed; cancel } in
+    let handle = { entry; closed; cancel; updates; continuation = None } in
     runtime.handles <- Registry.add key handle runtime.handles;
     (handle, entry_writer, closed_writer)
 
   let retract (runtime : runtime) key handle =
     ignore (Service_inbox.retract handle.entry : Service_inbox.retraction);
     ignore (Service_inbox.retract handle.closed : Service_inbox.retraction);
+    Option.iter
+      (fun channel ->
+        ignore (Service_inbox.retract channel.slot : Service_inbox.retraction))
+      handle.updates;
     runtime.handles <- Registry.remove key runtime.handles
 
-  let spawn t (runtime : runtime) ~sw key cancel run =
+  let spawn ?updates t (runtime : runtime) ~sw key cancel run =
     Eio.Switch.check sw;
-    let handle, entry, closed = reserve runtime key cancel in
+    let handle, entry, closed = reserve runtime key cancel updates in
     let admission = ref Awaiting in
     let forked =
       capture (fun () ->
@@ -375,13 +406,123 @@ struct
       (fun key ->
         match Registry.find_opt key runtime.handles with
         | None -> ()
-        | Some handle -> resolve_cancel Agent_runner.Host_shutdown handle.cancel)
+        | Some handle ->
+            resolve_cancel (Agent_runner.Cancel Agent_runner.Host_shutdown)
+              handle.cancel)
       [ Workflow id; Tracker id; Cleanup id ]
 
-  let cancel_key (runtime : runtime) key reason =
+  let cancel_key (runtime : runtime) key interruption =
     match Registry.find_opt key runtime.handles with
     | None -> ()
-    | Some handle -> resolve_cancel reason handle.cancel
+    | Some handle -> resolve_cancel interruption handle.cancel
+
+  let reserve_update (runtime : runtime) =
+    let slot, writer = Service_inbox.reserve runtime.inbox in
+    let receipt, acknowledge = Eio.Promise.create () in
+    ({ slot; acknowledge }, { writer; receipt })
+
+  (* The owner grants exactly one publication ticket at a time. Receipt waits
+     can suspend; serialize progress and refresh through the receipt, then let
+     progress proceed while the tracker decision remains pending. *)
+  let worker_updates t runtime key interrupt initial =
+    let ticket = ref (Some initial) in
+    let publication = Eio.Mutex.create () in
+    let publish input continuation =
+      Eio.Mutex.use_rw ~protect:false publication (fun () ->
+          if Failure.failed runtime.failure then
+            cancel_key runtime key
+              (Agent_runner.Cancel Agent_runner.Host_shutdown);
+          match (!ticket, Eio.Promise.peek interrupt) with
+          | _, Some _ -> false
+          | None, None ->
+              raise (Broken_contract "worker update missing its receipt")
+          | Some current, None ->
+              ticket := None;
+              begin match
+                Service_inbox.publish current.writer
+                  (Update (key, input, continuation))
+              with
+              | Service_inbox.Duplicate | Service_inbox.Revoked ->
+                  raise (Broken_contract "invalid worker update ticket")
+              | Service_inbox.Published -> ()
+              end;
+              let next =
+                Eio.Fiber.first
+                  (fun () -> Some (Eio.Promise.await current.receipt))
+                  (fun () ->
+                    ignore
+                      (Eio.Promise.await interrupt : Agent_runner.interrupt);
+                    None)
+              in
+              ticket := next;
+              Option.is_some next && Option.is_none (Eio.Promise.peek interrupt))
+    in
+    let emit progress =
+      if Failure.failed runtime.failure then
+        cancel_key runtime key (Agent_runner.Cancel Agent_runner.Host_shutdown);
+      if Option.is_none (Eio.Promise.peek interrupt) then begin
+        match Clock.now t.clock with
+        | Ok emitted_at -> (
+            match key with
+            | Worker (issue, run) ->
+                ignore
+                  (publish
+                     (Core.Worker_progress { issue; run; progress; emitted_at })
+                     None
+                    : bool)
+            | Owner
+            | Controls
+            | Workflow _
+            | Tracker _
+            | Cleanup _
+            | Poll _
+            | Retry _ -> raise (Broken_contract "worker update outside worker"))
+        | Error diagnostic ->
+            Failure.record runtime.failure key (Returned (Error diagnostic));
+            cancel_key runtime key
+              (Agent_runner.Cancel Agent_runner.Host_shutdown);
+            Eio.Condition.broadcast runtime.changed
+      end
+    in
+    let last_refresh = ref None in
+    let refresh ~turn =
+      if Option.fold ~none:false ~some:(Turn_id.equal turn) !last_refresh then
+        raise (Broken_contract "repeated worker continuation callback");
+      last_refresh := Some turn;
+      let reply, resolver = Eio.Promise.create () in
+      let requested =
+        match key with
+        | Worker (issue, run) ->
+            publish
+              (Core.Worker_continue (issue, run, turn))
+              (Some (turn, resolver))
+        | Owner
+        | Controls
+        | Workflow _
+        | Tracker _
+        | Cleanup _
+        | Poll _
+        | Retry _ -> raise (Broken_contract "continuation outside worker")
+      in
+      if not requested then Ok Agent_runner.Stop
+      else
+        Eio.Fiber.first
+          (fun () -> Eio.Promise.await reply)
+          (fun () ->
+            ignore (Eio.Promise.await interrupt : Agent_runner.interrupt);
+            Ok Agent_runner.Stop)
+    in
+    (emit, refresh)
+
+  let answer_worker runtime issue run turn reply =
+    match Registry.find_opt (Worker (issue, run)) runtime.handles with
+    | None -> ()
+    | Some handle -> (
+        match handle.continuation with
+        | Some (waiting, resolver) when Turn_id.equal waiting turn ->
+            handle.continuation <- None;
+            ignore (Eio.Promise.try_resolve resolver reply : bool)
+        | None | Some _ -> ())
 
   let interpret t (runtime : runtime) ~sw commands =
     List.iter
@@ -407,17 +548,23 @@ struct
         | Core.Start_worker request ->
             let issue = Agent.Issue.id (Agent.issue request) in
             let run = Agent.run_id request in
-            let cancel, resolver = Eio.Promise.create () in
+            let interrupt, resolver = Eio.Promise.create () in
             let key = Worker (issue, run) in
-            spawn t runtime ~sw key (Worker_cancel resolver) (fun yield ->
+            let updates, ticket = reserve_update runtime in
+            let emit, refresh = worker_updates t runtime key interrupt ticket in
+            spawn ~updates t runtime ~sw key (Worker_cancel resolver)
+              (fun yield ->
                 worker_scope key (fun () ->
                     yield ();
                     Semantic
                       (Core.Worker_finished
                          (Agent.run t.agent ~clock:t.clock
-                            ~workspace:t.workspace ~cancel request))))
+                            ~workspace:t.workspace ~interrupt ~emit ~refresh
+                            request))))
         | Core.Stop_worker (issue, run, reason) ->
             cancel_key runtime (Worker (issue, run)) reason
+        | Core.Continue_worker (issue, run, turn, reply) ->
+            answer_worker runtime issue run turn reply
         | Core.Cancel_request id -> cancel_request runtime id
         | Core.Arm_poll (id, due) ->
             spawn_job t runtime ~sw (Poll id) ~canceled:Canceled (fun () ->
@@ -425,7 +572,8 @@ struct
                 | Ok () -> Semantic (Core.Poll_due id)
                 | Error diagnostic -> Clock_error diagnostic)
         | Core.Cancel_poll id ->
-            cancel_key runtime (Poll id) Agent_runner.Host_shutdown
+            cancel_key runtime (Poll id)
+              (Agent_runner.Cancel Agent_runner.Host_shutdown)
         | Core.Arm_retry (issue, retry, due) ->
             spawn_job t runtime ~sw
               (Retry (issue, retry))
@@ -435,7 +583,9 @@ struct
                 | Ok () -> Semantic (Core.Retry_due (issue, retry))
                 | Error diagnostic -> Clock_error diagnostic)
         | Core.Cancel_retry (issue, retry) ->
-            cancel_key runtime (Retry (issue, retry)) Agent_runner.Host_shutdown
+            cancel_key runtime
+              (Retry (issue, retry))
+              (Agent_runner.Cancel Agent_runner.Host_shutdown)
         | Core.Report fault -> t.report fault)
       commands
 
@@ -463,7 +613,7 @@ struct
     | Some (slot, message) -> (
         let key =
           match message with
-          | Entered key | Closed (key, _) -> key
+          | Entered key | Closed (key, _) | Update (key, _, _) -> key
         in
         match Registry.find_opt key runtime.handles with
         | None ->
@@ -477,20 +627,54 @@ struct
                 if not (Service_inbox.same slot handle.closed) then
                   raise (Broken_contract "crossed closure notification");
                 runtime.handles <- Registry.remove key runtime.handles;
+                Option.iter
+                  (fun channel ->
+                    ignore
+                      (Service_inbox.retract channel.slot
+                        : Service_inbox.retraction))
+                  handle.updates;
                 remember_closed runtime key result.outcome;
                 Failure.retain runtime.failure result.secondary
+            | Update (_, _, continuation) ->
+                begin match handle.updates with
+                | Some channel when Service_inbox.same slot channel.slot -> ()
+                | None | Some _ ->
+                    raise (Broken_contract "crossed worker update notification")
+                end;
+                begin match (handle.continuation, continuation) with
+                | None, waiter -> handle.continuation <- waiter
+                | Some _, None -> ()
+                | Some _, Some _ ->
+                    raise (Broken_contract "concurrent worker continuations")
+                end
             end;
             Some message)
 
   let cancel_all (runtime : runtime) =
     Registry.iter
-      (fun _ handle -> resolve_cancel Agent_runner.Host_shutdown handle.cancel)
+      (fun _ handle ->
+        resolve_cancel (Agent_runner.Cancel Agent_runner.Host_shutdown)
+          handle.cancel)
       runtime.handles
+
+  let acknowledge_update runtime key =
+    match Registry.find_opt key runtime.handles with
+    | None -> raise (Broken_contract "update receipt after worker retirement")
+    | Some handle -> (
+        match handle.updates with
+        | None -> raise (Broken_contract "receipt outside worker")
+        | Some channel ->
+            let next, ticket = reserve_update runtime in
+            let acknowledge = channel.acknowledge in
+            channel.slot <- next.slot;
+            channel.acknowledge <- next.acknowledge;
+            ignore (Eio.Promise.try_resolve acknowledge ticket : bool))
 
   let rec drain (runtime : runtime) =
     match take runtime with
     | Some (Entered _) -> drain runtime
     | Some (Closed _) -> drain runtime
+    | Some (Update _) -> drain runtime
     | None ->
         if not (Registry.is_empty runtime.handles) then begin
           (* No suspension between checking the FIFO and installing this waiter. *)
@@ -570,9 +754,16 @@ struct
                   loop t runtime ~sw state
               | Returned (Clock_error _) | Raised _ -> ()
               end
+          | Some (Update (key, input, _)) -> (
+              match transition t runtime ~sw state input with
+              | Error () -> ()
+              | Ok state ->
+                  acknowledge_update runtime key;
+                  loop t runtime ~sw state)
           | None ->
               if Core.quiescent state then begin
-                cancel_key runtime Controls Agent_runner.Host_shutdown;
+                cancel_key runtime Controls
+                  (Agent_runner.Cancel Agent_runner.Host_shutdown);
                 if not (Registry.is_empty runtime.handles) then
                   wait t runtime ~sw state
               end

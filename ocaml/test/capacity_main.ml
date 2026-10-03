@@ -284,6 +284,7 @@ struct
         | Host.Core.Read_tracker _
         | Host.Core.Start_worker _
         | Host.Core.Stop_worker _
+        | Host.Core.Continue_worker _
         | Host.Core.Remove_workspace _
         | Host.Core.Cancel_request _
         | Host.Core.Cancel_poll _
@@ -334,6 +335,8 @@ struct
         | Host.Core.Workflow_loaded _
         | Host.Core.Tracker_completed _
         | Host.Core.Request_canceled _
+        | Host.Core.Worker_progress _
+        | Host.Core.Worker_continue _
         | Host.Core.Retry_due _
         | Host.Core.Workspace_removed _
         | Host.Core.Shutdown -> ()

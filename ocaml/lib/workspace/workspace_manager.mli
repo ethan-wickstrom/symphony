@@ -88,29 +88,33 @@ module type S = sig
   val with_workspace :
     t ->
     Contract.reference ->
-    (Contract.Path.t -> ('a, error) result) ->
-    ('a, error) result
+    on_error:(error -> 'e) ->
+    (Contract.Path.t -> ('a, 'e) result) ->
+    ('a, 'e) result
   (** Created: after_create, before_run, callback, after_run. Reused omits
       after_create. Preparation failure skips callback and rolls back only
       Created, after after_run and before_remove. Callback failure preserves the
       workspace. after_run occurs once after any acquired attempt, including
       cancellation. Ignored hook/rollback failures preserve the primary error.
       Cleanup/reporting defects cannot skip rollback or lease release. Primary
-      errors, defects and cancellation outrank cleanup defects; exception
-      identity and original backtrace survive. A successful callback exposes the
-      first cleanup defect after the cleanup obligations finish. Driver
-      cancellation and defects propagate with cleanup; no expected error escapes
-      as an exception. *)
+      errors, defects and cancellation outrank cleanup defects. Callback errors
+      remain opaque and bypass on_error. Workspace errors use on_error only
+      after hook and lease cleanup closes; a mapper defect cannot skip cleanup.
+      Exception identity and original backtrace survive. A successful callback
+      exposes the first cleanup defect after the cleanup obligations finish.
+      Driver cancellation and defects propagate with cleanup; no expected error
+      escapes as an exception. *)
 
   val cleanup : t -> Contract.cleanup -> (unit, error) result
   (** Missing cleanup is identity. before_remove failure is reported, then
       deletion proceeds under the same lease, including hook/reporting defects.
-      Removal failure is the primary outcome; successful removal exposes a
-      preceding cleanup defect after release. After successful removal with no
-      recreation, another cleanup returns Ok and preserves the resulting
-      filesystem projection; hook/log traces are not equal. Failed cleanup has
-      no idempotence guarantee. Owner fencing must reject delayed cleanup before
-      effects. *)
+      Removal errors, defects and cancellation outrank later cleanup-scope and
+      lease faults; exception identity and original backtrace survive release.
+      Successful removal exposes a cleanup defect after release. After
+      successful removal with no recreation, another cleanup returns Ok and
+      preserves the resulting filesystem projection; hook/log traces are not
+      equal. Failed cleanup has no idempotence guarantee. Owner fencing must
+      reject delayed cleanup before effects. *)
 
   val inspect : t -> Contract.reference -> (string option, error) result
   (** Non-creating inspection under the ownership lock. Missing returns None and

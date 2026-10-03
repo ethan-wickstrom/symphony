@@ -2,6 +2,7 @@
 
 import os
 from enum import Enum
+import hashlib
 import json
 from pathlib import Path
 import signal
@@ -21,6 +22,15 @@ INTERRUPT_TIMEOUT = 8
 GATE_TIMEOUT = 1
 GATE_OUTER_TIMEOUT = 12
 ADMISSION_DELAY = GATE_TIMEOUT * 2
+AGENT_UNITS = (
+    "app_server", "codex_runner", "protocol_codec", "protocol_envelope",
+    "protocol_frame", "protocol_id",
+)
+ORCHESTRATION_UNITS = (
+    "agent_observation", "agent_plan", "agent_runner", "backoff", "dispatch_order",
+    "issue_lifecycle", "orchestrator", "ownership", "run_plan", "stop_reason", "usage",
+)
+AGENT_ENV_NAMES = ("SYMPHONY_TEST_PYTHON", "SYMPHONY_TEST_AGENT_SERVER")
 
 
 class Stage(Enum):
@@ -87,7 +97,67 @@ def await_fixtures(receipt):
         return
 
 
+def exit_target(base, name):
+    directory = base / name
+    directory.mkdir()
+    helper = directory / "target"
+    helper.write_text(
+        f"#!{sys.executable}\n"
+        "from pathlib import Path\n"
+        "import json, os, sys\n"
+        f"names = {AGENT_ENV_NAMES!r}\n"
+        "Path('environment.json').write_text(json.dumps({name: os.environ.get(name) for name in names}))\n"
+        "sys.exit(0 if Path.cwd() == Path(__file__).parent else 2)\n"
+    )
+    helper.chmod(0o700)
+    return helper
+
+
+def gate_command():
+    optimize = ["-O"] * sys.flags.optimize
+    return [sys.executable, *optimize, str(Path(native_check.__file__))]
+
+
 class NativeWatchdogTest(unittest.TestCase):
+    def agent_evidence(self, evidence):
+        expected_env = {
+            "SYMPHONY_TEST_PYTHON": sys.executable,
+            "SYMPHONY_TEST_AGENT_SERVER": str(native_check.AGENT_FIXTURE),
+        }
+        self.assertEqual({"kernel", "host", "http", "agent"}, set(evidence["results"]))
+        self.assertEqual(expected_env, evidence["binaries"]["agent"]["environment"])
+        for name in ("kernel", "host", "http"):
+            self.assertNotIn("environment", evidence["binaries"][name])
+        self.assertEqual(len(evidence["sources"]), evidence["source_count"])
+        for area, units in (("agent", AGENT_UNITS), ("orchestration", ORCHESTRATION_UNITS)):
+            expected = {f"lib/{area}/{unit}{suffix}" for unit in units for suffix in (".ml", ".mli")}
+            expected.add(f"lib/{area}/dune")
+            actual = {name for name in evidence["sources"] if name.startswith(f"lib/{area}/")}
+            self.assertEqual(expected, actual, f"incomplete {area} source evidence")
+        root = Path(native_check.__file__).resolve().parents[1]
+        required = (
+            "dune", "dune-project", "test/dune", "test/native_agent_test.ml",
+            "test/native_agent_test.mli", "test/fixtures/agent/native_server.py",
+            "protocol/0.159.2/ThreadStartParams.json", "protocol/0.159.2/TurnStartParams.json",
+            "protocol/0.159.2/policies.json", "protocol/0.159.2/manifest.json",
+            "protocol/0.159.2/codec/manifest.json", "protocol/0.159.2/codec/ClientRequest.json",
+        )
+        for name in required:
+            expected = hashlib.sha256((root / name).read_bytes()).hexdigest()
+            self.assertEqual(expected, evidence["sources"].get(name), f"missing or stale hash: {name}")
+        interpreter = Path(sys.executable).resolve()
+        self.assertEqual(sys.executable, evidence["python"]["executable"])
+        self.assertEqual(str(interpreter), evidence["python"]["resolved"])
+        self.assertEqual(hashlib.sha256(interpreter.read_bytes()).hexdigest(), evidence["python"]["sha256"])
+        self.assertEqual(sys.implementation.name, evidence["python"]["implementation"])
+        self.assertEqual(sys.implementation.cache_tag, evidence["python"]["cache_tag"])
+        self.assertEqual(sys.flags.optimize, evidence["python"]["optimize"])
+        self.assertEqual(sys.flags.optimize, evidence["watchdog"]["optimize"])
+        self.assertEqual(min(sys.flags.optimize, 2), evidence["helper"]["optimize"])
+        self.assertEqual(str(native_check.AGENT_FIXTURE), evidence["agent_fixture"]["path"])
+        self.assertEqual(evidence["sources"]["test/fixtures/agent/native_server.py"],
+                         evidence["agent_fixture"]["sha256"])
+
     def test_http_hang_bounded(self):
         # No service clock participates in this hung target. The watchdog is
         # its independent owner and must finish after TERM/kill/sole reap.
@@ -107,27 +177,18 @@ class NativeWatchdogTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="symphony-http-gate-") as base:
             base = Path(base)
             targets = {}
-            for name in ("kernel", "host"):
-                directory = base / name
-                directory.mkdir()
-                helper = directory / "target"
-                helper.write_text(
-                    f"#!{sys.executable}\n"
-                    "from pathlib import Path\n"
-                    "import sys\n"
-                    "sys.exit(0 if Path.cwd() == Path(__file__).parent else 2)\n"
-                )
-                helper.chmod(0o700)
-                targets[name] = helper
+            for name in ("kernel", "host", "agent"):
+                targets[name] = exit_target(base, name)
             directory = base / "http"
             directory.mkdir()
             helper, receipt = group_fixture(directory, f"time.sleep({FIXTURE_LIFETIME})", admission=0)
             out = base / "evidence"
             try:
                 probe = subprocess.run(
-                    [sys.executable, str(Path(native_check.__file__)),
+                    [*gate_command(),
                      "--kernel", str(targets["kernel"]),
                      "--host", str(targets["host"]), "--http", str(helper),
+                     "--agent", str(targets["agent"]),
                      "--out", str(out), "--timeout", str(GATE_TIMEOUT)],
                     capture_output=True, text=True, check=False,
                     timeout=GATE_OUTER_TIMEOUT,
@@ -136,10 +197,11 @@ class NativeWatchdogTest(unittest.TestCase):
                 manifest = out / "manifest.json"
                 self.assertTrue(manifest.is_file(), probe.stdout + probe.stderr)
                 evidence = json.loads(manifest.read_text())
-                self.assertEqual({"kernel", "host", "http"}, set(evidence["results"]))
+                self.agent_evidence(evidence)
                 self.assertEqual(0, evidence["results"]["kernel"]["status"])
                 self.assertEqual(0, evidence["results"]["host"]["status"])
                 self.assertEqual("timeout", evidence["results"]["http"]["status"])
+                self.assertEqual(0, evidence["results"]["agent"]["status"])
                 self.assertIn("test/native_http_test.ml", evidence["sources"])
                 self.assertIn("test/native_http_test.mli", evidence["sources"])
                 self.assertIn("test/fixtures/tls/ca.pem", evidence["sources"])
@@ -149,6 +211,64 @@ class NativeWatchdogTest(unittest.TestCase):
                     self.assertFalse(running(int(text)), "HTTP gate leaked its group")
             finally:
                 await_fixtures(receipt)
+
+    def test_agent_gate_hang(self):
+        # Independent wall time owns a hung agent target and its ignoring child.
+        with tempfile.TemporaryDirectory(prefix="symphony-agent-gate-") as base:
+            base = Path(base)
+            targets = {name: exit_target(base, name) for name in ("kernel", "host", "http")}
+            directory = base / "agent"
+            directory.mkdir()
+            environment = directory / "environment.json"
+            finish = (
+                "import json\n"
+                f"Path({str(environment)!r}).write_text(json.dumps("
+                f"{{name: os.environ.get(name) for name in {AGENT_ENV_NAMES!r}}}))\n"
+                f"time.sleep({FIXTURE_LIFETIME})"
+            )
+            helper, receipt = group_fixture(directory, finish, admission=0)
+            out = base / "evidence"
+            try:
+                probe = subprocess.run(
+                    [*gate_command(),
+                     "--kernel", str(targets["kernel"]), "--host", str(targets["host"]),
+                     "--http", str(targets["http"]), "--agent", str(helper),
+                     "--out", str(out), "--timeout", str(GATE_TIMEOUT)],
+                    capture_output=True, text=True, check=False, timeout=GATE_OUTER_TIMEOUT,
+                )
+                self.assertNotEqual(0, probe.returncode, "hung agent gate passed")
+                manifest = out / "manifest.json"
+                self.assertTrue(manifest.is_file(), probe.stdout + probe.stderr)
+                evidence = json.loads(manifest.read_text())
+                self.agent_evidence(evidence)
+                for name in ("kernel", "host", "http"):
+                    self.assertEqual(0, evidence["results"][name]["status"])
+                self.assertEqual("timeout", evidence["results"]["agent"]["status"])
+                self.assertLess(evidence["results"]["agent"]["seconds"], GATE_OUTER_TIMEOUT)
+                self.assertTrue(environment.is_file(), "agent never observed its native fixture bindings")
+                self.assertEqual(evidence["binaries"]["agent"]["environment"],
+                                 json.loads(environment.read_text()))
+                self.assertTrue(receipt.is_file(), "agent target never became ready")
+                pids = [int(text) for text in receipt.read_text().split()]
+                self.assertEqual(2, len(pids))
+                with self.assertRaises(ProcessLookupError, msg="agent root was not reaped"):
+                    os.kill(pids[0], 0)
+                for pid in pids:
+                    self.assertFalse(running(pid), "agent gate leaked its group")
+            finally:
+                await_fixtures(receipt)
+
+    def test_agent_required(self):
+        with tempfile.TemporaryDirectory(prefix="symphony-agent-required-") as base:
+            base = Path(base)
+            probe = subprocess.run(
+                [*gate_command(), "--kernel", "missing",
+                 "--host", "missing", "--http", "missing", "--out", str(base)],
+                capture_output=True, text=True, check=False, timeout=READY_TIMEOUT,
+            )
+            self.assertEqual(2, probe.returncode)
+            self.assertIn("--agent", probe.stderr)
+            self.assertFalse((base / "manifest.json").exists(), "incomplete target set produced evidence")
 
     def test_exec_signals(self):
         with tempfile.TemporaryDirectory(prefix="symphony-watchdog-signals-") as base:

@@ -26,6 +26,7 @@ let tracker commands =
       | C.Load_workflow _
       | C.Start_worker _
       | C.Stop_worker _
+      | C.Continue_worker _
       | C.Remove_workspace _
       | C.Cancel_request _
       | C.Arm_poll _
@@ -43,6 +44,7 @@ let starts commands =
       | C.Load_workflow _
       | C.Read_tracker _
       | C.Stop_worker _
+      | C.Continue_worker _
       | C.Remove_workspace _
       | C.Cancel_request _
       | C.Arm_poll _
@@ -85,6 +87,7 @@ let drive ~profile ~issues harness =
               Some (respond harness request (reply issues request))
           | C.Start_worker _
           | C.Stop_worker _
+          | C.Continue_worker _
           | C.Remove_workspace _
           | C.Cancel_request _
           | C.Arm_poll _
@@ -190,6 +193,7 @@ let todo_routing () =
         | C.Load_workflow _
         | C.Read_tracker _
         | C.Start_worker _
+        | C.Continue_worker _
         | C.Remove_workspace _
         | C.Cancel_request _
         | C.Arm_poll _
@@ -207,8 +211,10 @@ let todo_routing () =
     && Run_id.equal stopped_run (F.Agent.run_id request));
   Alcotest.check Alcotest.bool "Routing stop reason" true
     (match reason with
-    | Agent_runner.Reconciliation -> true
-    | Agent_runner.Scope_change | Agent_runner.Host_shutdown -> false);
+    | Agent_runner.Cancel Agent_runner.Reconciliation -> true
+    | Agent_runner.Cancel
+        (Agent_runner.Scope_change | Agent_runner.Host_shutdown)
+    | Agent_runner.Stall -> false);
   let closed = finish revoked request Agent_runner.Succeeded in
   Alcotest.check Alcotest.int "Revoke releases only after closure" 0
     (List.length (C.project ~now:(F.instant closed.now) closed.state).owners)
@@ -221,6 +227,7 @@ let retry_timer commands =
       | C.Read_tracker _
       | C.Start_worker _
       | C.Stop_worker _
+      | C.Continue_worker _
       | C.Remove_workspace _
       | C.Cancel_request _
       | C.Arm_poll _
@@ -257,6 +264,7 @@ let reload profile harness =
         | C.Read_tracker _
         | C.Start_worker _
         | C.Stop_worker _
+        | C.Continue_worker _
         | C.Remove_workspace _
         | C.Cancel_request _
         | C.Arm_poll _

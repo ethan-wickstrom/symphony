@@ -182,7 +182,8 @@ let cleanup_after_cancel () =
       let cancelled =
         match
           Eio.Switch.run (fun sw ->
-              Manager.with_workspace driver (reference ()) (fun _path ->
+              Manager.with_workspace driver (reference ()) ~on_error:Fun.id
+                (fun _path ->
                   Eio.Switch.fail sw Fixture_cancel;
                   Eio.Fiber.check ();
                   Ok ()))

@@ -318,6 +318,7 @@ module Make
          and type tracker_request = Tracker_registry.Contract.request
          and type tracker_reply = Tracker_registry.Contract.reply
          and type agent_request = Agent.request
+         and type agent_progress = Agent.progress
          and type agent_completed = Agent.completed
          and type workspace_cleanup = Core_fixture.Workspace.cleanup) =
 struct
@@ -412,6 +413,7 @@ struct
         | C.Start_worker _
         | C.Arm_retry _
         | C.Stop_worker _
+        | C.Continue_worker _
         | C.Cancel_request _
         | C.Cancel_poll _
         | C.Cancel_retry _
@@ -511,8 +513,12 @@ struct
             M.launch = launch value;
             M.attempt = attempt (Agent.attempt value);
           }
-    | C.Stop_worker (id, token, reason) ->
+    | C.Stop_worker (id, token, Agent_runner.Cancel reason) ->
         M.Stop_worker (issue_id id, model_run tokens token, cancel reason)
+    | C.Stop_worker (_, _, Agent_runner.Stall) ->
+        fail "Scheduling oracle has no stall interruption command"
+    | C.Continue_worker _ ->
+        fail "Scheduling oracle has no continuation reply command"
     | C.Remove_workspace value ->
         M.Remove_workspace
           ( model_request tokens value.F.Workspace.request_id,
@@ -606,10 +612,23 @@ struct
           (Run_id.text (Agent.run_id value))
           (issue_id (Issue.id (Agent.issue value)))
           (show_ref (reference (Agent.workspace value)))
-    | C.Stop_worker (id, token, reason) ->
+    | C.Stop_worker (id, token, interrupt) ->
+        let reason =
+          match interrupt with
+          | Agent_runner.Cancel reason -> show_cancel (cancel reason)
+          | Agent_runner.Stall -> "stall"
+        in
         Printf.sprintf "stop(issue=%S run=%s reason=%s)" (issue_id id)
-          (Run_id.text token)
-          (show_cancel (cancel reason))
+          (Run_id.text token) reason
+    | C.Continue_worker (id, token, turn, reply) ->
+        let reply =
+          match reply with
+          | Ok (Agent_runner.Continue _) -> "continue"
+          | Ok Agent_runner.Stop -> "stop"
+          | Error _ -> "error"
+        in
+        Printf.sprintf "continue(issue=%S run=%s turn=%S reply=%s)"
+          (issue_id id) (Run_id.text token) (Turn_id.text turn) reply
     | C.Remove_workspace value ->
         Printf.sprintf "remove(q=%s reference=%s)"
           (Request_id.text value.F.Workspace.request_id)
@@ -705,6 +724,10 @@ struct
             | Error _ -> Error () )
     | C.Worker_started (id, run) ->
         M.Worker_started (issue_id id, model_run tokens run)
+    | C.Worker_progress _ ->
+        fail "Scheduling oracle has no worker progress input"
+    | C.Worker_continue _ ->
+        fail "Scheduling oracle has no worker continuation input"
     | C.Worker_finished completed ->
         M.Worker_finished
           ( issue_id (Agent.completed_issue completed),
