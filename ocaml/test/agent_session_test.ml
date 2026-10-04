@@ -1711,6 +1711,311 @@ let record_ceiling () =
         "no eviction admits an unbounded replay stream" true
         (!answered < request_count))
 
+module Input_process = struct
+  module Path = D.Process.Path
+
+  type error = Diagnostic.t
+  type exit = D.Process.exit = Exited of int | Signaled of int
+
+  type t = {
+    source : D.Process.t;
+    write_error : Diagnostic.t option;
+    interrupts : int ref;
+  }
+
+  type process = { peer : D.Process.process; fixture : t }
+
+  let with_process (t : t) ~cwd ~env ~command ~on_error use =
+    D.Process.with_process t.source ~cwd ~env ~command ~on_error (fun peer ->
+        use { peer; fixture = t })
+
+  let read (process : process) = D.Process.read process.peer
+  let stderr (process : process) = D.Process.stderr process.peer
+  let await_exit (process : process) = D.Process.await_exit process.peer
+
+  let write (process : process) frame =
+    if frame = "" then D.Process.write process.peer frame
+    else
+      let message = D.json (String.sub frame 0 (String.length frame - 1)) in
+      match D.method_name message with
+      | Some "turn/interrupt" -> (
+          incr process.fixture.interrupts;
+          match process.fixture.write_error with
+          | Some diagnostic -> Error diagnostic
+          | None -> D.Process.write process.peer frame)
+      | Some _ | None -> D.Process.write process.peer frame
+end
+
+module Input_session = App_server.Make (Input_process) (Clock_posix)
+
+type input_cleanup =
+  | Input_write_error
+  | Input_rpc_error
+  | Input_drain_error
+  | Input_clean
+
+let await_input_cleanup cleanup () =
+  Eio_mock.Backend.run (fun () ->
+      Eio.Switch.run (fun sw ->
+          let trace = D.trace () in
+          let _, clock = D.clock () in
+          let interrupt, _ = Eio.Promise.create () in
+          let entered = D.gate () and blocked = D.gate () in
+          let callback_closed = ref false in
+          let peer = ref None in
+          let interrupts = ref 0 in
+          let write_error =
+            Diagnostic.make ~site:(Diagnostic.Host "interrupt write")
+              ~message:"The interrupt write failed."
+              ~remedy:"Retry the session."
+          in
+          let handler peer call =
+            match D.method_name call with
+            | Some "turn/interrupt" -> (
+                match cleanup with
+                | Input_rpc_error ->
+                    D.send peer
+                      (batch_frames
+                         [
+                           D.obj
+                             [
+                               ("id", D.field "id" call);
+                               ( "error",
+                                 D.json
+                                   {|{"code":-32090,"message":"private interrupt detail"}|}
+                               );
+                             ];
+                         ])
+                | Input_drain_error ->
+                    (* The ACK and malformed drain suffix enter one accepted batch. *)
+                    D.send peer
+                      (batch_frames
+                         [
+                           D.obj
+                             [
+                               ("id", D.field "id" call); ("result", D.json "{}");
+                             ];
+                         ]
+                      ^ "{broken}\n")
+                | Input_write_error | Input_clean ->
+                    D.reply peer call (D.json "{}"))
+            | Some _ | None -> D.server ~turn:completed_turn peer call
+          in
+          let process =
+            {
+              Input_process.source =
+                D.process
+                  ~on_launch:(fun active -> peer := Some active)
+                  trace handler;
+              write_error =
+                (match cleanup with
+                | Input_write_error -> Some write_error
+                | Input_rpc_error | Input_drain_error | Input_clean -> None);
+              interrupts;
+            }
+          in
+          Eio.Fiber.fork ~sw (fun () ->
+              D.await entered;
+              let active =
+                match !peer with
+                | Some peer -> peer
+                | None -> Alcotest.fail "pending continuation has no owned peer"
+              in
+              D.request active
+                ~id:(D.text "await-cleanup-input")
+                "item/tool/requestUserInput"
+                (context
+                   [
+                     ("itemId", D.text "input-item");
+                     ("isBlocking", D.json "true");
+                     ( "questions",
+                       D.json
+                         {|[{"id":"q","header":"Choice","question":"Continue?"}]|}
+                     );
+                   ]));
+          let actual =
+            D.with_path (fun cwd ->
+                Input_session.with_session ~process ~clock ~interrupt ~cwd
+                  ~env:D.environment ~settings:(D.settings ())
+                  ~version:D.version ~title:D.title (fun session ->
+                    match
+                      Input_session.turn session ~prompt:"Before input cleanup"
+                        ~emit:(fun _ -> ())
+                    with
+                    | Error error -> Error error
+                    | Ok first ->
+                        Input_session.await session (fun () ->
+                            D.release entered;
+                            Fun.protect
+                              ~finally:(fun () -> callback_closed := true)
+                              (fun () ->
+                                D.await blocked;
+                                first))))
+          in
+          Alcotest.check Alcotest.bool
+            "pending continuation joins before cleanup" true !callback_closed;
+          Alcotest.check Alcotest.bool "input cleanup closes its owned process"
+            true
+            (has_event trace "process-closed");
+          Alcotest.check Alcotest.int "input cleanup attempts one interrupt" 1
+            !interrupts;
+          Alcotest.check Alcotest.int
+            "input cleanup starts no continuation turn" 1
+            (List.length (calls trace "turn/start"));
+          match (cleanup, actual) with
+          | ( Input_write_error,
+              Error (App_server.Failure (Agent_runner.Port_exit diagnostic)) )
+            ->
+              Alcotest.check Alcotest.bool
+                "original interrupt write error survives" true
+                (diagnostic == write_error)
+          | ( Input_rpc_error,
+              Error
+                (App_server.Failure (Agent_runner.Response_error diagnostic)) )
+            ->
+              let message = Diagnostic.render diagnostic in
+              Alcotest.check Alcotest.bool "interrupt RPC code survives" true
+                (has_text message "-32090");
+              Alcotest.check Alcotest.bool "private RPC detail stays hidden"
+                false
+                (has_text message "private interrupt detail")
+          | ( Input_drain_error,
+              Error (App_server.Failure (Agent_runner.Response_error _)) ) -> ()
+          | ( Input_clean,
+              Error (App_server.Failure (Agent_runner.Turn_input_required _)) )
+            -> ()
+          | ( ( Input_write_error
+              | Input_rpc_error
+              | Input_drain_error
+              | Input_clean ),
+              ( Ok _
+              | Error
+                  ( App_server.Failure
+                      ( Agent_runner.Codex_not_found _
+                      | Agent_runner.Invalid_workspace_cwd _
+                      | Agent_runner.Port_exit _
+                      | Agent_runner.Response_error _
+                      | Agent_runner.Turn_failed _
+                      | Agent_runner.Turn_input_required _
+                      | Agent_runner.Template_error _
+                      | Agent_runner.Workspace_error _
+                      | Agent_runner.Tracker_error _ )
+                  | App_server.Deadline _ | App_server.Stopped _ ) ) ) ->
+              Alcotest.fail
+                "Input-required hid its typed interruption cleanup error"))
+
+type tool_replay = Turn_replay | Turn_conflict | Next_turn_reuse
+
+let tool_replay scope () =
+  Eio_mock.Backend.run (fun () ->
+      let trace = D.trace () in
+      let _, clock = D.clock () in
+      let interrupt, _ = Eio.Promise.create () in
+      let turns = ref 0 in
+      let names = ref [] in
+      let request_id = D.text "reused-tool-request" in
+      let first_tool = "first-tool" and next_tool = "next-tool" in
+      let emit = function
+        | Agent_runner.Unsupported_tool { name; diagnostic = _ } ->
+            names := name :: !names
+        | Agent_runner.Session_started _
+        | Agent_runner.Turn_started _
+        | Agent_runner.Turn_completed _
+        | Agent_runner.Output _
+        | Agent_runner.Usage_report _
+        | Agent_runner.Rate_limits _ -> ()
+      in
+      let params turn tool call =
+        D.obj
+          [
+            ("threadId", D.text "thread-9");
+            ("turnId", D.text turn);
+            ("tool", D.text tool);
+            ("callId", D.text call);
+            ("arguments", D.obj [ ("payload", D.text call) ]);
+          ]
+      in
+      let turn peer call =
+        incr turns;
+        let turn = if !turns = 1 then "turn-9" else "turn-10" in
+        let tool = if !turns = 1 then first_tool else next_tool in
+        let original = params turn tool ("call-" ^ turn) in
+        D.reply peer call
+          (D.obj [ ("turn", D.turn ~id:turn ~status:"inProgress" ()) ]);
+        D.request peer ~id:request_id "item/tool/call" original;
+        (match scope with
+        | Turn_replay -> D.request peer ~id:request_id "item/tool/call" original
+        | Turn_conflict ->
+            D.request peer ~id:request_id "item/tool/call"
+              (params turn next_tool "conflicting-call")
+        | Next_turn_reuse -> ());
+        D.completed peer ~id:turn ~status:"completed" ()
+      in
+      let process = D.process trace (D.server ~turn) in
+      let actual =
+        call_session ~trace ~process ~clock ~interrupt (fun session ->
+            match Session.turn session ~prompt:"First tool" ~emit with
+            | Error error -> Error error
+            | Ok first -> (
+                match scope with
+                | Turn_replay | Turn_conflict -> Ok first
+                | Next_turn_reuse ->
+                    Session.turn session ~prompt:"Next tool" ~emit))
+      in
+      Alcotest.check Alcotest.bool "tool replay scope closes before return" true
+        (has_event trace "process-closed");
+      let responses =
+        List.filter (fun call -> D.method_name call = None) (D.writes trace)
+      in
+      let expected_tools, expected_replies, expected_turns =
+        match scope with
+        | Turn_replay -> ([ first_tool ], 2, 1)
+        | Turn_conflict -> ([ first_tool ], 1, 1)
+        | Next_turn_reuse -> ([ first_tool; next_tool ], 2, 2)
+      in
+      Alcotest.check
+        (Alcotest.list Alcotest.string)
+        "one tool fact for each new scoped request" expected_tools
+        (List.rev !names);
+      Alcotest.check Alcotest.int
+        "each scoped request receives its recorded reply" expected_replies
+        (List.length responses);
+      Alcotest.check Alcotest.int "replay scenario follows its turn count"
+        expected_turns !turns;
+      List.iter
+        (fun response ->
+          json_equal "reused outer request identity" request_id
+            (D.field "id" response);
+          json_equal "unsupported tools receive no success" (D.json "false")
+            (D.field "result" response |> D.field "success"))
+        responses;
+      match scope with
+      | Turn_replay -> (
+          check_tag "completed" actual;
+          match responses with
+          | [ first; second ] ->
+              json_equal "same-turn replay preserves the exact reply"
+                (D.field "result" first) (D.field "result" second)
+          | [] | [ _ ] | _ :: _ :: _ :: _ ->
+              Alcotest.fail "Identical replay did not emit exactly two replies")
+      | Next_turn_reuse -> check_tag "completed" actual
+      | Turn_conflict -> (
+          match actual with
+          | Error (App_server.Failure (Agent_runner.Response_error _)) -> ()
+          | Ok _
+          | Error
+              ( App_server.Failure
+                  ( Agent_runner.Codex_not_found _
+                  | Agent_runner.Invalid_workspace_cwd _
+                  | Agent_runner.Port_exit _
+                  | Agent_runner.Turn_failed _
+                  | Agent_runner.Turn_input_required _
+                  | Agent_runner.Template_error _
+                  | Agent_runner.Workspace_error _
+                  | Agent_runner.Tracker_error _ )
+              | App_server.Deadline _ | App_server.Stopped _ ) ->
+              Alcotest.fail "Conflicting same-turn request was accepted"))
+
 module Closing_process = struct
   module Path = D.Process.Path
 
@@ -2021,5 +2326,20 @@ let suite () =
       example "successful callback exposes the joined daemon closing defect"
         `Quick
         (daemon_closing_primary Callback_success);
+      example "pending callback input preserves interrupt write failure" `Quick
+        (await_input_cleanup Input_write_error);
+      example "pending callback input preserves interrupt RPC failure" `Quick
+        (await_input_cleanup Input_rpc_error);
+      example "pending callback input preserves malformed closing drain" `Quick
+        (await_input_cleanup Input_drain_error);
+      example "pending callback clean input preserves input-required" `Quick
+        (await_input_cleanup Input_clean);
+      example "new turn reuses an old server request ID with its new payload"
+        `Quick
+        (tool_replay Next_turn_reuse);
+      example "identical same-turn tool request replays without another fact"
+        `Quick (tool_replay Turn_replay);
+      example "conflicting same-turn tool request is rejected" `Quick
+        (tool_replay Turn_conflict);
     ]
     @ branches )

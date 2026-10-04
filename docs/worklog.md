@@ -83,7 +83,7 @@ Branch ethan/codex-runner implements the stable JSONL session and closed runner
 over the existing Agent_process bracket. Progress is acknowledged by the owner;
 continuation reads are fenced by issue/run/turn/epoch; typed stalls retain worker
 custody until closure. Late usage updates accounting without refreshing activity.
-Targeted local gates pass 139 protocol/runner cases, 65 core examples/29 properties,
+Targeted local gates pass 146 protocol/runner cases, 65 core examples/29 properties,
 36 service examples, 67 schema fixtures/42 controls in both modes and nine native
 agent cases. Workspace/runner cleanup regressions failed before their corrections;
 the mandatory workspace mapper preserves caller errors through lease closure.
@@ -91,9 +91,9 @@ Continuation replies retain accepted read failures after competing operations jo
 Codec fixtures, validator receipts and identity manifests are retained in CI.
 CI selects Python 3.14 for macOS waitid/WNOWAIT, added in
 [Python 3.13](https://docs.python.org/3/library/os.html#os.waitid).
-At 80bc18b all PR/push Linux/macOS gates pass; 16 capacity receipts match emitted
+At ee232f1 all PR/push Linux/macOS gates pass; 16 capacity receipts match emitted
 JSON and independent schema/source/log audits. Receipt:
-_build/runner-ci-80bc18b-audit.json. The final changed head needs fresh hosted
+_build/runner-ci-ee232f1-audit.json. The final changed head needs fresh hosted
 checks, artifact audits and review before merge.
 
 Regression evidence covers live stall cadence during reads/refreshes, deferred
@@ -103,10 +103,12 @@ terminal pairs reject conflicts and retain identical outcomes. Closing settles
 accepted suffixes under its original cause and deadline without future reads.
 All preparation/protocol receipts check synchronous interruption before proceeding.
 Initialization, input and continuation handoffs validate buffered suffixes;
-input cleanup propagates typed errors. Reader cancellation/join retains the
+active and continuation input cleanup propagate typed interruption failures.
+Replay records and bytes retire together at the validated next-turn boundary;
+completed-turn waits retain replay protection. Reader cancellation/join retains the
 captured body's original error or exception/backtrace and exposes closing defects
-after success. The latest 23 regressions failed before correction and now pass
-alongside seven controls; all 139 agent cases pass.
+after success. The latest four regressions failed before correction and now pass
+alongside three controls; all 146 agent cases pass.
 Pinned integer/int32 schemas and official app-server source resolved the
 fractional rate-limit finding.
 
@@ -117,7 +119,8 @@ plus formatting/lint/coverage/Dialyzer. Latest receipts:
 _build/runner-preparation-{red,green}.log,
 runner-input-receipt-{red,green}.log, runner-handoff-{red,green}.log,
 runner-daemon-close-{red,green}.log, runner-daemon-close-full-check.log and
-runner-receipt-reference.log. Fresh final-head hosted evidence and review are next.
+runner-receipt-reference.log, runner-turn-boundary-{red,green}.log and
+runner-turn-boundary-full-check.log. Final-head hosted evidence and review are next.
 
 - [x] Record current schema provenance and consumed codecs/framing contracts.
 - [x] Add causal progress/continuation/stall to the existing owner/service boundary.

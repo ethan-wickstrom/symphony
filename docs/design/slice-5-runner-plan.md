@@ -94,7 +94,9 @@ and server correlation identities; completion and interruption acknowledgments d
 not release resources. Pending and active turns reject conflicting terminal
 outcomes; identical replays retain one completion barrier. Initialization, input,
 continuation and terminal handoffs settle the accepted batch before return.
-Input cleanup retains typed protocol faults. Every preparation/protocol receipt
+Active and continuation input cleanup retain typed interruption failures.
+Replay records and bytes retire together at the validated next-turn boundary;
+completed-turn waits retain replay protection. Every preparation/protocol receipt
 checks interruption after its callback returns. Closing preserves its fixed deadline
 and local interruption while recording buffered protocol faults; it never waits
 for a future packet after a terminal.

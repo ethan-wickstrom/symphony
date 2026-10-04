@@ -407,7 +407,7 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
             (failure
                (Agent_runner.Response_error
                   (diagnostic
-                     "The session exceeded its server request replay budget.")))
+                     "The turn exceeded its server request replay budget.")))
         else
           let* action =
             Result.map_error
@@ -431,7 +431,7 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
                 (failure
                    (Agent_runner.Response_error
                       (diagnostic
-                         "The session exceeded its server request byte budget.")))
+                         "The turn exceeded its server request byte budget.")))
             else begin
               t.replays <- Id_map.add id { request = json; response } t.replays;
               t.replay_bytes <- t.replay_bytes + size;
@@ -814,9 +814,10 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
                 | Error error -> Error error))
     | Ended_pipe, _, _ | Open_pipe, Some _, None | Open_pipe, None, _ -> Ok None
 
-  let close_error t error =
+  let close_error t (error : error) =
+    let cleanup = interrupt_turn t in
     let remote_error =
-      match interrupt_turn t with
+      match cleanup with
       | Ok diagnostic -> diagnostic
       | Error (Failure (Agent_runner.Response_error d)) -> Some d
       | Error
@@ -831,9 +832,23 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
               | Agent_runner.Tracker_error _ )
           | Deadline _ | Stopped _ ) -> None
     in
+    (* Input requests need a successful interruption to clear the pending RPC. *)
     match error with
+    | Failure (Agent_runner.Turn_input_required _) -> (
+        match cleanup with
+        | Error cleanup -> Error cleanup
+        | Ok _ -> Error error)
     | Stopped { interrupt; _ } -> Error (Stopped { interrupt; remote_error })
-    | Failure _ | Deadline _ -> Error error
+    | Failure
+        ( Agent_runner.Codex_not_found _
+        | Agent_runner.Invalid_workspace_cwd _
+        | Agent_runner.Port_exit _
+        | Agent_runner.Turn_failed _
+        | Agent_runner.Response_error _
+        | Agent_runner.Template_error _
+        | Agent_runner.Workspace_error _
+        | Agent_runner.Tracker_error _ )
+    | Deadline _ -> Error error
 
   let flush_early t =
     let early = List.rev t.early in
@@ -872,6 +887,9 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
                (Agent_runner.Response_error
                   (diagnostic "The session has no initialized thread.")))
     in
+    (* Settled prior turns keep replay protection until this new RPC generation. *)
+    t.replays <- Id_map.empty;
+    t.replay_bytes <- 0;
     t.phase <- Awaiting None;
     t.pending_terminal <- None;
     t.input <- None;
