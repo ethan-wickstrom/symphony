@@ -1,6 +1,7 @@
 module S = Service_test_support.Service_scenario
 module M = Capacity_measurements
 module Workload = Capacity_fixture
+module Cycle = Capacity_cycle
 
 let schema = 1
 let total_cycles = Workload.warmup_cycles + Workload.measured_cycles
@@ -197,7 +198,7 @@ struct
     mutable startup : M.samples;
     mutable steady : M.samples;
     mutable cycles : M.samples;
-    mutable poll_start : Clock.Pure.instant option;
+    mutable poll : Clock.Pure.instant Cycle.t;
     mutable cycle_count : int;
     mutable started : Run_id.t Issue_id.Map.t;
     mutable completed : Run_id.t Issue_id.Map.t;
@@ -212,7 +213,7 @@ struct
       startup = empty_samples ~limit:Controller.custody.event_budget;
       steady = empty_samples ~limit:Controller.custody.event_budget;
       cycles = empty_samples ~limit:Controller.custody.event_budget;
-      poll_start = None;
+      poll = Cycle.create ();
       cycle_count = 0;
       started = Issue_id.Map.empty;
       completed = Issue_id.Map.empty;
@@ -260,37 +261,25 @@ struct
     | Measuring -> t.steady <- add value t.steady
     | Warmup | Ending -> ()
 
-  let poll_end t commands =
-    List.iter
-      (function
-        | Host.Core.Arm_poll _ -> begin
-            match (t.poll_start, t.sampling) with
-            | Some start, (Warmup | Measuring) ->
-                let ticks =
-                  elapsed ~previous:start
-                    ~current:(now Controller.custody.clock)
-                in
-                t.poll_start <- None;
-                t.cycle_count <- t.cycle_count + 1;
-                if t.sampling = Measuring then
-                  t.cycles <- add (Seconds.of_nanoseconds ticks) t.cycles;
-                if t.cycle_count = Workload.warmup_cycles then
-                  t.sampling <- Measuring;
-                if t.cycle_count = total_cycles then t.sampling <- Ending
-            | Some _, (Startup | Ending) -> t.poll_start <- None
-            | None, _ -> ()
-          end
-        | Host.Core.Load_workflow _
-        | Host.Core.Read_tracker _
-        | Host.Core.Start_worker _
-        | Host.Core.Stop_worker _
-        | Host.Core.Remove_workspace _
-        | Host.Core.Cancel_request _
-        | Host.Core.Cancel_poll _
-        | Host.Core.Arm_retry _
-        | Host.Core.Cancel_retry _
-        | Host.Core.Report _ -> ())
-      commands
+  let cycle_time t ~at ~input ~phase =
+    let phase =
+      match phase with
+      | Host.Core.Idle -> Cycle.Idle
+      | Host.Core.Busy -> Cycle.Busy
+    in
+    let next, interval =
+      Cycle.observe ~at ~now:(now Controller.custody.clock) ~input ~phase t.poll
+    in
+    t.poll <- next;
+    match (interval, t.sampling) with
+    | Some { Cycle.started; ended }, (Warmup | Measuring) ->
+        let ticks = elapsed ~previous:started ~current:ended in
+        t.cycle_count <- t.cycle_count + 1;
+        if t.sampling = Measuring then
+          t.cycles <- add (Seconds.of_nanoseconds ticks) t.cycles;
+        if t.cycle_count = Workload.warmup_cycles then t.sampling <- Measuring;
+        if t.cycle_count = total_cycles then t.sampling <- Ending
+    | Some _, (Startup | Ending) | None, _ -> ()
 
   let projection t (value : Host.Core.projection) =
     t.peak_running <- max t.peak_running value.Host.Core.running;
@@ -309,37 +298,42 @@ struct
     | Host.Initial value ->
         duration t value.Host.elapsed;
         projection t value.Host.projection;
-        poll_end t value.Host.commands
+        cycle_time t ~at:value.Host.now ~input:Cycle.Other
+          ~phase:value.Host.projection.Host.Core.cycle
     | Host.Transition value ->
         duration t value.Host.elapsed;
-        begin match value.Host.input with
-        | Host.Core.Poll_due _ ->
-            if t.poll_start <> None then failwith "overlapping capacity poll";
-            t.poll_start <- Some value.Host.now
-        | Host.Core.Worker_started (id, run) ->
-            t.started <- started_fact t.started id run
-        | Host.Core.Worker_finished completed ->
-            let id = P.Agent.completed_issue completed in
-            let run = P.Agent.completed_run completed in
-            begin match
-              Issue_id.Map.find_opt id Controller.custody.resources
-            with
-            | Some { phase = Released; _ } -> ()
-            | Some { phase = Entered | Closing; _ } | None ->
-                failwith "owner completion preceded resource release"
-            end;
-            t.completed <- worker_fact t.completed id run
-        | Host.Core.Refresh_requested
-        | Host.Core.Workflow_changed
-        | Host.Core.Workflow_loaded _
-        | Host.Core.Tracker_completed _
-        | Host.Core.Request_canceled _
-        | Host.Core.Retry_due _
-        | Host.Core.Workspace_removed _
-        | Host.Core.Shutdown -> ()
-        end;
+        let input =
+          match value.Host.input with
+          | Host.Core.Poll_due _ -> Cycle.Poll
+          | Host.Core.Worker_started (id, run) ->
+              t.started <- started_fact t.started id run;
+              Cycle.Other
+          | Host.Core.Worker_finished completed ->
+              let id = P.Agent.completed_issue completed in
+              let run = P.Agent.completed_run completed in
+              begin match
+                Issue_id.Map.find_opt id Controller.custody.resources
+              with
+              | Some { phase = Released; _ } -> ()
+              | Some { phase = Entered | Closing; _ } | None ->
+                  failwith "owner completion preceded resource release"
+              end;
+              t.completed <- worker_fact t.completed id run;
+              Cycle.Other
+          | Host.Core.Refresh_requested
+          | Host.Core.Workflow_changed
+          | Host.Core.Workflow_loaded _
+          | Host.Core.Tracker_completed _
+          | Host.Core.Request_canceled _
+          | Host.Core.Worker_progress _
+          | Host.Core.Worker_continue _
+          | Host.Core.Retry_due _
+          | Host.Core.Workspace_removed _
+          | Host.Core.Shutdown -> Cycle.Other
+        in
         projection t value.Host.projection;
-        poll_end t value.Host.commands
+        cycle_time t ~at:value.Host.now ~input
+          ~phase:value.Host.projection.Host.Core.cycle
     | Host.Effect (Host.Registered _) -> t.registered <- t.registered + 1
     | Host.Effect (Host.Retired _) -> t.retired <- t.retired + 1
     | Host.Effect (Host.Child_entered _ | Host.Outer_closed _ | Host.Delivered _)
@@ -438,7 +432,7 @@ struct
         Issue_id.Map.cardinal t.started = Controller.custody.sessions
         && Issue_id.Map.cardinal Controller.custody.resources
            = Controller.custody.sessions
-        && t.poll_start = None);
+        && Cycle.phase t.poll = Cycle.Idle);
     require_plateau t;
     ignore (checkpoint ~sessions:Controller.custody.sessions "plateau" None);
     t.sampling <- Warmup;

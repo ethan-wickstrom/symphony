@@ -110,6 +110,7 @@ type mode = Startup | Serving | Draining_scope | Shutting_down
 type readiness = Ready | Loading | Invalid
 type worker_phase = Starting | Active | Stopping
 type retry_phase = Waiting of int | Refreshing | Parked
+type cycle_status = Idle | Busy
 
 type worker = {
   issue : issue;
@@ -131,6 +132,7 @@ type owner = Worker of worker | Retry of retry | Cleaning of issue
 type projection = {
   mode : mode;
   readiness : readiness;
+  cycle : cycle_status;
   owners : owner list;
   running : int;
   available_slots : int;
@@ -472,8 +474,7 @@ let groups (state : state) =
           else groups @ [ (binding, [ target ]) ])
     [] state.owners
 
-let finish_cycle now state =
-  arm_poll (now + state.config.poll_ms) { state with cycle = Idle }
+let finish_cycle _now (state : state) = ({ state with cycle = Idle }, [])
 
 let cycle_pending cycle (state : state) =
   List.exists
@@ -643,10 +644,27 @@ let admit now (issues : issue list) (state : state) =
     (List.stable_sort compare_issue issues)
 
 let begin_retry (retry : queued) (state : state) =
-  let state = put (Queued { retry with retry_status = Reading }) state in
-  read
-    (Retry_read (retry.current.id, retry.token))
-    (Ids [ retry.current.id ]) state.config.binding state
+  let retained_read =
+    List.exists
+      (fun (job : job) ->
+        match job.purpose with
+        | Reconcile_read (_, targets) ->
+            List.exists (fun (id, _) -> id = retry.current.id) targets
+        | Retry_read (id, _) -> id = retry.current.id
+        | Startup_read
+        | Preflight_load _
+        | Candidate_read _
+        | Cleanup_job _
+        | Reload_load -> false)
+      state.jobs
+  in
+  match retry.retry_status with
+  | Timer _ when retained_read -> (state, [])
+  | Timer _ | Reading | Dormant ->
+      let state = put (Queued { retry with retry_status = Reading }) state in
+      read
+        (Retry_read (retry.current.id, retry.token))
+        (Ids [ retry.current.id ]) state.config.binding state
 
 let awaken now (state : state) =
   if state.control <> Operating || readiness state <> Ready then (state, [])
@@ -921,18 +939,22 @@ let step ~now input (state : state) =
     | Workflow_changed -> workflow_changed state
     | Refresh_requested -> (
         match (state.control, state.cycle) with
-        | Operating, Idle -> combine (timer_cancel state) (begin_cycle now)
+        | Operating, Idle -> begin_cycle now state
         | ( (Booting _ | Operating | Draining | Exiting),
             (Idle | Reconciling _ | Checking _ | Fetching _ | Restarting) ) ->
             (state, []))
     | Poll_due token -> (
-        match (state.poll, state.control, state.cycle) with
-        | Some (current, due), Operating, Idle
+        match (state.poll, state.control) with
+        | Some (current, due), Operating
           when same_request current token && now >= due ->
-            begin_cycle now { state with poll = None }
-        | ( (None | Some _),
-            (Booting _ | Operating | Draining | Exiting),
-            (Idle | Reconciling _ | Checking _ | Fetching _ | Restarting) ) ->
+            combine
+              (arm_poll (now + state.config.poll_ms) { state with poll = None })
+              (fun state ->
+                match state.cycle with
+                | Idle -> begin_cycle now state
+                | Reconciling _ | Checking _ | Fetching _ | Restarting ->
+                    (state, []))
+        | (None | Some _), (Booting _ | Operating | Draining | Exiting) ->
             (state, []))
     | Retry_due (id, token) -> (
         match find_owner id state with
@@ -1105,9 +1127,15 @@ let project ~now (state : state) : projection =
     | Draining -> Draining_scope
     | Exiting -> Shutting_down
   in
+  let cycle : cycle_status =
+    match state.cycle with
+    | Idle -> Idle
+    | Reconciling _ | Checking _ | Fetching _ | Restarting -> Busy
+  in
   {
     mode;
     readiness = readiness state;
+    cycle;
     owners;
     running;
     available_slots = max 0 (state.config.global_cap - running);

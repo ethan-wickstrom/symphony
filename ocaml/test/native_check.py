@@ -18,6 +18,9 @@ HANDLED_SIGNALS = (signal.SIGINT, signal.SIGTERM)
 SIGNAL_EXIT_BASE = 128
 WATCHDOG = Path(__file__).resolve()
 SENTINEL = WATCHDOG.with_name("native_sentinel.py")
+AGENT_FIXTURE = WATCHDOG.parent / "fixtures/agent/native_server.py"
+PYTHON_ENV = "SYMPHONY_TEST_PYTHON"
+SERVER_ENV = "SYMPHONY_TEST_AGENT_SERVER"
 
 
 class Terminated(SystemExit):
@@ -98,7 +101,7 @@ def close_group(child, before):
             signal.signal(signum, handler)
 
 
-def execute(binary, log, timeout):
+def execute(binary, log, timeout, *, env=None):
     require_waitid()
     binary = binary.resolve()
     flags = ["-I"]
@@ -127,6 +130,7 @@ def execute(binary, log, timeout):
             child = subprocess.Popen(
                 [sys.executable, *flags, str(SENTINEL), str(binary)], stdout=output,
                 stderr=subprocess.STDOUT, start_new_session=True, cwd=binary.parent,
+                env=None if env is None else {**os.environ, **env},
             )
             try:
                 wait_exit(child, timeout, observe)
@@ -154,6 +158,7 @@ def main():
     parser.add_argument("--kernel", type=Path, required=True)
     parser.add_argument("--host", type=Path, required=True)
     parser.add_argument("--http", type=Path, required=True)
+    parser.add_argument("--agent", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=90)
     args = parser.parse_args()
@@ -162,7 +167,7 @@ def main():
 
     root = Path(__file__).resolve().parents[1]
     sources = sorted((root / "lib/native").glob("*"))
-    for area in ("domain", "io", "workflow"):
+    for area in ("domain", "io", "workflow", "core", "service", "agent", "orchestration"):
         sources += [
             path for path in sorted((root / "lib" / area).glob("*"))
             if path.suffix in (".ml", ".mli") or path.name == "dune"
@@ -171,9 +176,13 @@ def main():
     sources += sorted((root / "test/native_kernel").glob("*.ml*"))
     sources += sorted((root / "test/native_host").glob("*.ml*"))
     sources += sorted((root / "test").glob("native_http_test.ml*"))
+    sources += sorted((root / "test").glob("native_agent_test.ml*"))
     sources += sorted((root / "test").glob("tracker_runtime_test.ml*"))
     sources += sorted((root / "bin").glob("tracker_runtime.ml*"))
     sources += sorted((root / "test/fixtures/tls").glob("*"))
+    sources += sorted((root / "protocol/0.159.2").rglob("*"))
+    sources += [root / "dune", root / "dune-project", root / "test/dune",
+                root / "lib/workspace/dune", AGENT_FIXTURE]
     hashes = {
         str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in sources
@@ -189,10 +198,29 @@ def main():
         "sha256": hashlib.sha256(WATCHDOG.read_bytes()).hexdigest(),
         "optimize": sys.flags.optimize,
     }
+    interpreter = Path(sys.executable).resolve()
+    python = {
+        "executable": sys.executable,
+        "resolved": str(interpreter),
+        "sha256": hashlib.sha256(interpreter.read_bytes()).hexdigest(),
+        "version": platform.python_version(),
+        "implementation": sys.implementation.name,
+        "cache_tag": sys.implementation.cache_tag,
+        "optimize": sys.flags.optimize,
+        "isolated": sys.flags.isolated,
+    }
+    if not AGENT_FIXTURE.is_file():
+        parser.error(f"agent server fixture is missing: {AGENT_FIXTURE}")
+    agent_fixture = {
+        "path": str(AGENT_FIXTURE),
+        "sha256": hashlib.sha256(AGENT_FIXTURE.read_bytes()).hexdigest(),
+    }
+    agent_env = {PYTHON_ENV: sys.executable, SERVER_ENV: str(AGENT_FIXTURE)}
     args.out.mkdir(parents=True, exist_ok=True)
     results = {}
     binaries = {}
-    targets = [("kernel", args.kernel), ("host", args.host), ("http", args.http)]
+    targets = [("kernel", args.kernel), ("host", args.host), ("http", args.http),
+               ("agent", args.agent)]
     for name, binary in targets:
         binary = binary.resolve()
         if not binary.is_file():
@@ -201,19 +229,26 @@ def main():
             "path": str(binary),
             "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
         }
-        results[name] = execute(binary, args.out / f"{name}.log", args.timeout)
+        env = agent_env if name == "agent" else None
+        if env is not None:
+            binaries[name]["environment"] = env
+        results[name] = execute(binary, args.out / f"{name}.log", args.timeout, env=env)
 
     manifest = {
         "host": platform.platform(),
         "machine": platform.machine(),
-        "python": platform.python_version(),
+        "python": python,
         "sources": hashes,
+        "source_count": len(hashes),
         "binaries": binaries,
         "helper": helper,
         "watchdog": watchdog,
+        "agent_fixture": agent_fixture,
         "results": results,
         "provenance": (
-            "Hashes record current source files and binary paths before launch; "
+            "Hashes record current source files, binaries, Python interpreter and "
+            "agent fixture before launch; agent environment records explicit "
+            "overrides of inherited watchdog bindings; "
             "no source-to-binary attestation"
         ),
         "boundary": (

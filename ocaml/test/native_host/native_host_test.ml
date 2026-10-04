@@ -247,8 +247,8 @@ let lifecycle () =
         (reference fixture ~created:"exit 99" ~before:"exit 99" ~after:"exit 99"
            ());
       acquired
-        (Manager.with_workspace (manager fixture) workspace (fun cwd ->
-             preserve fixture workspace cwd));
+        (Manager.with_workspace (manager fixture) workspace ~on_error:Fun.id
+           (fun cwd -> preserve fixture workspace cwd));
       expect_rows fixture workspace
         [ "after_create"; "before_run"; "after_run" ];
       cleanup fixture workspace;
@@ -292,7 +292,8 @@ let preparation_rollback () =
           let workspace = reference fixture ~created ~before () in
           let entered = ref false in
           expect_failed
-            (Manager.with_workspace (manager fixture) workspace (fun _cwd ->
+            (Manager.with_workspace (manager fixture) workspace ~on_error:Fun.id
+               (fun _cwd ->
                  entered := true;
                  Ok ()));
           Alcotest.(check bool)
@@ -317,13 +318,14 @@ let reused_failure () =
   with_fixture (fun fixture ->
       let workspace = reference fixture () in
       acquired
-        (Manager.with_workspace (manager fixture) workspace (fun cwd ->
-             preserve fixture workspace cwd));
+        (Manager.with_workspace (manager fixture) workspace ~on_error:Fun.id
+           (fun cwd -> preserve fixture workspace cwd));
       write_file fixture.trace_file "";
       let failed = reference fixture ~before:fail_run () in
       let entered = ref false in
       expect_failed
-        (Manager.with_workspace (manager fixture) failed (fun _cwd ->
+        (Manager.with_workspace (manager fixture) failed ~on_error:Fun.id
+           (fun _cwd ->
              entered := true;
              Ok ()));
       Alcotest.(check bool) "reused preparation skips callback" false !entered;
@@ -341,7 +343,8 @@ let hook_timeout () =
         reference fixture ~created:"exit 0" ~before:slow_run ~timeout:200 ()
       in
       (match
-         Manager.with_workspace (manager fixture) workspace (fun _cwd -> Ok ())
+         Manager.with_workspace (manager fixture) workspace ~on_error:Fun.id
+           (fun _cwd -> Ok ())
        with
       | Error (Workspace_manager.Hook_timeout _) -> ()
       | Ok ()
@@ -418,7 +421,7 @@ let native_cancellation () =
               Eio.Fiber.fork ~sw (fun () ->
                   ignore
                     (Manager.with_workspace (manager fixture) workspace
-                       (fun cwd ->
+                       ~on_error:Fun.id (fun cwd ->
                          escaped := Some cwd;
                          Result.map_error
                            (fun error ->
@@ -469,15 +472,16 @@ let native_cancellation () =
       Alcotest.(check bool)
         "stale launch failed before callback" false !launched;
       acquired
-        (Manager.with_workspace (manager fixture) workspace (fun _cwd -> Ok ())))
+        (Manager.with_workspace (manager fixture) workspace ~on_error:Fun.id
+           (fun _cwd -> Ok ())))
 
 let stale_path () =
   with_fixture (fun fixture ->
       let workspace = reference fixture () in
       let escaped =
         acquired
-          (Manager.with_workspace (manager fixture) workspace (fun cwd ->
-               Ok cwd))
+          (Manager.with_workspace (manager fixture) workspace ~on_error:Fun.id
+             (fun cwd -> Ok cwd))
       in
       let launched = ref false in
       (match
@@ -494,13 +498,15 @@ let stale_path () =
       expect_rows fixture workspace
         [ "after_create"; "before_run"; "after_run" ];
       acquired
-        (Manager.with_workspace (manager fixture) workspace (fun _cwd -> Ok ())))
+        (Manager.with_workspace (manager fixture) workspace ~on_error:Fun.id
+           (fun _cwd -> Ok ())))
 
 let nested_cleanup () =
   with_fixture (fun fixture ->
       let workspace = reference fixture () in
       acquired
-        (Manager.with_workspace (manager fixture) workspace (fun cwd ->
+        (Manager.with_workspace (manager fixture) workspace ~on_error:Fun.id
+           (fun cwd ->
              Result.map_error
                (fun error -> Workspace_manager.Filesystem_error error)
                (Host.Process.with_process (Host.process fixture.host)

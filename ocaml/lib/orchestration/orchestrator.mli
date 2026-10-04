@@ -8,6 +8,7 @@ module type S = sig
   type tracker_request
   type tracker_reply
   type agent_request
+  type agent_progress
   type agent_completed
   type workspace_cleanup
   type state
@@ -20,6 +21,13 @@ module type S = sig
     | Workflow_loaded of Request_id.t * (config, Config_layer.error) result
     | Tracker_completed of Request_id.t * tracker_reply
     | Worker_started of Issue_id.t * Run_id.t
+    | Worker_progress of {
+        issue : Issue_id.t;
+        run : Run_id.t;
+        progress : agent_progress;
+        emitted_at : instant;
+      }
+    | Worker_continue of Issue_id.t * Run_id.t * Turn_id.t
     | Worker_finished of agent_completed
     | Request_canceled of Request_id.t
     | Retry_due of Issue_id.t * Retry_id.t
@@ -52,7 +60,12 @@ module type S = sig
     | Load_workflow of { id : Request_id.t; file : Workflow_path.t }
     | Read_tracker of tracker_request
     | Start_worker of agent_request
-    | Stop_worker of Issue_id.t * Run_id.t * Agent_runner.cancel_reason
+    | Stop_worker of Issue_id.t * Run_id.t * Agent_runner.interrupt
+    | Continue_worker of
+        Issue_id.t
+        * Run_id.t
+        * Turn_id.t
+        * (Agent_runner.continuation, Tracker_error.t) result
     | Remove_workspace of workspace_cleanup
     | Cancel_request of Request_id.t
     | Arm_poll of Request_id.t * instant
@@ -61,9 +74,8 @@ module type S = sig
     | Cancel_retry of Issue_id.t * Retry_id.t
     | Report of fault
         (** Commands carry checked requests, frozen authority and keyed
-            generations. No Stall interrupt or continuation reply is offered in
-            this language. Faults are typed observations; the edge formats their
-            redacted logs. *)
+            generations. Continuation replies fence the completed turn; stop
+            retains ownership until closed completion. Faults remain typed. *)
 
   val create : now:instant -> config -> state * command list
   (** Reserve the startup terminal-read obligation. No launch precedes closure
@@ -92,6 +104,7 @@ module type S = sig
   type readiness = Ready | Loading | Invalid
   type worker_phase = Starting | Active | Stopping
   type retry_phase = Waiting of instant | Refreshing | Parked
+  type cycle_status = Idle | Busy
 
   type worker = {
     issue : Issue.t;
@@ -99,6 +112,14 @@ module type S = sig
     phase : worker_phase;
     attempt : Template.attempt;
     seconds_running : Seconds.t;
+    agent_phase : Agent_observation.phase;
+    session : Session_id.t option;
+    turn_count : Count.t;
+    last_event : string option;
+    last_message : string option;
+    last_activity : instant option;
+    usage : Usage.t;
+    rate_limits : Json.t option;
   }
 
   type retry = {
@@ -113,17 +134,21 @@ module type S = sig
   type projection = {
     mode : mode;
     readiness : readiness;
+    cycle : cycle_status;
     owners : owner list;
     running : int;
     available_slots : int;
     total_runtime : Seconds.t;
+    total_usage : Usage.t;
+    latest_rate_limits : Json.t option;
   }
 
   val project : now:instant -> state -> projection
   (** Operator/conformance read side, derived once per read. Rows are ordered by
       Issue_id.compare and use canonical current issues. Starting, Active and
       Stopping count as running; Cleaning consumes a claim but no slot. Total
-      runtime joins one ended aggregate with current worker intervals. No
+      runtime joins one ended aggregate with current worker intervals. Busy
+      lasts through reconciliation, preflight and candidate resource closure. No
       binding, reference, pending ledger, epoch or acquired Path escapes.
       Reading changes no state; equal states/time yield equal observations. *)
 
@@ -152,5 +177,6 @@ module Make
      and type tracker_request = Tracker.request
      and type tracker_reply = Tracker.reply
      and type agent_request = Agent.request
+     and type agent_progress = Agent.progress
      and type agent_completed = Agent.completed
      and type workspace_cleanup = Workspace.cleanup

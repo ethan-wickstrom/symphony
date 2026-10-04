@@ -103,13 +103,20 @@
 (library
  (name capacity_support)
  (wrapped false)
- (modules capacity_fixture capacity_measurements)
+ (modules capacity_fixture capacity_measurements capacity_cycle)
  (libraries scheduling_test_support))
 
 (test
  (name capacity_test_main)
- (modules capacity_test_main capacity_measurements_test)
- (libraries capacity_support alcotest qcheck-core qcheck-core.runner))
+ (modules capacity_test_main capacity_measurements_test capacity_cycle_test)
+ (libraries
+  capacity_support
+  service_test_support
+  alcotest
+  qcheck-core
+  qcheck-core.runner
+  eio.mock
+  mtime))
 
 (test
  (name orchestration)
@@ -124,7 +131,9 @@
   lifecycle_test
   core_test
   core_coverage_test
-  core_property_test)
+  core_property_test
+  agent_observation_model
+  agent_observation_test)
  (libraries
   symphony_orchestration
   symphony_test_support
@@ -133,6 +142,44 @@
   qcheck-core
   qcheck-core.runner
   zarith))
+
+(library
+ (name agent_protocol_test_support)
+ (wrapped false)
+ (modules
+  protocol_id_test
+  protocol_envelope_test
+  protocol_codec_test
+  protocol_frame_model
+  protocol_frame_test)
+ (libraries symphony_agent alcotest qcheck-core qcheck-core.runner))
+
+(test
+ (name agent_main)
+ (modules agent_main agent_test_driver agent_session_test agent_runner_test)
+ (libraries
+  agent_protocol_test_support
+  symphony_agent
+  alcotest
+  eio.mock
+  mtime))
+
+(executable
+ (name protocol_fixtures)
+ (modules protocol_fixtures)
+ (libraries agent_protocol_test_support))
+
+(executable
+ (name native_agent_test)
+ (modules native_agent_test)
+ (libraries
+  symphony_agent
+  symphony_service
+  symphony_native
+  eio_posix
+  eio.unix
+  alcotest
+  unix))
 
 (executable
  (name native_http_test)

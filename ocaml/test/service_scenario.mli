@@ -12,6 +12,13 @@ type key =
 type resource_event = Acquired of key | Closing of key | Released of key
 type closure = Close_ok | Close_defect of exn
 
+type worker_event =
+  | Publication_entered of key * Positive_count.t
+  | Publication_returned of key * Positive_count.t
+  | Refresh_entered of key * Turn_id.t
+  | Refresh_returned of
+      key * Turn_id.t * (Agent_runner.continuation, Tracker_error.t) result
+
 type _ invocation =
   | Loading : {
       id : Request_id.t;
@@ -64,7 +71,31 @@ val close : 'answer call -> closure -> unit
 (** Permit the actual protected scope finalizer to release. Permitting early or
     twice is idempotent; it does not release resources before Closing. *)
 
+val publish :
+  Agent_runner.outcome call ->
+  sequence:Positive_count.t ->
+  F.Agent.notice ->
+  unit
+
+val refresh : Agent_runner.outcome call -> turn:Turn_id.t -> unit
+(** Queue one scripted action to the actual runner. Publication_returned occurs
+    only after its Host callback returns; Refresh_returned contains that
+    callback's fenced answer. The actor uses worker_trace notifications to await
+    these boundaries. Interrupted runners close their real scopes before
+    completion. *)
+
+val refresh_with_progress :
+  Agent_runner.outcome call ->
+  turn:Turn_id.t ->
+  sequence:Positive_count.t ->
+  after:unit Eio.Promise.t ->
+  F.Agent.notice ->
+  unit
+(** Run refresh beside one late publication, gated by [after]. Both callbacks
+    join before the scripted action returns or the runner closes. *)
+
 val trace : t -> resource_event list
+val worker_trace : t -> worker_event list
 val revision : t -> int
 val notify : t -> unit
 

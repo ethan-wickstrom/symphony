@@ -34,6 +34,7 @@ let tracker = function
   | C.Load_workflow _
   | C.Start_worker _
   | C.Stop_worker _
+  | C.Continue_worker _
   | C.Remove_workspace _
   | C.Cancel_request _
   | C.Arm_poll _
@@ -47,6 +48,7 @@ let load = function
   | C.Read_tracker _
   | C.Start_worker _
   | C.Stop_worker _
+  | C.Continue_worker _
   | C.Remove_workspace _
   | C.Cancel_request _
   | C.Arm_poll _
@@ -61,6 +63,7 @@ let poll = function
   | C.Read_tracker _
   | C.Start_worker _
   | C.Stop_worker _
+  | C.Continue_worker _
   | C.Remove_workspace _
   | C.Cancel_request _
   | C.Cancel_poll _
@@ -74,6 +77,7 @@ let removal = function
   | C.Load_workflow _
   | C.Start_worker _
   | C.Stop_worker _
+  | C.Continue_worker _
   | C.Cancel_request _
   | C.Arm_poll _
   | C.Cancel_poll _
@@ -87,6 +91,7 @@ let worker = function
   | C.Load_workflow _
   | C.Remove_workspace _
   | C.Stop_worker _
+  | C.Continue_worker _
   | C.Cancel_request _
   | C.Arm_poll _
   | C.Cancel_poll _
@@ -124,7 +129,8 @@ let actual_reply issues = function
 
 (* This driver closes only fixture reads/loads; worker and cleanup closure stay
    explicit so an inner terminal cannot silently release an owner. *)
-let close_reads ~profile ~issues harness =
+let close_reads ?config ~profile ~issues harness =
+  let config = Option.value config ~default:(F.config profile) in
   let rec loop budget pending harness =
     match pending with
     | [] -> harness
@@ -133,12 +139,12 @@ let close_reads ~profile ~issues harness =
         let next =
           match command with
           | C.Load_workflow { id; _ } ->
-              Some
-                (send harness (C.Workflow_loaded (id, Ok (F.config profile))))
+              Some (send harness (C.Workflow_loaded (id, Ok config)))
           | C.Read_tracker request ->
               Some (respond harness request (actual_reply issues request))
           | C.Start_worker _
           | C.Stop_worker _
+          | C.Continue_worker _
           | C.Remove_workspace _
           | C.Cancel_request _
           | C.Arm_poll _
@@ -153,8 +159,8 @@ let close_reads ~profile ~issues harness =
   in
   loop 64 harness.commands harness
 
-let cycle ?(profile = F.A) ~issues harness =
-  close_reads ~profile ~issues (send harness C.Refresh_requested)
+let cycle ?config ?(profile = F.A) ~issues harness =
+  close_reads ?config ~profile ~issues (send harness C.Refresh_requested)
 
 let started_since harness = List.filter_map worker harness.history
 let started_id request = Issue_id.text (Issue.id (F.Agent.issue request))
@@ -277,6 +283,7 @@ let retry_due () =
         | C.Load_workflow _
         | C.Start_worker _
         | C.Stop_worker _
+        | C.Continue_worker _
         | C.Remove_workspace _
         | C.Cancel_request _
         | C.Arm_poll _
@@ -372,6 +379,7 @@ let parked_reload () =
         | C.Load_workflow _
         | C.Start_worker _
         | C.Stop_worker _
+        | C.Continue_worker _
         | C.Remove_workspace _
         | C.Cancel_request _
         | C.Arm_poll _
@@ -579,7 +587,9 @@ let canceled_load_readiness () =
 
 let invalid_candidate_reload () =
   let check order =
-    let validating = send (startup F.A) C.Refresh_requested in
+    let serving = startup F.A in
+    let poll_id, _ = choose "Startup poll missing" poll serving.commands in
+    let validating = send serving C.Refresh_requested in
     let preflight = choose "Preflight missing" load validating.commands in
     let fetching =
       send validating (C.Workflow_loaded (preflight, Ok (F.config F.A)))
@@ -600,31 +610,21 @@ let invalid_candidate_reload () =
     in
     no_command "Half-closed invalid cycle cannot reload" load first;
     no_command "Half-closed invalid cycle cannot read" tracker first;
+    let tick = send ~now:100 first (C.Poll_due poll_id) in
+    no_command "Retained cadence cannot overlap invalid cycle reads" tracker
+      tick;
+    no_command "Retained cadence cannot overlap invalid cycle loads" load tick;
+    let _, due = choose "Busy cycle retains cadence" poll tick.commands in
     let invalid =
       match order with
       | Old_first ->
-          send ~now:100 first
+          send ~now:100 tick
             (C.Workflow_loaded (latest, Error F.invalid_config))
-      | Latest_first -> respond first candidate (F.reply [])
+      | Latest_first -> respond tick candidate (F.reply [])
     in
     no_command "Invalid config cannot immediately reload" load invalid;
     no_command "Invalid config cannot read candidates" tracker invalid;
-    let due =
-      choose "Invalid cycle must pace the next poll"
-        (function
-          | C.Arm_poll (_, due) -> Some due
-          | C.Load_workflow _
-          | C.Read_tracker _
-          | C.Start_worker _
-          | C.Stop_worker _
-          | C.Remove_workspace _
-          | C.Cancel_request _
-          | C.Cancel_poll _
-          | C.Arm_retry _
-          | C.Cancel_retry _
-          | C.Report _ -> None)
-        invalid.commands
-    in
+    no_command "Cycle closure retains its existing cadence" poll invalid;
     Alcotest.check Alcotest.bool "Last-good poll interval sets due time" true
       (Clock.Pure.compare due (F.instant 105) = 0);
     let late =
@@ -713,9 +713,9 @@ let startup_final_loader () =
 
 let borrowed_preflight_custody () =
   let check order =
-    let reading =
-      send (cycle ~issues:[ issue_a ] (startup F.A)) C.Refresh_requested
-    in
+    let started = cycle ~issues:[ issue_a ] (startup F.A) in
+    let poll_id, _ = choose "Startup poll missing" poll started.history in
+    let reading = send started C.Refresh_requested in
     let reconcile = choose "Reconciliation missing" tracker reading.commands in
     let changed = send reading C.Workflow_changed in
     let borrowed = choose "Concurrent reload missing" load changed.commands in
@@ -737,14 +737,19 @@ let borrowed_preflight_custody () =
     let half_closed = send ~now:100 changed_again first in
     no_command "Invalid preflight still joins the borrowed loader" poll
       half_closed;
-    let closed = send ~now:200 half_closed last in
-    let _, due =
-      choose "Closed invalid preflight paces polling" poll closed.commands
+    let tick = send ~now:100 half_closed (C.Poll_due poll_id) in
+    let next_id, _ =
+      choose "Busy preflight retains cadence" poll tick.commands
     in
-    Alcotest.check Alcotest.int "Next poll follows final closure" 0
-      (Clock.Pure.compare due (F.instant 205));
+    no_command "Busy preflight tick cannot overlap tracker reads" tracker tick;
+    let closed = send ~now:200 tick last in
+    no_command "Closure cannot replace retained cadence" poll closed;
     no_command "Invalid preflight admits no candidates" tracker closed;
-    no_command "Invalid preflight cannot immediately reload" load closed
+    no_command "Invalid preflight cannot immediately reload" load closed;
+    let next = send ~now:200 closed (C.Poll_due next_id) in
+    let _, due = choose "Next cadence tick paces polling" poll next.commands in
+    Alcotest.check Alcotest.int "Cadence uses last-good interval" 0
+      (Clock.Pure.compare due (F.instant 205))
   in
   List.iter check [ Old_first; Latest_first ]
 
@@ -807,6 +812,7 @@ let fault_context () =
     | C.Read_tracker _
     | C.Start_worker _
     | C.Stop_worker _
+    | C.Continue_worker _
     | C.Remove_workspace _
     | C.Cancel_request _
     | C.Arm_poll _
@@ -868,6 +874,601 @@ let fault_context () =
   let failed = respond reading read (Error F.tracker_error) in
   check issue_a failed
 
+let checked = function
+  | Ok value -> value
+  | Error message -> Alcotest.fail message
+
+let thread = checked (Thread_id.parse "thread-core")
+let first_turn = checked (Turn_id.parse "turn-a")
+let next_turn = checked (Turn_id.parse "turn-b")
+let first_session = checked (Session_id.parse "thread-core-turn-a")
+let next_session = checked (Session_id.parse "thread-core-turn-b")
+
+let emit ?now ?emitted_at harness request sequence notice =
+  let now = Option.value now ~default:harness.now in
+  let emitted_at = Option.value emitted_at ~default:now in
+  let sequence = checked (Positive_count.parse (string_of_int sequence)) in
+  send ~now harness
+    (C.Worker_progress
+       {
+         issue = Issue.id (F.Agent.issue request);
+         run = F.Agent.run_id request;
+         progress = F.Agent.progress ~sequence notice;
+         emitted_at = F.instant emitted_at;
+       })
+
+let session harness request =
+  let harness = emit harness request 1 F.Agent.Preparing in
+  let harness =
+    F.with_path (F.Agent.workspace request) (fun path ->
+        emit harness request 2 (F.Agent.Workspace_ready path))
+  in
+  let harness = emit harness request 3 F.Agent.Rendering in
+  let harness = emit harness request 4 F.Agent.Starting in
+  emit harness request 5
+    (F.Agent.Protocol
+       (Agent_runner.Session_started
+          { session = first_session; thread; turn = first_turn }))
+
+let completed_turn harness request sequence session turn =
+  emit harness request sequence
+    (F.Agent.Protocol (Agent_runner.Turn_completed { session; turn }))
+
+let continue harness request turn =
+  send harness
+    (C.Worker_continue
+       (Issue.id (F.Agent.issue request), F.Agent.run_id request, turn))
+
+let continuation = function
+  | C.Continue_worker (issue, run, turn, answer) ->
+      Some (issue, run, turn, answer)
+  | C.Load_workflow _
+  | C.Read_tracker _
+  | C.Start_worker _
+  | C.Stop_worker _
+  | C.Remove_workspace _
+  | C.Cancel_request _
+  | C.Arm_poll _
+  | C.Cancel_poll _
+  | C.Arm_retry _
+  | C.Cancel_retry _
+  | C.Report _ -> None
+
+let stopping = function
+  | C.Stop_worker (_, _, reason) -> Some reason
+  | C.Load_workflow _
+  | C.Read_tracker _
+  | C.Start_worker _
+  | C.Continue_worker _
+  | C.Remove_workspace _
+  | C.Cancel_request _
+  | C.Arm_poll _
+  | C.Cancel_poll _
+  | C.Arm_retry _
+  | C.Cancel_retry _
+  | C.Report _ -> None
+
+let continuation_serialization () =
+  let started = cycle ~issues:[ issue_a ] (startup F.A) in
+  let request = run "opaque-a" started in
+  let active = session started request in
+  let older = send active C.Refresh_requested in
+  let old_read = choose "Older reconciliation missing" tracker older.commands in
+  let completed = completed_turn older request 6 first_session first_turn in
+  running 1 completed;
+  no_command "Protocol terminal cannot close worker" removal completed;
+  let queued = continue completed request first_turn in
+  no_command "Post-turn refresh waits older issue read" tracker queued;
+  let repeated = continue queued request first_turn in
+  Alcotest.check Alcotest.int "Duplicate continuation is identity" 0
+    (List.length repeated.commands);
+  let reading = respond repeated old_read (F.reply [ issue_a ]) in
+  let fresh = choose "Fresh post-turn read missing" tracker reading.commands in
+  Alcotest.check Alcotest.bool "Earlier read cannot satisfy turn" false
+    (Request_id.equal (request_id old_read) (request_id fresh));
+  no_command "Cycle waits post-turn refresh before preflight" load reading;
+  let current =
+    F.issue ~state:"Doing" ~title:"After turn" ~id:"opaque-a"
+      ~identifier:"CORE-1" ()
+  in
+  let answered = respond reading fresh (F.reply [ current ]) in
+  let _, run, turn, answer =
+    choose "Continuation answer missing" continuation answered.commands
+  in
+  Alcotest.check Alcotest.bool "Answer fences current run" true
+    (Run_id.equal run (F.Agent.run_id request));
+  Alcotest.check Alcotest.bool "Answer fences completed turn" true
+    (Turn_id.equal turn first_turn);
+  (match answer with
+  | Ok (Agent_runner.Continue issue) ->
+      Alcotest.check Alcotest.string "Refreshed current issue" "After turn"
+        (Issue.title issue)
+  | Ok Agent_runner.Stop | Error _ ->
+      Alcotest.fail "Active refresh must continue");
+  let repeated = continue answered request first_turn in
+  no_command "Answered turn cannot reread" tracker repeated;
+  no_command "Answered turn cannot reply twice" continuation repeated;
+  let changed = send repeated C.Workflow_changed in
+  let id =
+    choose "Continuation authority reload missing" load changed.commands
+  in
+  let changed = send changed (C.Workflow_loaded (id, Ok (F.config F.B))) in
+  let next =
+    emit changed request 7
+      (F.Agent.Protocol
+         (Agent_runner.Turn_started { session = next_session; turn = next_turn }))
+  in
+  let next = completed_turn next request 8 next_session next_turn in
+  let next = continue next request next_turn in
+  let next_read =
+    choose "Distinct turn refresh missing" tracker next.commands
+  in
+  Alcotest.check Alcotest.bool "Next turn keeps original launch binding" true
+    (T.equal (request_binding next_read) (F.Config.tracker (F.config F.A)));
+  Alcotest.check Alcotest.bool
+    "Latest credentials cannot replace launch authority" false
+    (T.equal (request_binding next_read) (F.Config.tracker (F.config F.B)))
+
+let continuation_epoch () =
+  let started = cycle ~issues:[ issue_a ] (startup F.A) in
+  let request = run "opaque-a" started in
+  let active =
+    completed_turn (session started request) request 6 first_session first_turn
+  in
+  let reading = continue active request first_turn in
+  let stale = choose "Continuation read missing" tracker reading.commands in
+  let changed = send reading C.Workflow_changed in
+  let id = choose "Reload missing" load changed.commands in
+  let changed =
+    send changed (C.Workflow_loaded (id, Ok (F.config F.New_policy)))
+  in
+  no_command "Canceled read retains custody" tracker changed;
+  let closed =
+    respond changed stale
+      (F.reply [ F.issue ~state:"Done" ~id:"opaque-a" ~identifier:"CORE-1" () ])
+  in
+  no_command "Superseded terminal cannot stop worker" stopping closed;
+  no_command "Superseded read cannot answer continuation" continuation closed;
+  let fresh =
+    choose "Current policy continuation reread missing" tracker closed.commands
+  in
+  Alcotest.check Alcotest.bool "Superseded read gets a new request" false
+    (Request_id.equal (request_id stale) (request_id fresh));
+  let terminal =
+    F.issue ~state:"Closed" ~id:"opaque-a" ~identifier:"CORE-1" ()
+  in
+  let stopped = respond closed fresh (F.reply [ terminal ]) in
+  running 1 stopped;
+  (match choose "Terminal answer missing" continuation stopped.commands with
+  | _, _, _, Ok Agent_runner.Stop -> ()
+  | _, _, _, (Ok (Agent_runner.Continue _) | Error _) ->
+      Alcotest.fail "New terminal policy must stop");
+  let shutdown = send stopped C.Shutdown in
+  let closed = close_worker shutdown request Agent_runner.Succeeded in
+  running 0 closed;
+  ignore (choose "Terminal cleanup survives shutdown" removal closed.commands)
+
+let accepted_usage () =
+  let started = cycle ~issues:[ issue_a ] (startup F.A) in
+  let request = run "opaque-a" started in
+  let active = session started request in
+  let usage input output total =
+    Usage.make
+      ~input:(checked (Count.parse input))
+      ~output:(checked (Count.parse output))
+      ~total:(checked (Count.parse total))
+  in
+  let report harness sequence absolute =
+    emit harness request sequence
+      (F.Agent.Protocol
+         (Agent_runner.Usage_report { thread; turn = first_turn; absolute }))
+  in
+  let observed = report active 6 (usage "5" "7" "20") in
+  let observed = report observed 7 (usage "2" "9" "15") in
+  let stale = report observed 6 (usage "999" "999" "999") in
+  let rates = checked (Json.parse "{\"remaining\":null}") in
+  let observed =
+    emit stale request 8 (F.Agent.Protocol (Agent_runner.Rate_limits rates))
+  in
+  let check harness =
+    let totals = (projection harness).total_usage in
+    Alcotest.check Alcotest.string "Joined input" "5"
+      (Count.decimal (Usage.input totals));
+    Alcotest.check Alcotest.string "Joined output" "9"
+      (Count.decimal (Usage.output totals));
+    Alcotest.check Alcotest.string "Joined total" "20"
+      (Count.decimal (Usage.total totals));
+    Alcotest.check Alcotest.bool "Rate observation persists" true
+      ((projection harness).latest_rate_limits = Some rates)
+  in
+  check observed;
+  let closed = close_worker observed request Agent_runner.Succeeded in
+  check closed;
+  check (close_worker closed request Agent_runner.Succeeded)
+
+let configured config =
+  let state, commands = C.create ~now:(F.instant 0) config in
+  let harness = { state; now = 0; commands; history = commands } in
+  respond_first harness []
+
+let retired_continuation_barrier () =
+  let started = cycle ~issues:[ issue_a ] (startup F.A) in
+  let request = run "opaque-a" started in
+  let active =
+    completed_turn (session started request) request 6 first_session first_turn
+  in
+  let reading = continue active request first_turn in
+  let unfinished =
+    choose "Continuation read missing" tracker reading.commands
+  in
+  let retired =
+    close_worker reading request
+      (Agent_runner.Failed (Agent_runner.Response_error F.diagnostic))
+  in
+  let retry =
+    match owner "opaque-a" retired with
+    | C.Retry retry -> retry.retry
+    | C.Worker _ | C.Cleaning _ ->
+        Alcotest.fail "Failed run must wait for retry"
+  in
+  let due = send ~now:1000 retired (C.Retry_due (Issue.id issue_a, retry)) in
+  no_command "Retry cannot cross retained continuation custody" tracker due;
+  let closed = send due (C.Request_canceled (request_id unfinished)) in
+  let refreshed =
+    choose "Closed continuation wakes its due retry" tracker closed.commands
+  in
+  let restarted = respond closed refreshed (F.reply [ issue_a ]) in
+  let next =
+    choose "Retry starts after read closure" worker restarted.commands
+  in
+  Alcotest.check Alcotest.bool "Closed prior run gets a fresh generation" false
+    (Run_id.equal (F.Agent.run_id request) (F.Agent.run_id next))
+
+let stall_closure () =
+  let config = F.with_stall ~milliseconds:10 F.A in
+  let started = cycle ~config ~issues:[ issue_a ] (configured config) in
+  let request = run "opaque-a" started in
+  let preparing = emit ~now:9 started request 1 F.Agent.Preparing in
+  let token, _ = choose "Poll missing" poll started.history in
+  let equal = send ~now:10 preparing (C.Poll_due token) in
+  no_command "Stall boundary is strict" stopping equal;
+  let token, _ = choose "Next poll missing" poll equal.commands in
+  let equal = close_reads ~config ~profile:F.A ~issues:[ issue_a ] equal in
+  let stalled = send ~now:15 equal (C.Poll_due token) in
+  Alcotest.check Alcotest.bool "Preparation does not reset protocol silence"
+    true
+    (choose "Stall interruption missing" stopping stalled.commands
+    = Agent_runner.Stall);
+  running 1 stalled;
+  let read = choose "Stall reconciliation missing" tracker stalled.commands in
+  let terminal = F.issue ~state:"Done" ~id:"opaque-a" ~identifier:"CORE-1" () in
+  let refined = respond stalled read (F.reply [ terminal ]) in
+  no_command "Cleanup upgrade does not issue another interruption" stopping
+    refined;
+  let closed = close_worker refined request Agent_runner.Succeeded in
+  running 0 closed;
+  ignore
+    (choose "Terminal upgrade requires cleanup after close" removal
+       closed.commands);
+  no_command "Cleanup upgrade cannot retry"
+    (function
+      | C.Arm_retry _ -> Some ()
+      | C.Load_workflow _
+      | C.Read_tracker _
+      | C.Start_worker _
+      | C.Stop_worker _
+      | C.Continue_worker _
+      | C.Remove_workspace _
+      | C.Cancel_request _
+      | C.Arm_poll _
+      | C.Cancel_poll _
+      | C.Cancel_retry _
+      | C.Report _ -> None)
+    closed
+
+let stall_activity () =
+  let config = F.with_stall ~milliseconds:10 F.A in
+  let started = cycle ~config ~issues:[ issue_a ] (configured config) in
+  let request = run "opaque-a" started in
+  let active = session started request in
+  let active =
+    emit ~now:8 active request 6
+      (F.Agent.Protocol
+         (Agent_runner.Output
+            {
+              session = first_session;
+              event_name = "delta";
+              message = Some "progress";
+            }))
+  in
+  let token, _ = choose "Poll missing" poll started.history in
+  let checked = send ~now:10 active (C.Poll_due token) in
+  no_command "Accepted protocol activity resets silence" stopping checked;
+  let token, _ = choose "Next poll missing" poll checked.commands in
+  let checked = close_reads ~config ~profile:F.A ~issues:[ issue_a ] checked in
+  let equal = send ~now:18 checked (C.Poll_due token) in
+  no_command "Activity boundary is strict" stopping equal;
+  let token, _ = choose "Final poll missing" poll equal.commands in
+  let equal = close_reads ~config ~profile:F.A ~issues:[ issue_a ] equal in
+  let stale =
+    emit ~now:19 equal request 5
+      (F.Agent.Protocol
+         (Agent_runner.Output
+            { session = first_session; event_name = "old"; message = None }))
+  in
+  let stalled = send ~now:23 stale (C.Poll_due token) in
+  ignore
+    (choose "Stale progress cannot postpone stall" stopping stalled.commands);
+  let closed = close_worker stalled request Agent_runner.Succeeded in
+  ignore
+    (choose "Stall retains retry disposition after racing success"
+       (function
+         | C.Arm_retry (_, _, due) -> Some due
+         | C.Load_workflow _
+         | C.Read_tracker _
+         | C.Start_worker _
+         | C.Stop_worker _
+         | C.Continue_worker _
+         | C.Remove_workspace _
+         | C.Cancel_request _
+         | C.Arm_poll _
+         | C.Cancel_poll _
+         | C.Cancel_retry _
+         | C.Report _ -> None)
+       closed.commands)
+
+let stall_during_read () =
+  let config = F.with_stall ~milliseconds:10 F.A in
+  let started = cycle ~config ~issues:[ issue_a ] (configured config) in
+  let request = run "opaque-a" started in
+  let active = session started request in
+  let token, _ = choose "Poll missing" poll started.history in
+  let reading = send ~now:5 active (C.Poll_due token) in
+  ignore (choose "Reconciliation read missing" tracker reading.commands);
+  no_command "Worker is not silent beyond the limit yet" stopping reading;
+  let token, due =
+    choose "Pending tracker read must retain the cadence timer" poll
+      reading.commands
+  in
+  Alcotest.check Alcotest.bool "Next tick retains configured cadence" true
+    (Clock.Pure.compare due (F.instant 10) = 0);
+  let equal = send ~now:10 reading (C.Poll_due token) in
+  no_command "Stall equality stays strict during a pending read" stopping equal;
+  no_command "Cadence cannot overlap reconciliation reads" tracker equal;
+  let token, _ =
+    choose "Active cycle must rearm its timer" poll equal.commands
+  in
+  let stalled = send ~now:15 equal (C.Poll_due token) in
+  Alcotest.check Alcotest.bool "Pending read cannot suppress a stall" true
+    (choose "Silent worker interruption missing" stopping stalled.commands
+    = Agent_runner.Stall);
+  no_command "Stall tick cannot overlap the retained read" tracker stalled;
+  running 1 stalled;
+  match owner "opaque-a" stalled with
+  | C.Worker { phase = C.Stopping; _ } -> ()
+  | C.Worker { phase = C.Starting | C.Active; _ } | C.Retry _ | C.Cleaning _ ->
+      Alcotest.fail "Stall must retain the worker until its scope closes"
+
+let stall_on_refresh () =
+  let config = F.with_stall ~milliseconds:10 F.A in
+  let started = cycle ~config ~issues:[ issue_a ] (configured config) in
+  let request = run "opaque-a" started in
+  let active = session started request in
+  let refreshed =
+    List.fold_left
+      (fun harness now ->
+        let next = send ~now harness C.Refresh_requested in
+        no_command "Refresh before strict silence cutoff cannot stop" stopping
+          next;
+        close_reads ~config ~profile:F.A ~issues:[ issue_a ] next)
+      active [ 1; 4; 7; 10 ]
+  in
+  let stalled = send ~now:13 refreshed C.Refresh_requested in
+  Alcotest.check Alcotest.bool "Repeated refreshes cannot starve stall checks"
+    true
+    (choose "Explicit refresh must interrupt a silent worker" stopping
+       stalled.commands
+    = Agent_runner.Stall);
+  running 1 stalled
+
+type continuation_close = Cancel_receipt | Tracker_receipt
+
+let stall_deferred_reconcile () =
+  List.iter
+    (fun closing ->
+      let config = F.with_stall ~milliseconds:10 F.A in
+      let latest = F.with_stall ~milliseconds:10 F.B in
+      let started = cycle ~config ~issues:[ issue_a ] (configured config) in
+      let request = run "opaque-a" started in
+      let active =
+        completed_turn (session started request) request 6 first_session
+          first_turn
+      in
+      let loading = send active C.Workflow_changed in
+      let id = choose "Reload missing" load loading.commands in
+      let loaded = send loading (C.Workflow_loaded (id, Ok latest)) in
+      let reading = continue loaded request first_turn in
+      let retained =
+        choose "Continuation read missing" tracker reading.commands
+      in
+      let token, _ = choose "Reloaded poll missing" poll loaded.commands in
+      let stalled = send ~now:15 reading (C.Poll_due token) in
+      ignore (choose "Stall interruption missing" stopping stalled.commands);
+      no_command "Reconciliation waits for continuation resource closure"
+        tracker stalled;
+      let terminal =
+        F.issue ~state:"Done" ~id:"opaque-a" ~identifier:"CORE-1" ()
+      in
+      let input =
+        match closing with
+        | Cancel_receipt -> C.Request_canceled (request_id retained)
+        | Tracker_receipt ->
+            C.Tracker_completed (request_id retained, F.reply [ terminal ])
+      in
+      let closed = send stalled input in
+      no_command "Canceled continuation cannot answer or refine the worker"
+        continuation closed;
+      no_command "Canceled terminal data cannot remove an open worker workspace"
+        removal closed;
+      let fresh =
+        choose "Closed continuation must wake deferred reconciliation" tracker
+          closed.commands
+      in
+      Alcotest.check Alcotest.bool
+        "Deferred read keeps the original worker binding" true
+        (T.equal (request_binding fresh) (F.Config.tracker config));
+      Alcotest.check Alcotest.bool
+        "Deferred read does not borrow the latest binding" false
+        (T.equal (request_binding fresh) (F.Config.tracker latest));
+      let refined = respond closed fresh (F.reply [ terminal ]) in
+      no_command "Terminal reply waits for worker resource closure" removal
+        refined;
+      no_command "Terminal refinement cannot issue a second interruption"
+        stopping refined;
+      let stopping = send refined C.Shutdown in
+      let finished = close_worker stopping request Agent_runner.Succeeded in
+      ignore
+        (choose "Deferred terminal reconciliation requires cleanup after close"
+           removal finished.commands);
+      running 0 finished)
+    [ Cancel_receipt; Tracker_receipt ]
+
+type worker_close_order = Before_read | During_reconcile
+
+let stall_closed_before_read () =
+  List.iter
+    (fun (closing, order) ->
+      let config = F.with_stall ~milliseconds:10 F.A in
+      let latest = F.with_stall ~milliseconds:10 F.B in
+      let started = cycle ~config ~issues:[ issue_a ] (configured config) in
+      let request = run "opaque-a" started in
+      let active =
+        completed_turn (session started request) request 6 first_session
+          first_turn
+      in
+      let loading = send active C.Workflow_changed in
+      let id = choose "Reload missing" load loading.commands in
+      let loaded = send loading (C.Workflow_loaded (id, Ok latest)) in
+      let reading = continue loaded request first_turn in
+      let retained =
+        choose "Continuation read missing" tracker reading.commands
+      in
+      let token, _ = choose "Reloaded poll missing" poll loaded.commands in
+      let stalled = send ~now:15 reading (C.Poll_due token) in
+      ignore (choose "Stall interruption missing" stopping stalled.commands);
+      let terminal =
+        F.issue ~state:"Done" ~id:"opaque-a" ~identifier:"CORE-1" ()
+      in
+      let input =
+        match closing with
+        | Cancel_receipt -> C.Request_canceled (request_id retained)
+        | Tracker_receipt ->
+            C.Tracker_completed (request_id retained, F.reply [ terminal ])
+      in
+      let retire harness =
+        let retired = close_worker harness request Agent_runner.Succeeded in
+        running 0 retired;
+        let retry =
+          match owner "opaque-a" retired with
+          | C.Retry retry -> retry.retry
+          | C.Worker _ | C.Cleaning _ ->
+              Alcotest.fail "Stalled closed worker must retain its retry claim"
+        in
+        let overdue =
+          send ~now:1000 retired (C.Retry_due (Issue.id issue_a, retry))
+        in
+        no_command "Retry cannot cross reconciliation resource custody" tracker
+          overdue;
+        overdue
+      in
+      let close_read harness =
+        let closed = send harness input in
+        no_command "Canceled data cannot clean the worker" removal closed;
+        no_command "Canceled data cannot answer the worker" continuation closed;
+        let fresh =
+          choose "Closed continuation must reconcile before relaunch" tracker
+            closed.commands
+        in
+        (closed, fresh)
+      in
+      let closed, fresh =
+        match order with
+        | Before_read -> close_read (retire stalled)
+        | During_reconcile ->
+            let closed, fresh = close_read stalled in
+            (retire closed, fresh)
+      in
+      Alcotest.check Alcotest.bool "Retired read keeps original worker binding"
+        true
+        (T.equal (request_binding fresh) (F.Config.tracker config));
+      Alcotest.check Alcotest.bool
+        "Retired read cannot use replacement credentials" false
+        (T.equal (request_binding fresh) (F.Config.tracker latest));
+      let refined = respond closed fresh (F.reply [ terminal ]) in
+      ignore
+        (choose "Fresh terminal read cleans the retired worker" removal
+           refined.commands);
+      no_command "Terminal read cannot relaunch the retired worker" worker
+        refined;
+      no_command "Terminal read cannot issue another interruption" stopping
+        refined;
+      running 0 refined;
+      match owner "opaque-a" refined with
+      | C.Cleaning _ -> ()
+      | C.Worker _ | C.Retry _ ->
+          Alcotest.fail "Fresh terminal read must reserve workspace cleanup")
+    [
+      (Cancel_receipt, Before_read);
+      (Tracker_receipt, Before_read);
+      (Cancel_receipt, During_reconcile);
+      (Tracker_receipt, During_reconcile);
+    ]
+
+let deferred_retry_deadline () =
+  let config = F.with_stall ~milliseconds:10 F.A in
+  let started = cycle ~config ~issues:[ issue_a ] (configured config) in
+  let request = run "opaque-a" started in
+  let active =
+    completed_turn (session started request) request 6 first_session first_turn
+  in
+  let reading = continue active request first_turn in
+  let retained = choose "Continuation read missing" tracker reading.commands in
+  let token, _ = choose "Startup poll missing" poll started.history in
+  let stalled = send ~now:15 reading (C.Poll_due token) in
+  let retired = close_worker stalled request Agent_runner.Succeeded in
+  let waiting harness =
+    match owner "opaque-a" harness with
+    | C.Retry { retry; phase = C.Waiting due; _ } -> (retry, due)
+    | C.Worker _ | C.Cleaning _ | C.Retry { phase = C.Refreshing | C.Parked; _ }
+      ->
+        Alcotest.fail "Deferred reconciliation must retain the waiting deadline"
+  in
+  let retry, due = waiting retired in
+  let closed =
+    send ~now:16 retired (C.Request_canceled (request_id retained))
+  in
+  let fresh =
+    choose "Deferred reconciliation missing" tracker closed.commands
+  in
+  let refreshed =
+    send ~now:17 closed
+      (C.Tracker_completed (request_id fresh, F.reply [ issue_a ]))
+  in
+  no_command "Nonterminal reconciliation cannot bypass retry delay" worker
+    refreshed;
+  let current, current_due = waiting refreshed in
+  Alcotest.check Alcotest.bool "Nonterminal reply preserves the retry receipt"
+    true
+    (Retry_id.equal retry current);
+  Alcotest.check Alcotest.int "Nonterminal reply preserves backoff deadline" 0
+    (Clock.Pure.compare due current_due);
+  let ready = close_reads ~config ~profile:F.A ~issues:[ issue_a ] refreshed in
+  let loading = send ~now:1000 ready (C.Retry_due (Issue.id issue_a, retry)) in
+  ignore
+    (choose "Due retry refreshes after reconciliation closure" tracker
+       loading.commands);
+  no_command "Due retry waits for its own fresh read" worker loading
+
 let tests =
   [
     Alcotest.test_case "startup cleanup closure barrier" `Quick startup_barrier;
@@ -899,4 +1500,27 @@ let tests =
       keyed_retry_closure;
     Alcotest.test_case "fault context survives owner release" `Quick
       fault_context;
+    Alcotest.test_case "post-turn read serializes and answers once" `Quick
+      continuation_serialization;
+    Alcotest.test_case "continuation rereads after policy epoch" `Quick
+      continuation_epoch;
+    Alcotest.test_case "accepted usage retires once" `Quick accepted_usage;
+    Alcotest.test_case "retired continuation custody gates retry" `Quick
+      retired_continuation_barrier;
+    Alcotest.test_case "stall retains custody and cleanup absorbs" `Quick
+      stall_closure;
+    Alcotest.test_case "stall follows accepted protocol activity" `Quick
+      stall_activity;
+    Alcotest.test_case "pending tracker reads retain stall cadence" `Quick
+      stall_during_read;
+    Alcotest.test_case "repeated explicit refreshes cannot starve stalls" `Quick
+      stall_on_refresh;
+    Alcotest.test_case
+      "closed continuation wakes original-binding reconciliation" `Quick
+      stall_deferred_reconcile;
+    Alcotest.test_case
+      "closed worker retains deferred original-binding reconciliation" `Quick
+      stall_closed_before_read;
+    Alcotest.test_case "nonterminal deferred reply preserves retry deadline"
+      `Quick deferred_retry_deadline;
   ]

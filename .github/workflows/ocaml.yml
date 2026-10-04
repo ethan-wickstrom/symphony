@@ -51,6 +51,10 @@ jobs:
         with:
           ocaml-compiler: "5.5.0"
           opam-pin: false
+      - uses: actions/setup-python@v6
+        with:
+          # macOS waitid(WNOWAIT) requires Python 3.13 or newer.
+          python-version: "3.14"
       - name: Pin audited boundaries and install locked dependencies
         run: |
           opam pin add yaml.3.2.0 ../vendor/yaml --no-action --yes
@@ -61,6 +65,13 @@ jobs:
           opam install . --deps-only --locked --with-test --with-dev-setup --yes
       - run: opam exec -- dune build @all @fmt @test/native-http-inputs
       - run: opam exec -- dune runtest
+      - name: Validate actual Codex codec fixtures
+        run: |
+          python3 -m venv _build/codec-venv
+          _build/codec-venv/bin/python -m pip install --require-hashes --only-binary=:all: --no-cache-dir --disable-pip-version-check -r tools/protocol_codec_requirements.lock
+          opam exec -- dune exec test/protocol_fixtures.exe > _build/codec-fixtures.jsonl
+          _build/codec-venv/bin/python tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir "$RUNNER_TEMP/symphony-codec/normal"
+          _build/codec-venv/bin/python -O tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir "$RUNNER_TEMP/symphony-codec/optimized"
       - name: Bounded native service capacity
         run: |
           python3 test/capacity_check_test.py
@@ -72,12 +83,12 @@ jobs:
         run: |
           opam exec -- python3 test/lifecycle_types_test.py
           opam exec -- python3 -O test/lifecycle_types_test.py
-      - name: Bounded native workspace and HTTPS checks
+      - name: Bounded native workspace, HTTPS and agent checks
         run: |
           python3 test/native_check_test.py
           PYTHONOPTIMIZE=1 python3 test/native_check_test.py
-          python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --out "$RUNNER_TEMP/symphony-workspace"
-          PYTHONOPTIMIZE=1 python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --out "$RUNNER_TEMP/symphony-workspace-optimized"
+          python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --agent _build/default/test/native_agent_test.exe --out "$RUNNER_TEMP/symphony-workspace"
+          PYTHONOPTIMIZE=1 python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --agent _build/default/test/native_agent_test.exe --out "$RUNNER_TEMP/symphony-workspace-optimized"
       - run: opam exec -- dune exec tools/check_source.exe -- .
       - run: opam exec -- dune exec tools/check_source.exe -- --self-test
       - run: |
@@ -115,3 +126,4 @@ jobs:
             ${{ runner.temp }}/symphony-workspace-optimized/*.json
             ${{ runner.temp }}/symphony-capacity/*/*.log
             ${{ runner.temp }}/symphony-capacity/*/*.json
+            ${{ runner.temp }}/symphony-codec/

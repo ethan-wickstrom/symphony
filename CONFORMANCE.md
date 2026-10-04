@@ -25,17 +25,17 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | YAML front matter and prompt split | 1 | `workflow_document.ml`, `config_value.ml`; `workflow_parser_test.ml` workflow/YAML examples and tree/line models | Passed locally |
 | Typed defaults and `$` resolution | 1 | `config_layer.ml`, settings modules; `config_test.ml` defaults, env/path/numeric/state cases | Passed locally |
 | Dynamic workflow reload/re-apply | 1, 4 | `Config_layer.Make.apply`, `orchestrator.ml`; config and event models/tests cover last-good settings, epoch fencing, per-cycle preflight and scope drain | Poll-driven Eio application passes fake-port simulation; live daemon pending |
-| Single-authority polling orchestrator | 4 | `ownership.ml`, `agent_plan.ml`, `run_plan.ml`, `issue_lifecycle.ml`, `orchestrator.ml`; independent owner/lifecycle/event models and `core_test.ml`, `core_property_test.ml`, `core_coverage_test.ml` | Pure reducer and Eio owner/polling pass actual-event model simulation; live runner pending |
+| Single-authority polling orchestrator | 4 | `ownership.ml`, `agent_plan.ml`, `run_plan.ml`, `issue_lifecycle.ml`, `orchestrator.ml`; independent owner/lifecycle/event models and `core_test.ml`, `core_property_test.ml`, `core_coverage_test.ml` | Pure reducer and Eio owner/polling pass actual-event model simulation; live dispatch pending |
 | State-list and ID-refresh tracker reads | 3 | `linear_tracker.ml`, `linear_pager.ml`, `linear_record.ml`, `tracker_registry.ml`; independent boundary/pagination/binding models, `linear_tracker_test.ml`, `native_http_test.ml`, real `tracker_cli_check.py` | Reads, frozen auth/current policy, atomic failures and verified HTTPS passed locally and on both CI hosts |
 | Sanitized collision-resistant workspaces | 2 | `workspace_key.ml`, `workspace_reference.ml`, `workspace_owner.ml`, `native/workspace_directory.ml`, `workspace_store_posix.ml`; key/owner models, hash vectors, parser fuzzing, `native_directory_test.ml`, `native_store_test.ml` | Descriptor/lock/identity/replacement/rollback cases passed locally and on both CI hosts |
 | Four workspace lifecycle hooks | 2 | `workspace_manager.ml`, `workspace_hooks.ml`; policy models, fake-port hook tests and `native_host_test.ml` frozen lifecycle/cancellation/rollback cases | Fake and live cases passed locally and on both CI hosts |
 | Configurable hook timeouts | 1, 2 | `workspace_settings.ml`, `workspace_hooks.ml`, `clock_posix.ml`; config and monotonic-clock models, independent stream faults, noisy output, native hook timeout | Config/interpreter/subprocess cases passed locally and on both CI hosts |
-| App-server subprocess transport/framing | 5 | — | Pending |
-| Configurable Codex launch command | 1, 5 | `agent_settings.ml`; `config_test.ml` verbatim/empty/NUL validation | Config passed; launch pending |
+| App-server subprocess transport/framing | 5 | `protocol_frame.ml`, `protocol_envelope.ml`, `protocol_codec.ml`, `app_server.ml`; independent framing model, schema-validated actual codecs, fake byte peers and `native_agent_test.ml` | Targeted local protocol/native gates pass; hosted gate pending |
+| Configurable Codex launch command | 1, 5 | `agent_settings.ml`, `codex_runner.ml`; config validation and native acquired-cwd/allowlisted-env launch | Local config and native launch pass; live Codex authentication/sandbox pending |
 | Strict issue/attempt prompt rendering | 1 | `template.ml`; `template_test.ml` strictness/scope/limits, independent AST and rational models; CLI fixture rendering | Passed locally for documented strict Jinja profile |
-| Failure backoff and continuation retries | 4 | `backoff.ml`, `issue_lifecycle.ml`, `orchestrator.ml`; independent algebra/lifecycle/event models, exact success reset, failed attempts, parked reads and stale timer examples | Eio timers and closed fake workers pass model simulation; native runner pending |
+| Failure backoff and continuation retries | 4, 5 | `backoff.ml`, `issue_lifecycle.ml`, `orchestrator.ml`, `codex_runner.ml`; independent models, parked reads, stale timers and same-thread continuation cases | Service models and native fake-server continuations pass locally; live dispatch pending |
 | Configurable retry cap | 1, 4 | `scheduling_policy.ml`, `backoff.ml`; config/algebra models and `core_coverage_test.ml` exponential growth, current cap and more than 16 retries | Pure policy and Eio mock timers pass; native service pending |
-| Terminal/non-active reconciliation | 4 | `orchestrator.ml`; binding-group reads and closed barrier, refreshed issue, stop disposition and stale completion cases in `core_test.ml` and event model | Pure decisions and fake-port Eio interpretation pass; native runner pending |
+| Terminal/non-active reconciliation | 4, 5 | `orchestrator.ml`; binding-group reads, closed barrier, refreshed issue, stop disposition and stale completion cases in core/service models | Fenced service decisions and closed runner interruptions pass locally; live dispatch pending |
 | Terminal startup/transition cleanup | 2, 4 | `issue_lifecycle.ml`, `orchestrator.ml`; epoch-fenced startup, cleanup closure, original reference and absorbing Cleanup examples/models | Eio startup/cleanup barriers pass fake-port simulation; native service pending |
 | Required structured log context | 4, 6 | `Orchestrator.fault` carries checked current issue for issue-scoped failures, including owner release; global and issue tracker faults are distinct | Self-contained fault commands implemented; structured logging/session context pending |
 | Operator-visible observability | 1–7 | `diagnostic.ml`, `ocaml/bin/cli.ml`, `workspace_cli.ml`; `cli_check.py`, `workspace_cli_check.py` file/key/remedy/redaction, missing/owned/busy/foreign/symlink inspection | Workflow and workspace CLI passed; service snapshots/logs pending |
@@ -96,6 +96,38 @@ parent controls in both Python modes pass. These are scoped fake workers.
 App-server dispatch, static release, latency regression baselines, HTTP API and the
 portable conformance harness remain pending.
 Crowbar random campaigns are distinct from instrumented AFL coverage.
+
+The closed runner uses the pinned stable Codex 0.159.2 JSONL protocol under the
+existing native process/workspace brackets. Targeted local evidence passes
+146 protocol/session/runner cases, 65 core examples and 29 core property groups,
+36 service examples and nine actual owned fake-server subprocess cases.
+The schema gate validates 67 actual encoded fixtures and rejects 42 controls in
+normal and optimized Python modes. Native cases check three turns on one thread,
+one-byte pipe writes, stderr backpressure, exact usage above 2^53, interruption,
+malformed/truncated frames, separate response/silence deadlines and child reaping
+before after_run and lease release. The full local gate checks 379 source files
+and 73 unchanged CMIs; hosted review remains a merge gate. These results do not
+establish live Codex authentication, model
+behavior or sandbox enforcement. Closed fake runners and the native fake server
+remain separate evidence from a dispatching service.
+Codec receipts retain actual messages, validator logs, schema provenance and
+exporter/checker/lock/Python identities without claiming binary attestation.
+Review regressions cover retained stall cadence during tracker reads and repeated
+refreshes, both worker/read closure orders, terminal cleanup during shutdown,
+preparation/protocol receipt interruption, and accounting-only completed-turn
+usage. Initialization, input and continuation handoffs settle accepted batches
+before returning; active and continuation input cleanup retain typed write,
+protocol and drain failures. Replay records and bytes retire together at the
+validated next-turn boundary; identical same-turn requests replay the recorded reply
+without another progress fact, and conflicting payloads fail. All ordered
+pending/active terminal pairs reject conflicting outcomes
+and preserve identical replays. Closing checks buffered conflicts/malformed
+suffixes under the original cancellation/stall cause and deadline.
+Reader cancellation/join defects preserve the original callback error or
+exception/backtrace; a successful callback still exposes its closing defect.
+Whole-cycle capacity timing
+follows Idle completion; a held scoped read/finalizer cannot be replaced by a
+timer-rearming sample.
 
 Merged crypto refresh [PR #5](https://github.com/ethan-wickstrom/symphony/pull/5)
 at `c97cff2`: exact-head Linux/macOS PR/push CI and independent receipts pass.

@@ -32,6 +32,7 @@ type profile =
           limits. *)
 
 val config : profile -> Config.t
+val with_stall : milliseconds:int -> profile -> Config.t
 val binding_profile : Tracker_registry.Contract.binding -> profile
 
 val issue :

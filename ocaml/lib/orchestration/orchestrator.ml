@@ -1,6 +1,4 @@
-(** First scheduling operation language. One pure owner reduces timestamped
-    inputs and emits ordered commands. Protocol progress, turn continuation and
-    stall detection are absent. *)
+(** One pure owner reduces timestamped observations and resource terminals. *)
 
 module type S = sig
   type config
@@ -8,6 +6,7 @@ module type S = sig
   type tracker_request
   type tracker_reply
   type agent_request
+  type agent_progress
   type agent_completed
   type workspace_cleanup
   type state
@@ -20,6 +19,13 @@ module type S = sig
     | Workflow_loaded of Request_id.t * (config, Config_layer.error) result
     | Tracker_completed of Request_id.t * tracker_reply
     | Worker_started of Issue_id.t * Run_id.t
+    | Worker_progress of {
+        issue : Issue_id.t;
+        run : Run_id.t;
+        progress : agent_progress;
+        emitted_at : instant;
+      }
+    | Worker_continue of Issue_id.t * Run_id.t * Turn_id.t
     | Worker_finished of agent_completed
     | Request_canceled of Request_id.t
     | Retry_due of Issue_id.t * Retry_id.t
@@ -52,7 +58,12 @@ module type S = sig
     | Load_workflow of { id : Request_id.t; file : Workflow_path.t }
     | Read_tracker of tracker_request
     | Start_worker of agent_request
-    | Stop_worker of Issue_id.t * Run_id.t * Agent_runner.cancel_reason
+    | Stop_worker of Issue_id.t * Run_id.t * Agent_runner.interrupt
+    | Continue_worker of
+        Issue_id.t
+        * Run_id.t
+        * Turn_id.t
+        * (Agent_runner.continuation, Tracker_error.t) result
     | Remove_workspace of workspace_cleanup
     | Cancel_request of Request_id.t
     | Arm_poll of Request_id.t * instant
@@ -61,9 +72,8 @@ module type S = sig
     | Cancel_retry of Issue_id.t * Retry_id.t
     | Report of fault
         (** Commands carry checked requests, frozen authority and keyed
-            generations. No Stall interrupt or continuation reply is offered in
-            this language. Faults are typed observations; the edge formats their
-            redacted logs. *)
+            generations. Continuation replies fence the completed turn; stop
+            retains ownership until closed completion. Faults remain typed. *)
 
   val create : now:instant -> config -> state * command list
   (** Reserve the startup terminal-read obligation. No launch precedes closure
@@ -89,6 +99,7 @@ module type S = sig
   type readiness = Ready | Loading | Invalid
   type worker_phase = Starting | Active | Stopping
   type retry_phase = Waiting of instant | Refreshing | Parked
+  type cycle_status = Idle | Busy
 
   type worker = {
     issue : Issue.t;
@@ -96,6 +107,14 @@ module type S = sig
     phase : worker_phase;
     attempt : Template.attempt;
     seconds_running : Seconds.t;
+    agent_phase : Agent_observation.phase;
+    session : Session_id.t option;
+    turn_count : Count.t;
+    last_event : string option;
+    last_message : string option;
+    last_activity : instant option;
+    usage : Usage.t;
+    rate_limits : Json.t option;
   }
 
   type retry = {
@@ -110,17 +129,21 @@ module type S = sig
   type projection = {
     mode : mode;
     readiness : readiness;
+    cycle : cycle_status;
     owners : owner list;
     running : int;
     available_slots : int;
     total_runtime : Seconds.t;
+    total_usage : Usage.t;
+    latest_rate_limits : Json.t option;
   }
 
   val project : now:instant -> state -> projection
   (** Operator/conformance read side, derived once per read. Rows are ordered by
       Issue_id.compare and use canonical current issues. Starting, Active and
       Stopping count as running; Cleaning consumes a claim but no slot. Total
-      runtime joins one ended aggregate with current worker intervals. No
+      runtime joins one ended aggregate with current worker intervals. Busy
+      lasts through reconciliation, preflight and candidate resource closure. No
       binding, reference, pending ledger, epoch or acquired Path escapes.
       Reading changes no state; equal states/time yield equal observations. *)
 
@@ -145,8 +168,17 @@ struct
   module Life =
     Issue_lifecycle.Make (Tracker) (Clock) (Workspace) (Agent) (Plan)
 
+  module Observation = Agent_observation.Make (Clock) (Agent)
+
+  let worker_run : Life.owned -> Run_id.t option = function
+    | Life.Starting run -> Some (Agent.run_id (Plan.request (Life.plan run)))
+    | Life.Active run -> Some (Agent.run_id (Plan.request (Life.plan run)))
+    | Life.Stopping run -> Some (Agent.run_id (Plan.request (Life.plan run)))
+    | Life.Waiting _ | Life.Refreshing _ | Life.Parked _ | Life.Cleaning _ ->
+        None
+
   module Owner = struct
-    type t = Life.owned
+    type t = { lifecycle : Life.owned; observation : Observation.t option }
     type instant = Clock.instant
 
     type role =
@@ -155,9 +187,10 @@ struct
       | Retry_waiting of Retry_id.t * instant
       | Retry_refreshing of Retry_id.t
 
-    let issue = Life.issue
+    let issue value = Life.issue value.lifecycle
 
-    let role = function
+    let role value =
+      match value.lifecycle with
       | Life.Starting _ | Life.Active _ | Life.Stopping _ -> Worker
       | Life.Cleaning _ -> Cleanup
       | Life.Waiting retry -> Retry_waiting (Life.retry_id retry, Life.due retry)
@@ -172,6 +205,7 @@ struct
   type tracker_request = Tracker.request
   type tracker_reply = Tracker.reply
   type agent_request = Agent.request
+  type agent_progress = Agent.progress
   type agent_completed = Agent.completed
   type workspace_cleanup = Workspace.cleanup
 
@@ -182,6 +216,13 @@ struct
     | Workflow_loaded of Request_id.t * (config, Config_layer.error) result
     | Tracker_completed of Request_id.t * tracker_reply
     | Worker_started of Issue_id.t * Run_id.t
+    | Worker_progress of {
+        issue : Issue_id.t;
+        run : Run_id.t;
+        progress : agent_progress;
+        emitted_at : instant;
+      }
+    | Worker_continue of Issue_id.t * Run_id.t * Turn_id.t
     | Worker_finished of agent_completed
     | Request_canceled of Request_id.t
     | Retry_due of Issue_id.t * Retry_id.t
@@ -204,7 +245,12 @@ struct
     | Load_workflow of { id : Request_id.t; file : Workflow_path.t }
     | Read_tracker of tracker_request
     | Start_worker of agent_request
-    | Stop_worker of Issue_id.t * Run_id.t * Agent_runner.cancel_reason
+    | Stop_worker of Issue_id.t * Run_id.t * Agent_runner.interrupt
+    | Continue_worker of
+        Issue_id.t
+        * Run_id.t
+        * Turn_id.t
+        * (Agent_runner.continuation, Tracker_error.t) result
     | Remove_workspace of workspace_cleanup
     | Cancel_request of Request_id.t
     | Arm_poll of Request_id.t * instant
@@ -229,16 +275,30 @@ struct
   type loading = Settled | Awaiting of Request_id.t
   type custody = Live | Canceling
 
+  type reconcile_target =
+    | Worker_target of Issue_id.t * Run_id.t
+    | Retry_target of Issue_id.t * Retry_id.t
+
+  type deferred = { original : Tracker.binding; target : reconcile_target }
+
   type purpose =
     | Startup_read
     | Reconcile of cycle_id * (Issue_id.t * Run_id.t) list
     | Preflight of cycle_id
     | Candidates of cycle_id
     | Retry_read of Issue_id.t * Retry_id.t
+    | Continuation_read of Issue_id.t * Run_id.t * Turn_id.t
+    | Deferred_reconcile of deferred
     | Remove of Issue_id.t
     | Reload
 
-  type job = { epoch : epoch; purpose : purpose; custody : custody }
+  type job = {
+    epoch : epoch;
+    purpose : purpose;
+    custody : custody;
+    deferred : deferred option;
+  }
+
   type poll = { token : Request_id.t; due : instant }
 
   type state = {
@@ -255,6 +315,8 @@ struct
     retries : Retry_id.Allocator.t;
     cycles : Count.t;
     ended : Seconds.t;
+    ended_usage : Usage.t;
+    latest_rate_limits : Json.t option;
   }
 
   type event = { now : instant; input : input }
@@ -262,6 +324,7 @@ struct
   type readiness = Ready | Loading | Invalid
   type worker_phase = Starting | Active | Stopping
   type retry_phase = Waiting of instant | Refreshing | Parked
+  type cycle_status = Idle | Busy
 
   type worker = {
     issue : Issue.t;
@@ -269,6 +332,14 @@ struct
     phase : worker_phase;
     attempt : Template.attempt;
     seconds_running : Seconds.t;
+    agent_phase : Agent_observation.phase;
+    session : Session_id.t option;
+    turn_count : Count.t;
+    last_event : string option;
+    last_message : string option;
+    last_activity : instant option;
+    usage : Usage.t;
+    rate_limits : Json.t option;
   }
 
   type retry = {
@@ -283,10 +354,13 @@ struct
   type projection = {
     mode : mode;
     readiness : readiness;
+    cycle : cycle_status;
     owners : owner list;
     running : int;
     available_slots : int;
     total_runtime : Seconds.t;
+    total_usage : Usage.t;
+    latest_rate_limits : Json.t option;
   }
 
   let equal_epoch a b = Count.compare a b = 0
@@ -319,12 +393,60 @@ struct
     Issue_id.Set.is_empty (Owners.claimed state.owned)
 
   let owners (state : state) =
-    Owners.fold (fun _ owner rows -> owner :: rows) state.owned []
+    Owners.fold
+      (fun _ owner rows -> owner.Owner.lifecycle :: rows)
+      state.owned []
     |> List.sort (fun a b ->
         Issue_id.compare (Issue.id (Life.issue a)) (Issue.id (Life.issue b)))
 
-  let put (state : state) owner =
-    { state with owned = Owners.put owner state.owned }
+  let find_owner issue owned =
+    Option.map (fun owner -> owner.Owner.lifecycle) (Owners.find issue owned)
+
+  let observation state issue =
+    Option.bind (Owners.find issue state.owned) (fun owner ->
+        owner.Owner.observation)
+
+  let put (state : state) lifecycle =
+    let issue = Issue.id (Life.issue lifecycle) in
+    let observation =
+      match worker_run lifecycle with
+      | None -> None
+      | Some run -> (
+          match Owners.find issue state.owned with
+          | Some previous when worker_run previous.Owner.lifecycle = Some run ->
+              previous.Owner.observation
+          | None | Some _ ->
+              let settings =
+                match lifecycle with
+                | Life.Starting value ->
+                    Agent.agent (Plan.request (Life.plan value))
+                | Life.Active value ->
+                    Agent.agent (Plan.request (Life.plan value))
+                | Life.Stopping value ->
+                    Agent.agent (Plan.request (Life.plan value))
+                | Life.Waiting _
+                | Life.Refreshing _
+                | Life.Parked _
+                | Life.Cleaning _ -> assert false
+              in
+              Some (Observation.empty settings))
+    in
+    {
+      state with
+      owned = Owners.put { Owner.lifecycle; observation } state.owned;
+    }
+
+  let put_observation state issue observation =
+    match Owners.find issue state.owned with
+    | None -> state
+    | Some owner ->
+        {
+          state with
+          owned =
+            Owners.put
+              { owner with Owner.observation = Some observation }
+              state.owned;
+        }
 
   let remove (state : state) id =
     { state with owned = Owners.remove id state.owned }
@@ -346,23 +468,18 @@ struct
     ({ state with cycles }, cycles)
 
   let add_job (state : state) id purpose =
-    let job = { epoch = state.epoch; purpose; custody = Live } in
+    let job =
+      { epoch = state.epoch; purpose; custody = Live; deferred = None }
+    in
     { state with jobs = Request_id.Map.add id job state.jobs }
 
   let report issue diagnostic effects =
     Report (Lifecycle_failure (issue, diagnostic)) :: effects
 
-  let worker_run : Life.owned -> Run_id.t option = function
-    | Life.Starting run -> Some (Agent.run_id (Plan.request (Life.plan run)))
-    | Life.Active run -> Some (Agent.run_id (Plan.request (Life.plan run)))
-    | Life.Stopping run -> Some (Agent.run_id (Plan.request (Life.plan run)))
-    | Life.Waiting _ | Life.Refreshing _ | Life.Parked _ | Life.Cleaning _ ->
-        None
-
   let worker_count (state : state) =
     Owners.fold
       (fun _ owner count ->
-        match owner with
+        match owner.Owner.lifecycle with
         | Life.Starting _ | Life.Active _ | Life.Stopping _ -> count + 1
         | Life.Waiting _ | Life.Refreshing _ | Life.Parked _ | Life.Cleaning _
           -> count)
@@ -371,9 +488,9 @@ struct
   let state_count (state : state) key =
     Owners.fold
       (fun _ owner count ->
-        match owner with
+        match owner.Owner.lifecycle with
         | Life.Starting _ | Life.Active _ | Life.Stopping _ ->
-            if String.equal key (Issue.state_key (Life.issue owner)) then
+            if String.equal key (Issue.state_key (Owner.issue owner)) then
               count + 1
             else count
         | Life.Waiting _ | Life.Refreshing _ | Life.Parked _ | Life.Cleaning _
@@ -409,22 +526,52 @@ struct
     let state, token = fresh_request state in
     ({ state with poll = Some { token; due } }, Arm_poll (token, due) :: effects)
 
-  let finish_cycle (state : state) now effects =
-    arm_poll
-      { state with cycle = Idle }
-      (Clock.after now (Scheduling_policy.poll_interval (policy state)))
-      effects
+  let finish_cycle (state : state) _now effects =
+    ({ state with cycle = Idle }, effects)
 
   let has_job (state : state) predicate =
     Request_id.Map.exists (fun _ job -> predicate job.purpose) state.jobs
 
   let cycle_job = function
     | Reconcile _ | Preflight _ | Candidates _ -> true
-    | Startup_read | Retry_read _ | Remove _ | Reload -> false
+    | Startup_read
+    | Retry_read _
+    | Continuation_read _
+    | Deferred_reconcile _
+    | Remove _
+    | Reload -> false
 
   let for_cycle cycle = function
     | Reconcile (id, _) | Preflight id | Candidates id -> equal_epoch cycle id
-    | Startup_read | Retry_read _ | Remove _ | Reload -> false
+    | Startup_read
+    | Retry_read _
+    | Continuation_read _
+    | Deferred_reconcile _
+    | Remove _
+    | Reload -> false
+
+  let issue_read issue = function
+    | Reconcile (_, targets) ->
+        List.exists (fun (id, _) -> Issue_id.equal id issue) targets
+    | Retry_read (id, _) | Continuation_read (id, _, _) ->
+        Issue_id.equal id issue
+    | Deferred_reconcile
+        { target = Worker_target (id, _) | Retry_target (id, _); _ } ->
+        Issue_id.equal id issue
+    | Startup_read | Preflight _ | Candidates _ | Remove _ | Reload -> false
+
+  let continuation_job = function
+    | Continuation_read _ | Deferred_reconcile _ -> true
+    | Startup_read
+    | Reconcile _
+    | Preflight _
+    | Candidates _
+    | Retry_read _
+    | Remove _
+    | Reload -> false
+
+  let needs_continuation state issue =
+    Option.bind (observation state issue) Observation.need
 
   let cancel_jobs (state : state) predicate effects =
     List.fold_left
@@ -441,17 +588,31 @@ struct
       (Request_id.Map.bindings state.jobs)
 
   let policy_job = function
-    | Startup_read | Reconcile _ | Candidates _ | Retry_read _ -> true
+    | Startup_read
+    | Reconcile _
+    | Candidates _
+    | Retry_read _
+    | Continuation_read _
+    | Deferred_reconcile _ -> true
     | Preflight _ | Remove _ | Reload -> false
 
   let load_job = function
     | Preflight _ | Reload -> true
-    | Startup_read | Reconcile _ | Candidates _ | Retry_read _ | Remove _ ->
-        false
+    | Startup_read
+    | Reconcile _
+    | Candidates _
+    | Retry_read _
+    | Continuation_read _
+    | Deferred_reconcile _
+    | Remove _ -> false
 
   let load_invalidates = function
     | Preflight _ | Reload | Candidates _ | Retry_read _ -> true
-    | Startup_read | Reconcile _ | Remove _ -> false
+    | Startup_read
+    | Reconcile _
+    | Continuation_read _
+    | Deferred_reconcile _
+    | Remove _ -> false
 
   (* Effects use a reverse accumulator; state reservations precede each emit. *)
   let begin_load (state : state) purpose effects =
@@ -509,9 +670,22 @@ struct
       (fun groups owner ->
         let add_run run =
           let plan = Life.plan run in
-          add (Plan.binding plan)
-            (Issue.id (Life.issue owner), Agent.run_id (Plan.request plan))
-            groups
+          let issue = Issue.id (Life.issue owner) in
+          let waiting =
+            match owner with
+            | Life.Starting _ | Life.Active _ ->
+                Option.is_some (needs_continuation state issue)
+            | Life.Stopping _
+            | Life.Waiting _
+            | Life.Refreshing _
+            | Life.Parked _
+            | Life.Cleaning _ -> false
+          in
+          if waiting || has_job state (issue_read issue) then groups
+          else
+            add (Plan.binding plan)
+              (issue, Agent.run_id (Plan.request plan))
+              groups
         in
         match owner with
         | Life.Starting run -> add_run run
@@ -522,7 +696,6 @@ struct
       [] (owners state)
 
   let begin_cycle (state : state) effects =
-    let state, effects = cancel_poll state effects in
     let state, cycle_id = fresh_cycle state in
     let authority = { cycle_id; epoch = state.epoch } in
     let state = { state with cycle = Reconciling authority } in
@@ -569,8 +742,10 @@ struct
     (state, Read_tracker request :: effects)
 
   let refresh_waiting (state : state) issue retry effects =
-    let state = put state (Life.Refreshing (Life.refresh retry)) in
-    read_retry state issue (Life.retry_id retry) effects
+    if has_job state (issue_read issue) then (state, effects)
+    else
+      let state = put state (Life.Refreshing (Life.refresh retry)) in
+      read_retry state issue (Life.retry_id retry) effects
 
   let reread_parked (state : state) issue retry effects =
     let state = put state (Life.Refreshing (Life.reread retry)) in
@@ -599,12 +774,86 @@ struct
               | Life.Cleaning _ -> (state, effects))
             (state, effects) (owners state)
 
-  type stop_disposition = Release | Cleanup
+  type stop_disposition = Retry_after_stop | Release | Cleanup
+
+  (* A stalled continuation keeps its frozen authority until the old read joins. *)
+  let defer_continuations state issue plan =
+    let run = Agent.run_id (Plan.request plan) in
+    let deferred =
+      { original = Plan.binding plan; target = Worker_target (issue, run) }
+    in
+    let jobs =
+      Request_id.Map.map
+        (fun job ->
+          match job.purpose with
+          | Continuation_read (id, token, _)
+            when Issue_id.equal issue id && Run_id.equal run token ->
+              { job with deferred = Some deferred }
+          | Startup_read
+          | Reconcile _
+          | Preflight _
+          | Candidates _
+          | Retry_read _
+          | Continuation_read _
+          | Deferred_reconcile _
+          | Remove _
+          | Reload -> job)
+        state.jobs
+    in
+    { state with jobs }
+
+  (* A canceled continuation may outlive its worker; its closure wakes only the
+     matching due retry, after the retained read loses resource custody. *)
+  let wake_closed_continuation state issue now effects =
+    match (state.stage, find_owner issue state.owned) with
+    | Online, Some (Life.Waiting retry)
+      when ready state && Clock.compare now (Life.due retry) >= 0 ->
+        refresh_waiting state issue retry effects
+    | ( (Boot _ | Online | Draining | Stopping_host),
+        ( None
+        | Some
+            ( Life.Starting _
+            | Life.Active _
+            | Life.Stopping _
+            | Life.Waiting _
+            | Life.Refreshing _
+            | Life.Parked _
+            | Life.Cleaning _ ) ) ) -> (state, effects)
 
   let stop_owner (state : state) owner reason disposition cancel effects =
     let issue = Issue.id (Life.issue owner) in
+    let state =
+      match (disposition, owner) with
+      | Retry_after_stop, Life.Starting run ->
+          defer_continuations state issue (Life.plan run)
+      | Retry_after_stop, Life.Active run ->
+          defer_continuations state issue (Life.plan run)
+      | ( (Retry_after_stop | Release | Cleanup),
+          ( Life.Starting _
+          | Life.Active _
+          | Life.Stopping _
+          | Life.Waiting _
+          | Life.Refreshing _
+          | Life.Parked _
+          | Life.Cleaning _ ) ) -> state
+    in
+    let state, effects =
+      cancel_jobs state
+        (function
+          | Continuation_read (id, _, _) -> Issue_id.equal issue id
+          | Startup_read
+          | Reconcile _
+          | Preflight _
+          | Candidates _
+          | Retry_read _
+          | Deferred_reconcile _
+          | Remove _
+          | Reload -> false)
+        effects
+    in
     let refine run =
       match disposition with
+      | Retry_after_stop -> run
       | Release -> Life.release_after_close run
       | Cleanup -> Life.clean_after_close run
     in
@@ -628,6 +877,15 @@ struct
   let drain (state : state) stage reason cancel effects =
     let state, effects =
       cancel_poll { state with stage; cycle = Idle } effects
+    in
+    let state =
+      {
+        state with
+        jobs =
+          Request_id.Map.map
+            (fun job -> { job with deferred = None })
+            state.jobs;
+      }
     in
     let state, effects =
       List.fold_left
@@ -654,6 +912,8 @@ struct
         | Preflight _
         | Candidates _
         | Retry_read _
+        | Continuation_read _
+        | Deferred_reconcile _
         | Reload -> true)
       effects
 
@@ -686,7 +946,7 @@ struct
     | Error diagnostic -> (state, report (Life.issue owner) diagnostic effects)
 
   let reconcile_one (state : state) (issue, run) reply effects =
-    match Owners.find issue state.owned with
+    match find_owner issue state.owned with
     | None -> (state, effects)
     | Some owner -> (
         match worker_run owner with
@@ -696,13 +956,13 @@ struct
             match Issue_id.Map.find_opt issue reply with
             | None ->
                 stop_owner state owner Stop_reason.Reconcile_missing Release
-                  Agent_runner.Reconciliation effects
+                  (Agent_runner.Cancel Agent_runner.Reconciliation) effects
             | Some refreshed -> (
                 let state, effects =
                   replace_current state owner refreshed effects
                 in
                 let owner =
-                  match Owners.find issue state.owned with
+                  match find_owner issue state.owned with
                   | Some current -> current
                   | None -> owner
                 in
@@ -711,15 +971,19 @@ struct
                 with
                 | Scheduling_policy.Terminal ->
                     stop_owner state owner Stop_reason.Reconcile_terminal
-                      Cleanup Agent_runner.Reconciliation effects
+                      Cleanup (Agent_runner.Cancel Agent_runner.Reconciliation)
+                      effects
                 | Scheduling_policy.Inactive ->
                     stop_owner state owner Stop_reason.Reconcile_inactive
-                      Release Agent_runner.Reconciliation effects
+                      Release (Agent_runner.Cancel Agent_runner.Reconciliation)
+                      effects
                 | Scheduling_policy.Active ->
                     if routable state (Life.issue owner) then (state, effects)
                     else
                       stop_owner state owner Stop_reason.Reconcile_unroutable
-                        Release Agent_runner.Reconciliation effects)))
+                        Release
+                        (Agent_runner.Cancel Agent_runner.Reconciliation)
+                        effects)))
 
   let failure_due (state : state) now attempt =
     Clock.after now
@@ -755,7 +1019,7 @@ struct
     |> List.stable_sort Dispatch_order.dispatch
     |> List.fold_left
          (fun (state, effects) issue ->
-           match Owners.find (Issue.id issue) state.owned with
+           match find_owner (Issue.id issue) state.owned with
            | Some _ -> (state, effects)
            | None ->
                if eligible state issue && slots state issue then
@@ -771,7 +1035,7 @@ struct
     | Boot _ | Online | Draining | Stopping_host -> (state, effects)
 
   let discard_retry (state : state) issue token effects =
-    match Owners.find issue state.owned with
+    match find_owner issue state.owned with
     | Some (Life.Refreshing retry)
       when Retry_id.equal token (Life.retry_id retry) -> (
         match state.stage with
@@ -837,7 +1101,7 @@ struct
                 report current diagnostic effects ))
 
   let finish_retry (state : state) issue token reply now effects =
-    match Owners.find issue state.owned with
+    match find_owner issue state.owned with
     | Some (Life.Refreshing retry)
       when Retry_id.equal token (Life.retry_id retry) -> (
         match reply with
@@ -859,7 +1123,7 @@ struct
                 let state, effects =
                   replace_current state (Life.Refreshing retry) current effects
                 in
-                match Owners.find issue state.owned with
+                match find_owner issue state.owned with
                 | Some (Life.Refreshing retry) -> (
                     if not (ready state) then
                       park_closed state issue retry effects
@@ -916,7 +1180,18 @@ struct
       | Agent_runner.Canceled { remote_error = None; _ } -> effects
     in
     fun finished ->
-      let state = { state with ended = Seconds.add state.ended elapsed } in
+      let usage =
+        match observation state issue with
+        | None -> Usage.zero
+        | Some value -> (Observation.view value).Observation.usage
+      in
+      let state =
+        {
+          state with
+          ended = Seconds.add state.ended elapsed;
+          ended_usage = Usage.add state.ended_usage usage;
+        }
+      in
       match finished with
       | Life.Releasable finished ->
           let _released = Life.release_run finished in
@@ -941,24 +1216,89 @@ struct
           ( put state (Life.Waiting retry),
             Arm_retry (issue, retry_id, due) :: effects )
 
+  (* Both closure orders retain the obligation under the new retry receipt. *)
+  let retarget_deferred state issue run =
+    let retarget value =
+      match value.target with
+      | Worker_target (id, token)
+        when Issue_id.equal issue id && Run_id.equal run token -> (
+          match find_owner issue state.owned with
+          | Some (Life.Waiting retry) ->
+              Some
+                {
+                  value with
+                  target = Retry_target (issue, Life.retry_id retry);
+                }
+          | None
+          | Some
+              ( Life.Starting _
+              | Life.Active _
+              | Life.Stopping _
+              | Life.Refreshing _
+              | Life.Parked _
+              | Life.Cleaning _ ) -> None)
+      | Worker_target _ | Retry_target _ -> Some value
+    in
+    let jobs =
+      Request_id.Map.map
+        (fun job ->
+          let deferred = Option.bind job.deferred retarget in
+          let purpose =
+            match job.purpose with
+            | Deferred_reconcile value -> (
+                match retarget value with
+                | Some value -> Deferred_reconcile value
+                | None -> job.purpose)
+            | Startup_read
+            | Reconcile _
+            | Preflight _
+            | Candidates _
+            | Retry_read _
+            | Continuation_read _
+            | Remove _
+            | Reload -> job.purpose
+          in
+          { job with deferred; purpose })
+        state.jobs
+    in
+    { state with jobs }
+
   let worker_finished (state : state) completed now effects =
     let issue = Agent.completed_issue completed in
     let run_id = Agent.completed_run completed in
-    match Owners.find issue state.owned with
+    match find_owner issue state.owned with
     | None -> (state, effects)
     | Some owner -> (
         match worker_run owner with
         | None -> (state, effects)
         | Some current when not (Run_id.equal current run_id) -> (state, effects)
         | Some _ -> (
+            let state, effects =
+              cancel_jobs state
+                (function
+                  | Continuation_read (id, token, _) ->
+                      Issue_id.equal issue id && Run_id.equal run_id token
+                  | Startup_read
+                  | Reconcile _
+                  | Preflight _
+                  | Candidates _
+                  | Retry_read _
+                  | Deferred_reconcile _
+                  | Remove _
+                  | Reload -> false)
+                effects
+            in
             let current = Life.issue owner in
             let finish started result =
               match result with
               | Error diagnostic -> (state, report current diagnostic effects)
               | Ok finished ->
-                  completion state current completed now
-                    (Clock.elapsed ~since:started ~until:now)
-                    effects finished
+                  let state, effects =
+                    completion state current completed now
+                      (Clock.elapsed ~since:started ~until:now)
+                      effects finished
+                  in
+                  (retarget_deferred state issue run_id, effects)
             in
             match owner with
             | Life.Starting run ->
@@ -973,7 +1313,7 @@ struct
             | Life.Cleaning _ -> (state, effects)))
 
   let worker_started (state : state) issue token effects =
-    match Owners.find issue state.owned with
+    match find_owner issue state.owned with
     | Some (Life.Starting run)
       when Run_id.equal token (Agent.run_id (Plan.request (Life.plan run))) ->
         (put state (Life.Active (Life.activate run)), effects)
@@ -985,6 +1325,284 @@ struct
     | Some (Life.Refreshing _)
     | Some (Life.Parked _)
     | Some (Life.Cleaning _) -> (state, effects)
+
+  let progress_fault owner error effects =
+    let issue = Life.issue owner in
+    let diagnostic =
+      Diagnostic.make
+        ~site:
+          (Diagnostic.Issue
+             { id = Issue.id issue; identifier = Issue.identifier issue })
+        ~message:(Agent_observation.message error)
+        ~remedy:"Correct the worker observation order and identity."
+    in
+    report issue diagnostic effects
+
+  let worker_progress state issue run progress emitted_at now effects =
+    match (find_owner issue state.owned, observation state issue) with
+    | Some owner, Some current when worker_run owner = Some run -> (
+        match Observation.observe current ~run ~now ~emitted_at progress with
+        | Error error -> (state, progress_fault owner error effects)
+        | Ok (_, Agent_observation.Ignored, _) -> (state, effects)
+        | Ok (next, Agent_observation.Accepted, _) ->
+            let state = put_observation state issue next in
+            let latest_rate_limits =
+              match Agent.notice progress with
+              | Agent.Protocol (Agent_runner.Rate_limits limits) -> Some limits
+              | Agent.Preparing
+              | Agent.Workspace_ready _
+              | Agent.Rendering
+              | Agent.Starting
+              | Agent.Protocol
+                  ( Agent_runner.Session_started _
+                  | Agent_runner.Turn_started _
+                  | Agent_runner.Turn_completed _
+                  | Agent_runner.Output _
+                  | Agent_runner.Usage_report _
+                  | Agent_runner.Unsupported_tool _ ) ->
+                  state.latest_rate_limits
+            in
+            ({ state with latest_rate_limits }, effects))
+    | None, _
+    | ( Some
+          ( Life.Starting _
+          | Life.Active _
+          | Life.Stopping _
+          | Life.Waiting _
+          | Life.Refreshing _
+          | Life.Parked _
+          | Life.Cleaning _ ),
+        _ ) -> (state, effects)
+
+  let worker_continue state issue run turn effects =
+    match (find_owner issue state.owned, observation state issue) with
+    | Some ((Life.Starting _ | Life.Active _) as owner), Some current
+      when worker_run owner = Some run -> (
+        match Observation.queue current ~turn with
+        | Error error -> (state, progress_fault owner error effects)
+        | Ok (_, Agent_observation.Ignored) -> (state, effects)
+        | Ok (next, Agent_observation.Accepted) ->
+            (put_observation state issue next, effects))
+    | None, _
+    | ( Some
+          ( Life.Starting _
+          | Life.Active _
+          | Life.Stopping _
+          | Life.Waiting _
+          | Life.Refreshing _
+          | Life.Parked _
+          | Life.Cleaning _ ),
+        _ ) -> (state, effects)
+
+  (* Reserve the read after older issue reads close; a queued turn stays fenced. *)
+  let begin_continuations state effects =
+    if not (online state) then (state, effects)
+    else
+      List.fold_left
+        (fun (state, effects) owner ->
+          let issue = Issue.id (Life.issue owner) in
+          let start run turn =
+            let plan = Life.plan run in
+            let run = Agent.run_id (Plan.request plan) in
+            let state, id = fresh_request state in
+            let state =
+              add_job state id (Continuation_read (issue, run, turn))
+            in
+            let request =
+              Tracker.Ids
+                {
+                  id;
+                  binding = Plan.binding plan;
+                  policy = read_policy state;
+                  ids = Issue_id.Set.singleton issue;
+                }
+            in
+            (state, Read_tracker request :: effects)
+          in
+          if has_job state (issue_read issue) then (state, effects)
+          else
+            match (owner, needs_continuation state issue) with
+            | Life.Starting run, Some turn -> start run turn
+            | Life.Active run, Some turn -> start run turn
+            | ( ( Life.Starting _
+                | Life.Active _
+                | Life.Stopping _
+                | Life.Waiting _
+                | Life.Refreshing _
+                | Life.Parked _
+                | Life.Cleaning _ ),
+                _ ) -> (state, effects))
+        (state, effects) (owners state)
+
+  let continuation_pending state =
+    has_job state continuation_job
+    || List.exists
+         (fun owner ->
+           match owner with
+           | Life.Starting _ | Life.Active _ ->
+               Option.is_some
+                 (needs_continuation state (Issue.id (Life.issue owner)))
+           | Life.Stopping _
+           | Life.Waiting _
+           | Life.Refreshing _
+           | Life.Parked _
+           | Life.Cleaning _ -> false)
+         (owners state)
+
+  let finish_continuation state issue run turn reply effects =
+    match (find_owner issue state.owned, observation state issue) with
+    | Some ((Life.Starting _ | Life.Active _) as owner), Some current
+      when worker_run owner = Some run && Observation.need current = Some turn
+      -> (
+        match Observation.answer current ~turn with
+        | Error error -> (state, progress_fault owner error effects)
+        | Ok answered -> (
+            let state = put_observation state issue answered in
+            let respond state effects answer =
+              (state, Continue_worker (issue, run, turn, answer) :: effects)
+            in
+            let stop state owner reason disposition effects =
+              let state, effects =
+                stop_owner state owner reason disposition
+                  (Agent_runner.Cancel Agent_runner.Reconciliation) effects
+              in
+              respond state effects (Ok Agent_runner.Stop)
+            in
+            match reply with
+            | Error error -> respond state effects (Error error)
+            | Ok issues -> (
+                match Issue_id.Map.find_opt issue issues with
+                | None ->
+                    stop state owner Stop_reason.Reconcile_missing Release
+                      effects
+                | Some refreshed -> (
+                    let state, effects =
+                      replace_current state owner refreshed effects
+                    in
+                    let owner =
+                      Option.value (find_owner issue state.owned) ~default:owner
+                    in
+                    match
+                      Scheduling_policy.classify (policy state)
+                        (Life.issue owner)
+                    with
+                    | Scheduling_policy.Terminal ->
+                        stop state owner Stop_reason.Reconcile_terminal Cleanup
+                          effects
+                    | Scheduling_policy.Inactive ->
+                        stop state owner Stop_reason.Reconcile_inactive Release
+                          effects
+                    | Scheduling_policy.Active ->
+                        if routable state (Life.issue owner) then
+                          respond state effects
+                            (Ok (Agent_runner.Continue (Life.issue owner)))
+                        else
+                          stop state owner Stop_reason.Reconcile_unroutable
+                            Release effects))))
+    | None, _
+    | ( Some
+          ( Life.Starting _
+          | Life.Active _
+          | Life.Stopping _
+          | Life.Waiting _
+          | Life.Refreshing _
+          | Life.Parked _
+          | Life.Cleaning _ ),
+        _ ) -> (state, effects)
+
+  let deferred_issue value =
+    match value.target with
+    | Worker_target (issue, _) | Retry_target (issue, _) -> issue
+
+  let deferred_current state value =
+    let issue = deferred_issue value in
+    match (value.target, find_owner issue state.owned) with
+    | Worker_target (_, run), Some (Life.Stopping stopped) ->
+        worker_run (Life.Stopping stopped) = Some run
+        && Life.after_close stopped = Life.Retry_after_close
+    | Worker_target (_, run), Some owner -> worker_run owner = Some run
+    | Retry_target (_, token), Some (Life.Waiting retry) ->
+        Retry_id.equal token (Life.retry_id retry)
+    | Worker_target _, None
+    | ( Retry_target _,
+        ( None
+        | Some
+            ( Life.Starting _
+            | Life.Active _
+            | Life.Stopping _
+            | Life.Refreshing _
+            | Life.Parked _
+            | Life.Cleaning _ ) ) ) -> false
+
+  let begin_deferred state value effects =
+    if not (online state && deferred_current state value) then (state, effects)
+    else
+      let state, id = fresh_request state in
+      let state = add_job state id (Deferred_reconcile value) in
+      let request =
+        Tracker.Ids
+          {
+            id;
+            binding = value.original;
+            policy = read_policy state;
+            ids = Issue_id.Set.singleton (deferred_issue value);
+          }
+      in
+      (state, Read_tracker request :: effects)
+
+  (* A reconciliation may retire a closed retry, but cannot shorten its delay. *)
+  let finish_deferred state value reply effects =
+    let issue = deferred_issue value in
+    if not (deferred_current state value) then (state, effects)
+    else
+      match reply with
+      | Error error -> (state, Report (Tracker_failure error) :: effects)
+      | Ok issues -> (
+          match (value.target, find_owner issue state.owned) with
+          | Worker_target (_, run), Some _ ->
+              reconcile_one state (issue, run) issues effects
+          | Retry_target (_, token), Some (Life.Waiting retry) -> (
+              let retire state retry effects =
+                let _released = Life.release_waiting retry in
+                (remove state issue, Cancel_retry (issue, token) :: effects)
+              in
+              match Issue_id.Map.find_opt issue issues with
+              | None -> retire state retry effects
+              | Some current -> (
+                  let state, effects =
+                    replace_current state (Life.Waiting retry) current effects
+                  in
+                  match find_owner issue state.owned with
+                  | Some (Life.Waiting retry) -> (
+                      match
+                        Scheduling_policy.classify (policy state) current
+                      with
+                      | Scheduling_policy.Terminal ->
+                          terminal_retry state issue
+                            (Life.settled (Life.refresh retry))
+                            (Cancel_retry (issue, token) :: effects)
+                      | Scheduling_policy.Inactive -> retire state retry effects
+                      | Scheduling_policy.Active ->
+                          if routable state current then (state, effects)
+                          else retire state retry effects)
+                  | None
+                  | Some
+                      ( Life.Starting _
+                      | Life.Active _
+                      | Life.Stopping _
+                      | Life.Refreshing _
+                      | Life.Parked _
+                      | Life.Cleaning _ ) -> (state, effects)))
+          | Worker_target _, None
+          | ( Retry_target _,
+              ( None
+              | Some
+                  ( Life.Starting _
+                  | Life.Active _
+                  | Life.Stopping _
+                  | Life.Refreshing _
+                  | Life.Parked _
+                  | Life.Cleaning _ ) ) ) -> (state, effects))
 
   let close_job (state : state) id =
     let loading =
@@ -1002,7 +1620,13 @@ struct
     | Some { purpose = Preflight _ | Reload | Remove _; _ } -> (state, effects)
     | Some
         ({
-           purpose = Startup_read | Reconcile _ | Candidates _ | Retry_read _;
+           purpose =
+             ( Startup_read
+             | Reconcile _
+             | Candidates _
+             | Retry_read _
+             | Continuation_read _
+             | Deferred_reconcile _ );
            _;
          } as job) -> (
         let state = close_job state id in
@@ -1012,6 +1636,20 @@ struct
           | Live -> equal_epoch job.epoch state.epoch
         in
         match job.purpose with
+        | Continuation_read (issue, run, turn) -> (
+            let state, effects =
+              if current && online state then
+                finish_continuation state issue run turn reply effects
+              else (state, effects)
+            in
+            match job.deferred with
+            | Some value -> begin_deferred state value effects
+            | None -> wake_closed_continuation state issue now effects)
+        | Deferred_reconcile value ->
+            if current && online state then
+              let state, effects = finish_deferred state value reply effects in
+              wake_closed_continuation state (deferred_issue value) now effects
+            else begin_deferred state value effects
         | Retry_read (issue, token) ->
             if current && online state then
               finish_retry state issue token reply now effects
@@ -1056,13 +1694,16 @@ struct
             | Online, Fetching authority
               when current && ready state
                    && equal_epoch cycle_id authority.cycle_id ->
-                let state, effects =
-                  match reply with
-                  | Error error ->
-                      (state, Report (Tracker_failure error) :: effects)
-                  | Ok issues -> admit_candidates state issues now effects
-                in
-                finish_cycle state now effects
+                if continuation_pending state then
+                  ({ state with cycle = Discarding }, effects)
+                else
+                  let state, effects =
+                    match reply with
+                    | Error error ->
+                        (state, Report (Tracker_failure error) :: effects)
+                    | Ok issues -> admit_candidates state issues now effects
+                  in
+                  finish_cycle state now effects
             | ( (Boot _ | Online | Draining | Stopping_host),
                 (Idle | Reconciling _ | Validating _ | Fetching _ | Discarding)
               ) -> (state, effects))
@@ -1072,7 +1713,7 @@ struct
     match Request_id.Map.find_opt id state.jobs with
     | Some { purpose = Remove issue; _ } -> (
         let state = close_job state id in
-        match Owners.find issue state.owned with
+        match find_owner issue state.owned with
         | Some (Life.Cleaning cleanup)
           when Request_id.equal id
                  (Life.cleanup_request cleanup).Workspace.request_id ->
@@ -1102,11 +1743,13 @@ struct
             | Preflight _
             | Candidates _
             | Retry_read _
+            | Continuation_read _
+            | Deferred_reconcile _
             | Reload );
           _;
         } -> (state, effects)
 
-  let request_canceled (state : state) id effects =
+  let request_canceled (state : state) id now effects =
     match Request_id.Map.find_opt id state.jobs with
     | None | Some { custody = Live; _ } -> (state, effects)
     | Some ({ custody = Canceling; _ } as job) -> (
@@ -1119,6 +1762,11 @@ struct
         in
         match job.purpose with
         | Retry_read (issue, token) -> discard_retry state issue token effects
+        | Continuation_read (issue, _, _) -> (
+            match job.deferred with
+            | Some value -> begin_deferred state value effects
+            | None -> wake_closed_continuation state issue now effects)
+        | Deferred_reconcile value -> begin_deferred state value effects
         | Startup_read
         | Reconcile _
         | Preflight _
@@ -1162,7 +1810,7 @@ struct
               | Draining -> (state, effects)
               | (Boot _ | Online) when scope_changed ->
                   drain state Draining Stop_reason.Scope_changed
-                    Agent_runner.Scope_change effects
+                    (Agent_runner.Cancel Agent_runner.Scope_change) effects
               | Boot _ | Online -> (
                   let state, effects =
                     if changed then cancel_jobs state policy_job effects
@@ -1179,6 +1827,8 @@ struct
                         | Preflight _
                         | Candidates _
                         | Retry_read _
+                        | Continuation_read _
+                        | Deferred_reconcile _
                         | Remove _
                         | Reload ) ) -> Idle
                     | ( (Reconciling _ | Validating _ | Fetching _ | Discarding),
@@ -1187,6 +1837,8 @@ struct
                         | Preflight _
                         | Candidates _
                         | Retry_read _
+                        | Continuation_read _
+                        | Deferred_reconcile _
                         | Remove _
                         | Reload ) ) ->
                         if changed then Discarding else state.cycle
@@ -1206,11 +1858,14 @@ struct
                       | Preflight _
                       | Candidates _
                       | Retry_read _
+                      | Continuation_read _
+                      | Deferred_reconcile _
                       | Remove _
                       | Reload ) ) -> (state, effects))))
 
   (* Barriers inspect the canonical ledger; no second pending-ID set exists. *)
   let rec advance (state : state) now effects =
+    let state, effects = begin_continuations state effects in
     match state.stage with
     | Stopping_host -> (state, effects)
     | Draining ->
@@ -1234,18 +1889,24 @@ struct
         match state.cycle with
         | Idle -> (state, effects)
         | Discarding ->
-            if has_job state cycle_job || not (settled state) then
-              (state, effects)
+            if
+              has_job state cycle_job || continuation_pending state
+              || not (settled state)
+            then (state, effects)
             else if ready state then
               let state, effects = begin_cycle state effects in
               advance state now effects
             else finish_cycle state now effects
         | Reconciling authority ->
-            if has_job state (for_cycle authority.cycle_id) then (state, effects)
+            if
+              has_job state (for_cycle authority.cycle_id)
+              || continuation_pending state
+            then (state, effects)
             else begin_preflight state authority effects
         | Validating authority ->
             if
               has_job state (for_cycle authority.cycle_id)
+              || continuation_pending state
               || not (settled state)
             then (state, effects)
             else if ready state && equal_epoch authority.epoch state.epoch then
@@ -1268,7 +1929,7 @@ struct
         begin_load { state with cycle } purpose effects
 
   let retry_due (state : state) issue token now effects =
-    match (state.stage, Owners.find issue state.owned) with
+    match (state.stage, find_owner issue state.owned) with
     | Online, Some (Life.Waiting retry)
       when ready state
            && Retry_id.equal token (Life.retry_id retry)
@@ -1284,18 +1945,63 @@ struct
         | Some (Life.Parked _)
         | Some (Life.Cleaning _) ) ) -> (state, effects)
 
-  let refresh_requested (state : state) effects =
+  let begin_refresh (state : state) effects =
     match (state.stage, state.cycle) with
     | Online, Idle -> begin_cycle state effects
     | ( (Boot _ | Online | Draining | Stopping_host),
         (Idle | Reconciling _ | Validating _ | Fetching _ | Discarding) ) ->
         (state, effects)
 
+  let check_stalls state now effects =
+    match Scheduling_policy.stall (policy state) with
+    | Scheduling_policy.Disabled -> (state, effects)
+    | Scheduling_policy.Silence_limit limit ->
+        List.fold_left
+          (fun (state, effects) owner ->
+            let check run =
+              let activity =
+                Option.bind
+                  (observation state (Issue.id (Life.issue owner)))
+                  (fun value ->
+                    (Observation.view value).Observation.last_activity)
+              in
+              let since = Option.value activity ~default:(Life.started run) in
+              if Clock.compare now (Clock.after since limit) <= 0 then
+                (state, effects)
+              else
+                stop_owner state owner Stop_reason.Stall_detected
+                  Retry_after_stop Agent_runner.Stall effects
+            in
+            match owner with
+            | Life.Starting run -> check run
+            | Life.Active run -> check run
+            | Life.Stopping _
+            | Life.Waiting _
+            | Life.Refreshing _
+            | Life.Parked _
+            | Life.Cleaning _ -> (state, effects))
+          (state, effects) (owners state)
+
+  let refresh_requested (state : state) now effects =
+    if not (online state) then (state, effects)
+    else
+      let state, effects = check_stalls state now effects in
+      begin_refresh state effects
+
   let poll_due (state : state) token now effects =
     match state.poll with
     | Some poll
       when Request_id.equal token poll.token && Clock.compare now poll.due >= 0
-      -> refresh_requested { state with poll = None } effects
+      ->
+        let state, effects =
+          check_stalls { state with poll = None } now effects
+        in
+        let state, effects =
+          arm_poll state
+            (Clock.after now (Scheduling_policy.poll_interval (policy state)))
+            effects
+        in
+        begin_refresh state effects
     | None | Some _ -> (state, effects)
 
   let event ~now input = { now; input }
@@ -1304,21 +2010,25 @@ struct
     let state, effects =
       match event.input with
       | Poll_due token -> poll_due state token event.now []
-      | Refresh_requested -> refresh_requested state []
+      | Refresh_requested -> refresh_requested state event.now []
       | Workflow_changed -> workflow_changed state []
       | Workflow_loaded (id, result) ->
           workflow_loaded state id result event.now []
       | Tracker_completed (id, reply) ->
           tracker_completed state id reply event.now []
       | Worker_started (issue, run) -> worker_started state issue run []
+      | Worker_progress { issue; run; progress; emitted_at } ->
+          worker_progress state issue run progress emitted_at event.now []
+      | Worker_continue (issue, run, turn) ->
+          worker_continue state issue run turn []
       | Worker_finished completed ->
           worker_finished state completed event.now []
-      | Request_canceled id -> request_canceled state id []
+      | Request_canceled id -> request_canceled state id event.now []
       | Retry_due (issue, token) -> retry_due state issue token event.now []
       | Workspace_removed (id, result) -> workspace_removed state id result []
       | Shutdown ->
           drain state Stopping_host Stop_reason.Shutdown_requested
-            Agent_runner.Host_shutdown []
+            (Agent_runner.Cancel Agent_runner.Host_shutdown) []
     in
     let state, effects = advance state event.now effects in
     (state, List.rev effects)
@@ -1339,6 +2049,8 @@ struct
         retries = Retry_id.Allocator.empty;
         cycles = Count.zero;
         ended = Seconds.zero;
+        ended_usage = Usage.zero;
+        latest_rate_limits = None;
       }
     in
     let state, effects = begin_startup state [] in
@@ -1346,6 +2058,11 @@ struct
 
   let project ~now (state : state) =
     let worker owner run phase =
+      let observed =
+        match observation state (Issue.id (Life.issue owner)) with
+        | Some value -> Observation.view value
+        | None -> assert false
+      in
       Worker
         {
           issue = Life.issue owner;
@@ -1353,6 +2070,14 @@ struct
           phase;
           attempt = Agent.attempt (Plan.request (Life.plan run));
           seconds_running = Clock.elapsed ~since:(Life.started run) ~until:now;
+          agent_phase = observed.Observation.phase;
+          session = observed.Observation.session;
+          turn_count = observed.Observation.turn_count;
+          last_event = observed.Observation.last_event;
+          last_message = observed.Observation.last_message;
+          last_activity = observed.Observation.last_activity;
+          usage = observed.Observation.usage;
+          rate_limits = observed.Observation.rate_limits;
         }
     in
     let retry owner value phase =
@@ -1393,6 +2118,11 @@ struct
           | Config.Ready -> Ready
           | Config.Blocked _ -> Invalid)
     in
+    let cycle : cycle_status =
+      match state.cycle with
+      | Idle -> Idle
+      | Reconciling _ | Validating _ | Fetching _ | Discarding -> Busy
+    in
     let total_runtime =
       List.fold_left
         (fun total -> function
@@ -1400,14 +2130,24 @@ struct
           | Retry _ | Cleaning _ -> total)
         state.ended rows
     in
+    let total_usage =
+      List.fold_left
+        (fun total -> function
+          | Worker worker -> Usage.add total worker.usage
+          | Retry _ | Cleaning _ -> total)
+        state.ended_usage rows
+    in
     {
       mode;
       readiness;
+      cycle;
       owners = rows;
       running;
       available_slots =
         max 0 (Scheduling_policy.global_limit (policy state) - running);
       total_runtime;
+      total_usage;
+      latest_rate_limits = state.latest_rate_limits;
     }
 
   let quiescent (state : state) =

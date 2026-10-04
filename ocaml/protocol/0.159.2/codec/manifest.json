@@ -1,0 +1,318 @@
+{
+  "bundle": {
+    "files": 314,
+    "record_format": "sorted relative filename, NUL, raw-file SHA-256 hex, newline",
+    "sha256": "9dec03ab74e2e8a8e3b2948594c7183ee0565c3df33c792ea78d387e6824e093"
+  },
+  "fixtures": {
+    "attestation": {
+      "id": "rpc-1",
+      "schema": "JSONRPCError.json"
+    },
+    "attestation-id-max": {
+      "id": 9223372036854775807,
+      "schema": "JSONRPCError.json"
+    },
+    "attestation-id-min": {
+      "id": -9223372036854775808,
+      "schema": "JSONRPCError.json"
+    },
+    "auth": {
+      "id": "rpc-1",
+      "schema": "JSONRPCError.json"
+    },
+    "auth-id-max": {
+      "id": 9223372036854775807,
+      "schema": "JSONRPCError.json"
+    },
+    "auth-id-min": {
+      "id": -9223372036854775808,
+      "schema": "JSONRPCError.json"
+    },
+    "command-envelope": {
+      "id": "rpc-1",
+      "schema": "JSONRPCResponse.json"
+    },
+    "command-id-max-envelope": {
+      "id": 9223372036854775807,
+      "schema": "JSONRPCResponse.json"
+    },
+    "command-id-max-result": {
+      "schema": "CommandExecutionRequestApprovalResponse.json"
+    },
+    "command-id-min-envelope": {
+      "id": -9223372036854775808,
+      "schema": "JSONRPCResponse.json"
+    },
+    "command-id-min-result": {
+      "schema": "CommandExecutionRequestApprovalResponse.json"
+    },
+    "command-result": {
+      "schema": "CommandExecutionRequestApprovalResponse.json"
+    },
+    "elicitation-envelope": {
+      "id": "rpc-1",
+      "schema": "JSONRPCResponse.json"
+    },
+    "elicitation-id-max-envelope": {
+      "id": 9223372036854775807,
+      "schema": "JSONRPCResponse.json"
+    },
+    "elicitation-id-max-result": {
+      "schema": "McpServerElicitationRequestResponse.json"
+    },
+    "elicitation-id-min-envelope": {
+      "id": -9223372036854775808,
+      "schema": "JSONRPCResponse.json"
+    },
+    "elicitation-id-min-result": {
+      "schema": "McpServerElicitationRequestResponse.json"
+    },
+    "elicitation-result": {
+      "schema": "McpServerElicitationRequestResponse.json"
+    },
+    "file-envelope": {
+      "id": "rpc-1",
+      "schema": "JSONRPCResponse.json"
+    },
+    "file-id-max-envelope": {
+      "id": 9223372036854775807,
+      "schema": "JSONRPCResponse.json"
+    },
+    "file-id-max-result": {
+      "schema": "FileChangeRequestApprovalResponse.json"
+    },
+    "file-id-min-envelope": {
+      "id": -9223372036854775808,
+      "schema": "JSONRPCResponse.json"
+    },
+    "file-id-min-result": {
+      "schema": "FileChangeRequestApprovalResponse.json"
+    },
+    "file-result": {
+      "schema": "FileChangeRequestApprovalResponse.json"
+    },
+    "initialize": {
+      "id": "rpc-1",
+      "method": "initialize",
+      "schema": "ClientRequest.json"
+    },
+    "initialize-id-max": {
+      "id": 9223372036854775807,
+      "method": "initialize",
+      "schema": "ClientRequest.json"
+    },
+    "initialize-id-min": {
+      "id": -9223372036854775808,
+      "method": "initialize",
+      "schema": "ClientRequest.json"
+    },
+    "initialized": {
+      "method": "initialized",
+      "schema": "ClientNotification.json"
+    },
+    "interrupt": {
+      "id": "rpc-1",
+      "method": "turn/interrupt",
+      "schema": "ClientRequest.json"
+    },
+    "interrupt-id-max": {
+      "id": 9223372036854775807,
+      "method": "turn/interrupt",
+      "schema": "ClientRequest.json"
+    },
+    "interrupt-id-min": {
+      "id": -9223372036854775808,
+      "method": "turn/interrupt",
+      "schema": "ClientRequest.json"
+    },
+    "legacy-exec-envelope": {
+      "id": "rpc-1",
+      "schema": "JSONRPCResponse.json"
+    },
+    "legacy-exec-id-max-envelope": {
+      "id": 9223372036854775807,
+      "schema": "JSONRPCResponse.json"
+    },
+    "legacy-exec-id-max-result": {
+      "schema": "ExecCommandApprovalResponse.json"
+    },
+    "legacy-exec-id-min-envelope": {
+      "id": -9223372036854775808,
+      "schema": "JSONRPCResponse.json"
+    },
+    "legacy-exec-id-min-result": {
+      "schema": "ExecCommandApprovalResponse.json"
+    },
+    "legacy-exec-result": {
+      "schema": "ExecCommandApprovalResponse.json"
+    },
+    "legacy-patch-envelope": {
+      "id": "rpc-1",
+      "schema": "JSONRPCResponse.json"
+    },
+    "legacy-patch-id-max-envelope": {
+      "id": 9223372036854775807,
+      "schema": "JSONRPCResponse.json"
+    },
+    "legacy-patch-id-max-result": {
+      "schema": "ApplyPatchApprovalResponse.json"
+    },
+    "legacy-patch-id-min-envelope": {
+      "id": -9223372036854775808,
+      "schema": "JSONRPCResponse.json"
+    },
+    "legacy-patch-id-min-result": {
+      "schema": "ApplyPatchApprovalResponse.json"
+    },
+    "legacy-patch-result": {
+      "schema": "ApplyPatchApprovalResponse.json"
+    },
+    "permissions-envelope": {
+      "id": "rpc-1",
+      "schema": "JSONRPCResponse.json"
+    },
+    "permissions-id-max-envelope": {
+      "id": 9223372036854775807,
+      "schema": "JSONRPCResponse.json"
+    },
+    "permissions-id-max-result": {
+      "schema": "PermissionsRequestApprovalResponse.json"
+    },
+    "permissions-id-min-envelope": {
+      "id": -9223372036854775808,
+      "schema": "JSONRPCResponse.json"
+    },
+    "permissions-id-min-result": {
+      "schema": "PermissionsRequestApprovalResponse.json"
+    },
+    "permissions-result": {
+      "schema": "PermissionsRequestApprovalResponse.json"
+    },
+    "thread-name": {
+      "id": "rpc-1",
+      "method": "thread/name/set",
+      "schema": "ClientRequest.json"
+    },
+    "thread-name-id-max": {
+      "id": 9223372036854775807,
+      "method": "thread/name/set",
+      "schema": "ClientRequest.json"
+    },
+    "thread-name-id-min": {
+      "id": -9223372036854775808,
+      "method": "thread/name/set",
+      "schema": "ClientRequest.json"
+    },
+    "thread-start": {
+      "id": "rpc-1",
+      "method": "thread/start",
+      "schema": "ClientRequest.json"
+    },
+    "thread-start-id-max": {
+      "id": 9223372036854775807,
+      "method": "thread/start",
+      "schema": "ClientRequest.json"
+    },
+    "thread-start-id-min": {
+      "id": -9223372036854775808,
+      "method": "thread/start",
+      "schema": "ClientRequest.json"
+    },
+    "tool-envelope": {
+      "id": "rpc-1",
+      "schema": "JSONRPCResponse.json"
+    },
+    "tool-id-max-envelope": {
+      "id": 9223372036854775807,
+      "schema": "JSONRPCResponse.json"
+    },
+    "tool-id-max-result": {
+      "schema": "DynamicToolCallResponse.json"
+    },
+    "tool-id-min-envelope": {
+      "id": -9223372036854775808,
+      "schema": "JSONRPCResponse.json"
+    },
+    "tool-id-min-result": {
+      "schema": "DynamicToolCallResponse.json"
+    },
+    "tool-result": {
+      "schema": "DynamicToolCallResponse.json"
+    },
+    "turn-start": {
+      "id": "rpc-1",
+      "method": "turn/start",
+      "schema": "ClientRequest.json"
+    },
+    "turn-start-id-max": {
+      "id": 9223372036854775807,
+      "method": "turn/start",
+      "schema": "ClientRequest.json"
+    },
+    "turn-start-id-min": {
+      "id": -9223372036854775808,
+      "method": "turn/start",
+      "schema": "ClientRequest.json"
+    },
+    "unknown": {
+      "id": "rpc-1",
+      "schema": "JSONRPCError.json"
+    },
+    "unknown-id-max": {
+      "id": 9223372036854775807,
+      "schema": "JSONRPCError.json"
+    },
+    "unknown-id-min": {
+      "id": -9223372036854775808,
+      "schema": "JSONRPCError.json"
+    }
+  },
+  "generator": "codex app-server generate-json-schema --out <dir>",
+  "integer_formats": {
+    "int64": "signed 64-bit",
+    "uint": "unsigned 64-bit",
+    "uint16": "unsigned 16-bit",
+    "uint32": "unsigned 32-bit",
+    "uint64": "unsigned 64-bit"
+  },
+  "native_word_bits": 64,
+  "profile": "stable (no --experimental)",
+  "schema_sources": {
+    "ApplyPatchApprovalResponse.json": "ApplyPatchApprovalResponse.json",
+    "ClientNotification.json": "ClientNotification.json",
+    "ClientRequest.json": "ClientRequest.json",
+    "CommandExecutionRequestApprovalResponse.json": "CommandExecutionRequestApprovalResponse.json",
+    "DynamicToolCallResponse.json": "DynamicToolCallResponse.json",
+    "ExecCommandApprovalResponse.json": "ExecCommandApprovalResponse.json",
+    "FileChangeRequestApprovalResponse.json": "FileChangeRequestApprovalResponse.json",
+    "JSONRPCError.json": "JSONRPCError.json",
+    "JSONRPCResponse.json": "JSONRPCResponse.json",
+    "McpServerElicitationRequestResponse.json": "McpServerElicitationRequestResponse.json",
+    "PermissionsRequestApprovalResponse.json": "PermissionsRequestApprovalResponse.json"
+  },
+  "sha256": {
+    "ApplyPatchApprovalResponse.json": "a5e145b4794ea91da6eb478626fac96bbbd4485c3399fabd1c9972d53d2d9010",
+    "ClientNotification.json": "706cf248d75027c84a3c63348d0ed507182e8eba40069dd17541793de029145a",
+    "ClientRequest.json": "1c7fec8758deb95ffe967060130e8d1ddb7a0a5a437ee9b64086dddbed8f5831",
+    "CommandExecutionRequestApprovalResponse.json": "6d0767113e22f311381809b6b236b0dde2b99b01992879c26bf7b1ea0e003cb7",
+    "DynamicToolCallResponse.json": "abb082cad67f11fcc98ba75f2eff75d7d1723af0c657655329b83ff160451a02",
+    "ExecCommandApprovalResponse.json": "80dba6d9f28d19c57960db72340554c193624f014cd496714a0c7aabe1120046",
+    "FileChangeRequestApprovalResponse.json": "b95b03ee6be674e25cee2e863cc135a28620e1070addd2f34685aadee27cde08",
+    "JSONRPCError.json": "d7ea353d4875ae204625da5a00a1ecb5afc69101d5778b9acc253a49f8932992",
+    "JSONRPCResponse.json": "4796738c04c74288213a08fb8d820c7b4df19e0977cdcd35b65ffcb43cfc93ab",
+    "McpServerElicitationRequestResponse.json": "792a012fdfe53ac211575a6c37ffbd492be848d15cb313d1bb4b534ade1f54ac",
+    "PermissionsRequestApprovalResponse.json": "23f3f24e9dbf35db3e0b85703f0d934da5a1cff3cbb611fba8bcd41f3b4a04b0"
+  },
+  "source": "https://github.com/openai/codex/tree/rust-v0.159.2/codex-rs/app-server-protocol",
+  "validator": {
+    "documentation": "https://python-jsonschema.readthedocs.io/en/stable/validate/#validating-formats",
+    "metadata_checked": "2026-10-03",
+    "name": "jsonschema",
+    "python": ">=3.11",
+    "release": "https://pypi.org/project/jsonschema/4.26.0/",
+    "requirements": "../../../tools/protocol_codec_requirements.lock",
+    "version": "4.26.0"
+  },
+  "version": "codex-cli 0.159.2"
+}

@@ -1,0 +1,4 @@
+(library
+ (name symphony_agent)
+ (wrapped false)
+ (libraries symphony_orchestration symphony_workspace symphony_io))

@@ -10,6 +10,7 @@ module Reference = Workspace_reference.Make (Path)
 
 exception Cancelled of Model.normal_stage
 exception Fault of Model.fault
+exception Lease_defect
 
 let checked = function
   | Ok value -> value
@@ -191,6 +192,20 @@ end
 
 module Manager = Workspace_manager.Make (Driver)
 
+module Lease_driver = struct
+  include Driver
+
+  let with_lease t reference run =
+    ignore (Driver.with_lease t reference run);
+    raise Lease_defect
+
+  let with_existing t reference run =
+    ignore (Driver.with_existing t reference run);
+    raise Lease_defect
+end
+
+module Lease_manager = Workspace_manager.Make (Lease_driver)
+
 let reference =
   let base = checked (Absolute_path.parse "/tmp/symphony-policy-tests") in
   let workflow_file = checked (Workflow_path.resolve ~base "WORKFLOW.md") in
@@ -237,7 +252,7 @@ let run_driver driver operation =
             (fun value ->
               Alcotest.(check string)
                 "callback result retained" callback_value value)
-            (Manager.with_workspace driver reference callback)
+            (Manager.with_workspace driver reference ~on_error:Fun.id callback)
       | Model.Cleanup -> Manager.cleanup driver request
     with
     | Ok () -> Model.Returned
@@ -459,7 +474,9 @@ let defect_backtrace () =
           traces := [ trace ];
           Printexc.raise_with_backtrace exn trace
       in
-      match Manager.with_workspace driver reference callback with
+      match
+        Manager.with_workspace driver reference ~on_error:Fun.id callback
+      with
       | Ok _ | Error _ -> Alcotest.fail "Primary defect did not propagate"
       | exception exn ->
           let observed = Printexc.get_raw_backtrace () in
@@ -488,6 +505,327 @@ let defect_backtrace () =
                  | Model.Report _ -> count)
                0 driver.Driver.trace))
     Model.[ (Defect, Observed); (Fail Rejected, Reporter_defect) ]
+
+let check_released driver =
+  let releases =
+    List.fold_left
+      (fun count -> function
+        | Model.Release -> count + 1
+        | Model.Call _
+        | Model.Enter_cleanup
+        | Model.Leave_cleanup
+        | Model.Report _ -> count)
+      0 driver.Driver.trace
+  in
+  Alcotest.check Alcotest.int "lease closed before returning the primary" 1
+    releases
+
+let lease_error_precedence () =
+  let driver = Driver.create (plain Model.Present Model.Attempt) in
+  let primary = Failure "foreign callback error" in
+  let outcome =
+    try
+      `Returned
+        (Lease_manager.with_workspace driver reference
+           ~on_error:(fun _ ->
+             Alcotest.fail "Foreign error reached the workspace mapper")
+           (fun _ -> Error primary))
+    with defect -> `Raised defect
+  in
+  check_released driver;
+  match outcome with
+  | `Returned (Error observed) when observed == primary -> ()
+  | `Returned (Ok _ | Error _) | `Raised _ ->
+      Alcotest.fail "Lease cleanup replaced the primary callback error"
+
+let foreign_error_precedence () =
+  List.iter
+    (fun (after_run, reporting) ->
+      let scenario = plain Model.Present Model.Attempt in
+      let scenario =
+        {
+          scenario with
+          Model.respond =
+            (fun stage ->
+              if stage = Model.After_run then after_run else Model.Proceed);
+          report = (fun _ _ -> reporting);
+        }
+      in
+      let driver = Driver.create scenario in
+      let primary = Failure "foreign callback error" in
+      let outcome =
+        Manager.with_workspace driver reference
+          ~on_error:(fun _ ->
+            Alcotest.fail "Foreign error reached the workspace mapper")
+          (fun _ -> Error primary)
+      in
+      check_released driver;
+      match outcome with
+      | Error observed when observed == primary -> ()
+      | Ok _ | Error _ ->
+          Alcotest.fail "Cleanup replaced the foreign callback error")
+    Model.[ (Defect, Observed); (Fail Rejected, Reporter_defect) ]
+
+let lease_defect_backtrace () =
+  List.iter
+    (fun primary ->
+      let driver = Driver.create (plain Model.Present Model.Attempt) in
+      let expected = ref None in
+      let callback _ =
+        try raise primary
+        with error ->
+          let trace = Printexc.get_raw_backtrace () in
+          expected := Some trace;
+          Printexc.raise_with_backtrace error trace
+      in
+      match
+        Lease_manager.with_workspace driver reference ~on_error:Fun.id callback
+      with
+      | Ok _ | Error _ -> Alcotest.fail "Callback defect did not propagate"
+      | exception observed -> (
+          let trace = Printexc.get_raw_backtrace () in
+          check_released driver;
+          Alcotest.check Alcotest.bool "callback exception identity" true
+            (observed == primary);
+          match !expected with
+          | None -> Alcotest.fail "Callback backtrace was not captured"
+          | Some expected ->
+              Alcotest.check Alcotest.bool "callback backtrace retained" true
+                (String.starts_with
+                   ~prefix:(Printexc.raw_backtrace_to_string expected)
+                   (Printexc.raw_backtrace_to_string trace))))
+    [
+      Failure "callback defect";
+      Eio.Cancel.Cancelled (Failure "foreign cancellation");
+    ]
+
+let mapper_after_cleanup () =
+  List.iter
+    (fun target ->
+      List.iter
+        (fun primary ->
+          let driver =
+            Driver.create
+              (inject (plain Model.Absent Model.Attempt) target Model.Rejected)
+          in
+          let expected = ref None in
+          let mapper _ =
+            check_released driver;
+            Alcotest.check Alcotest.bool "created workspace rolled back" true
+              (driver.Driver.presence = Model.Absent);
+            try raise primary
+            with error ->
+              let trace = Printexc.get_raw_backtrace () in
+              expected := Some trace;
+              Printexc.raise_with_backtrace error trace
+          in
+          match
+            Manager.with_workspace driver reference ~on_error:mapper (fun _ ->
+                Alcotest.fail "Preparation error entered the callback")
+          with
+          | Ok _ | Error _ -> Alcotest.fail "Mapper defect did not propagate"
+          | exception observed -> (
+              let trace = Printexc.get_raw_backtrace () in
+              check_released driver;
+              Alcotest.check Alcotest.bool "mapper exception identity" true
+                (observed == primary);
+              match !expected with
+              | None -> Alcotest.fail "Mapper ran before cleanup finished"
+              | Some expected ->
+                  Alcotest.check Alcotest.bool "mapper backtrace retained" true
+                    (String.starts_with
+                       ~prefix:(Printexc.raw_backtrace_to_string expected)
+                       (Printexc.raw_backtrace_to_string trace))))
+        [
+          Failure "mapper defect";
+          Eio.Cancel.Cancelled (Failure "foreign mapper cancellation");
+        ])
+    Model.[ Normal Before_run; Normal Path ]
+
+let canceled_scope_primary () =
+  let module Canceled_driver = struct
+    include Driver
+
+    let with_lease t reference run =
+      Eio.Switch.run (fun sw ->
+          let value = Driver.with_lease t reference run in
+          Eio.Switch.fail sw Lease_defect;
+          value)
+  end in
+  let module Canceled_manager = Workspace_manager.Make (Canceled_driver) in
+  Eio_mock.Backend.run (fun () ->
+      let driver = Driver.create (plain Model.Present Model.Attempt) in
+      let primary = Failure "foreign callback error" in
+      let outcome =
+        Canceled_manager.with_workspace driver reference
+          ~on_error:(fun _ ->
+            Alcotest.fail "Canceled scope mapped the callback error")
+          (fun _ -> Error primary)
+      in
+      check_released driver;
+      match outcome with
+      | Error observed when observed == primary -> ()
+      | Ok _ | Error _ ->
+          Alcotest.fail "Canceled scope replaced the primary callback error")
+
+let successful_lease_defect () =
+  let driver = Driver.create (plain Model.Present Model.Attempt) in
+  match
+    Lease_manager.with_workspace driver reference ~on_error:Fun.id (fun _ ->
+        Ok ())
+  with
+  | Ok _ | Error _ -> Alcotest.fail "Successful callback hid the lease defect"
+  | exception Lease_defect -> check_released driver
+
+let cleanup_error_precedence () =
+  let scenario =
+    inject (plain Model.Present Model.Cleanup) Model.Remove Model.Rejected
+  in
+  let driver = Driver.create scenario in
+  let outcome =
+    try `Returned (Lease_manager.cleanup driver request)
+    with defect -> `Raised defect
+  in
+  check_released driver;
+  match outcome with
+  | `Returned (Error observed)
+    when error_identity observed = Model.(Remove, Rejected) -> ()
+  | `Returned (Ok _ | Error _) | `Raised _ ->
+      Alcotest.fail "Lease cleanup replaced the primary removal error"
+
+let cleanup_scope_precedence () =
+  let module Scope_driver = struct
+    include Driver
+
+    let cleanup_scope t run =
+      ignore (Driver.cleanup_scope t run);
+      raise Lease_defect
+  end in
+  let module Scope_manager = Workspace_manager.Make (Scope_driver) in
+  let scenario =
+    inject (plain Model.Present Model.Cleanup) Model.Remove Model.Rejected
+  in
+  let driver = Driver.create scenario in
+  let outcome =
+    try `Returned (Scope_manager.cleanup driver request)
+    with defect -> `Raised defect
+  in
+  check_released driver;
+  match outcome with
+  | `Returned (Error observed)
+    when error_identity observed = Model.(Remove, Rejected) -> ()
+  | `Returned (Ok _ | Error _) | `Raised _ ->
+      Alcotest.fail "Cleanup scope replaced the primary removal error"
+
+let cleanup_fault_backtrace () =
+  List.iter
+    (fun primary ->
+      let expected = ref None in
+      let module Closing_driver = struct
+        include Lease_driver
+
+        let remove _ _ =
+          try raise primary
+          with error ->
+            let trace = Printexc.get_raw_backtrace () in
+            expected := Some trace;
+            Printexc.raise_with_backtrace error trace
+
+        let cleanup_scope t run =
+          ignore (Driver.cleanup_scope t run);
+          raise Lease_defect
+      end in
+      let module Closing_manager = Workspace_manager.Make (Closing_driver) in
+      let driver = Driver.create (plain Model.Present Model.Cleanup) in
+      match Closing_manager.cleanup driver request with
+      | Ok _ | Error _ -> Alcotest.fail "Removal defect did not propagate"
+      | exception observed -> (
+          let trace = Printexc.get_raw_backtrace () in
+          check_released driver;
+          Alcotest.check Alcotest.bool "removal exception identity" true
+            (observed == primary);
+          match !expected with
+          | None -> Alcotest.fail "Removal backtrace was not captured"
+          | Some expected ->
+              Alcotest.check Alcotest.bool "removal backtrace retained" true
+                (String.starts_with
+                   ~prefix:(Printexc.raw_backtrace_to_string expected)
+                   (Printexc.raw_backtrace_to_string trace))))
+    [
+      Failure "removal defect";
+      Eio.Cancel.Cancelled (Failure "foreign removal cancellation");
+    ]
+
+let successful_cleanup_defect () =
+  let driver = Driver.create (plain Model.Present Model.Cleanup) in
+  match Lease_manager.cleanup driver request with
+  | Ok _ | Error _ -> Alcotest.fail "Successful removal hid the lease defect"
+  | exception Lease_defect ->
+      check_released driver;
+      Alcotest.check Alcotest.bool "workspace removed before lease defect" true
+        (driver.Driver.presence = Model.Absent)
+
+type finish_fault = After_run_fault | Reporter_fault
+
+let finish_fault_precedence () =
+  List.iter
+    (fun source ->
+      let primary = Failure "first finalizer defect" in
+      let expected = ref None in
+      let raise_primary () =
+        try raise primary
+        with error ->
+          let trace = Printexc.get_raw_backtrace () in
+          expected := Some trace;
+          Printexc.raise_with_backtrace error trace
+      in
+      let module Scope_driver = struct
+        include Driver
+
+        let hook t lease phase =
+          match (phase, source) with
+          | Workspace_settings.After_run, After_run_fault ->
+              Driver.record t (Model.Call Model.After_run);
+              raise_primary ()
+          | Workspace_settings.After_run, Reporter_fault
+          | ( ( Workspace_settings.After_create
+              | Workspace_settings.Before_run
+              | Workspace_settings.Before_remove ),
+              (After_run_fault | Reporter_fault) ) -> Driver.hook t lease phase
+
+        let report _ _ = raise_primary ()
+
+        let cleanup_scope t run =
+          Fun.protect
+            ~finally:(fun () -> raise Lease_defect)
+            (fun () -> Driver.cleanup_scope t run)
+      end in
+      let module Scope_manager = Workspace_manager.Make (Scope_driver) in
+      let scenario =
+        inject
+          (plain Model.Present Model.Attempt)
+          Model.After_run Model.Rejected
+      in
+      let driver = Driver.create scenario in
+      match
+        Scope_manager.with_workspace driver reference ~on_error:Fun.id (fun _ ->
+            Ok ())
+      with
+      | Ok _ | Error _ -> Alcotest.fail "Finalizer defect did not propagate"
+      | exception observed -> (
+          let trace = Printexc.get_raw_backtrace () in
+          check_released driver;
+          Alcotest.check Alcotest.bool "first finalizer exception identity" true
+            (observed == primary);
+          match !expected with
+          | None -> Alcotest.fail "Finalizer backtrace was not captured"
+          | Some expected ->
+              Alcotest.check Alcotest.bool "first finalizer backtrace retained"
+                true
+                (String.starts_with
+                   ~prefix:(Printexc.raw_backtrace_to_string expected)
+                   (Printexc.raw_backtrace_to_string trace))))
+    [ After_run_fault; Reporter_fault ]
 
 let variant_control () =
   let value = error (Model.Normal Model.Path) Model.Rejected in
@@ -625,6 +963,31 @@ let tests =
       `Quick compound_defects;
     Alcotest.test_case "cleanup retains original defect identity and backtrace"
       `Quick defect_backtrace;
+    Alcotest.test_case "callback error outranks lease cleanup defect" `Quick
+      lease_error_precedence;
+    Alcotest.test_case
+      "foreign callback error survives finalizer and reporter defects" `Quick
+      foreign_error_precedence;
+    Alcotest.test_case
+      "callback defects survive lease closure with original backtrace" `Quick
+      lease_defect_backtrace;
+    Alcotest.test_case "workspace mapper runs after rollback and release" `Quick
+      mapper_after_cleanup;
+    Alcotest.test_case "canceled lease scope retains callback error" `Quick
+      canceled_scope_primary;
+    Alcotest.test_case "successful callback exposes lease defect" `Quick
+      successful_lease_defect;
+    Alcotest.test_case "removal error outranks existing lease cleanup defect"
+      `Quick cleanup_error_precedence;
+    Alcotest.test_case "removal error outranks cleanup scope defect" `Quick
+      cleanup_scope_precedence;
+    Alcotest.test_case
+      "removal faults survive both scopes with original backtrace" `Quick
+      cleanup_fault_backtrace;
+    Alcotest.test_case "successful removal exposes lease defect" `Quick
+      successful_cleanup_defect;
+    Alcotest.test_case "first finalizer defect survives cleanup scope closure"
+      `Quick finish_fault_precedence;
     Alcotest.test_case "inspection preserves contents and scoped ownership"
       `Quick inspection_examples;
   ]

@@ -111,6 +111,10 @@ type observer_mode =
   | Fail_transition of exn
   | Fail_poll_close of exn
   | Fail_worker_entry of exn
+  | Fail_progress of exn
+  | Hold_continue of unit Eio.Promise.u * unit Eio.Promise.t
+
+type oracle = Scheduling_model | Causal_worker
 
 let run actor =
   let mono = Eio_mock.Clock.Mono.make () in
@@ -155,9 +159,12 @@ struct
     mutable effects : Host.effect_event list;
     mutable secondary : Host.host_fault list;
     mutable origin : Printexc.raw_backtrace option;
+    oracle : oracle;
+    mutable projection : Host.Core.projection option;
+    mutable transitions : Host.transition list;
   }
 
-  let create () =
+  let create ?(oracle = Scheduling_model) () =
     {
       controls = Eio.Stream.create 1;
       bridge = None;
@@ -166,6 +173,9 @@ struct
       effects = [];
       secondary = [];
       origin = None;
+      oracle;
+      projection = None;
+      transitions = [];
     }
 
   let fail_observer t error =
@@ -250,32 +260,106 @@ struct
     | Host.Core.Refresh_requested
     | Host.Core.Workflow_changed
     | Host.Core.Worker_started _
+    | Host.Core.Worker_progress _
+    | Host.Core.Worker_continue _
     | Host.Core.Retry_due _
     | Host.Core.Shutdown -> ()
 
   let observe t = function
     | Host.Initial value ->
-        let bridge, _ =
-          Bridge.initial ~profile:F.A ~now:value.Host.now
-            ~commands:value.Host.commands ~projection:value.Host.projection
-        in
-        t.bridge <- Some bridge;
+        t.projection <- Some value.Host.projection;
+        begin match t.oracle with
+        | Causal_worker -> ()
+        | Scheduling_model ->
+            let bridge, _ =
+              Bridge.initial ~profile:F.A ~now:value.Host.now
+                ~commands:value.Host.commands ~projection:value.Host.projection
+            in
+            t.bridge <- Some bridge
+        end;
         S.notify Controller.value
     | Host.Transition value ->
         closed_input value.Host.input;
-        let previous =
-          match t.bridge with
-          | Some value -> value
-          | None -> Alcotest.fail "Transition preceded Initial"
-        in
-        let bridge, _, _ =
-          Bridge.accept previous ~now:value.Host.now ~input:value.Host.input
-            ~commands:value.Host.commands ~projection:value.Host.projection
-        in
-        t.bridge <- Some bridge;
+        t.projection <- Some value.Host.projection;
+        t.transitions <- value :: t.transitions;
+        begin match t.oracle with
+        | Causal_worker -> ()
+        | Scheduling_model ->
+            let previous =
+              match t.bridge with
+              | Some value -> value
+              | None -> Alcotest.fail "Transition preceded Initial"
+            in
+            let bridge, _, _ =
+              Bridge.accept previous ~now:value.Host.now ~input:value.Host.input
+                ~commands:value.Host.commands ~projection:value.Host.projection
+            in
+            t.bridge <- Some bridge
+        end;
         S.notify Controller.value;
         begin match t.observer with
         | Observe | Fail_poll_close _ | Fail_worker_entry _ -> ()
+        | Hold_continue (entered, release) -> (
+            match value.Host.input with
+            | Host.Core.Worker_continue _ ->
+                t.observer <- Observe;
+                Eio.Promise.resolve entered ();
+                Eio.Promise.await release
+            | Host.Core.Poll_due _
+            | Host.Core.Refresh_requested
+            | Host.Core.Workflow_changed
+            | Host.Core.Workflow_loaded _
+            | Host.Core.Tracker_completed _
+            | Host.Core.Worker_started _
+            | Host.Core.Worker_progress _
+            | Host.Core.Worker_finished _
+            | Host.Core.Request_canceled _
+            | Host.Core.Retry_due _
+            | Host.Core.Workspace_removed _
+            | Host.Core.Shutdown -> ())
+        | Fail_progress error -> (
+            match value.Host.input with
+            | Host.Core.Worker_progress { issue; run; progress; _ } ->
+                let sequence = P.Agent.sequence progress in
+                let entered, returned =
+                  List.fold_left
+                    (fun (entered, returned) -> function
+                      | S.Publication_entered (key, count)
+                        when same_key key (S.Run (issue, run))
+                             && Count.compare
+                                  (Positive_count.count count)
+                                  (Positive_count.count sequence)
+                                = 0 -> (true, returned)
+                      | S.Publication_returned (key, count)
+                        when same_key key (S.Run (issue, run))
+                             && Count.compare
+                                  (Positive_count.count count)
+                                  (Positive_count.count sequence)
+                                = 0 -> (entered, true)
+                      | S.Publication_entered _
+                      | S.Publication_returned _
+                      | S.Refresh_entered _
+                      | S.Refresh_returned _ -> (entered, returned))
+                    (false, false)
+                    (S.worker_trace Controller.value)
+                in
+                Alcotest.(check bool)
+                  "Producer waits for owner receipt" true
+                  (entered && not returned);
+                t.observer <- Observe;
+                fail_observer t error
+            | Host.Core.Poll_due _
+            | Host.Core.Refresh_requested
+            | Host.Core.Workflow_changed
+            | Host.Core.Workflow_loaded _
+            | Host.Core.Tracker_completed _
+            | Host.Core.Worker_started _
+            | Host.Core.Worker_continue _
+            | Host.Core.Worker_finished _
+            | Host.Core.Request_canceled _
+            | Host.Core.Retry_due _
+            | Host.Core.Workspace_removed _
+            | Host.Core.Shutdown -> ())
         | Fail_transition error ->
             t.observer <- Observe;
             fail_observer t error
@@ -293,6 +377,8 @@ struct
         | ( ( Observe
             | Fail_transition _
             | Fail_poll_close _
+            | Fail_progress _
+            | Hold_continue _
             | Fail_worker_entry _ ),
             ( Host.Registered _ | Host.Child_entered _
             | Host.Outer_closed
@@ -307,7 +393,7 @@ struct
             | Host.Delivered _ | Host.Retired _ ) ) -> ()
         end
 
-  let start ~sw t =
+  let start ?(config = F.config F.A) ~sw t =
     let ready, signal_ready = Eio.Promise.create () in
     let result, signal_result = Eio.Promise.create () in
     let scope, signal_scope = Eio.Promise.create () in
@@ -330,8 +416,7 @@ struct
                   in
                   let outcome =
                     capture (fun () ->
-                        Host.run ~sw:child host ~controls:t.controls
-                          (F.config F.A))
+                        Host.run ~sw:child host ~controls:t.controls config)
                   in
                   Eio.Promise.resolve signal_result outcome;
                   S.notify Controller.value))
@@ -340,9 +425,9 @@ struct
         S.notify Controller.value);
     (Eio.Promise.await ready, result, scope)
 
-  let prepare controller =
+  let prepare ?(config = F.config F.A) controller =
     complete (reading controller) (F.reply []);
-    complete (loading controller) (Ok (F.config F.A));
+    complete (loading controller) (Ok config);
     complete (reading controller) (F.reply [ service_issue ]);
     running controller
 
@@ -350,9 +435,22 @@ struct
   let shutdown t = Eio.Stream.add t.controls Host.Shutdown
 
   let quiet t =
-    match t.bridge with
-    | Some bridge -> Bridge.check_quiescent bridge ~actual:true
-    | None -> Alcotest.fail "Graceful service returned without Initial"
+    match (t.oracle, t.bridge, t.projection) with
+    | Scheduling_model, Some bridge, _ ->
+        Bridge.check_quiescent bridge ~actual:true
+    | Causal_worker, _, Some projection ->
+        Alcotest.(check int)
+          "No worker survives join" 0 projection.Host.Core.running;
+        Alcotest.(check int)
+          "No owner survives join" 0
+          (List.length projection.Host.Core.owners)
+    | Scheduling_model, None, _ | Causal_worker, _, None ->
+        Alcotest.fail "Graceful service returned without Initial"
+
+  let projection t =
+    match t.projection with
+    | Some value -> value
+    | None -> Alcotest.fail "Projection preceded Initial"
 
   let same_effect left right =
     match (left, right) with
@@ -640,17 +738,22 @@ let first_resolved_cancel () =
               ~attempt:Template.First
           in
           let request = Lifecycle_fixture.Plan.request plan in
-          let cancel, signal_cancel = Eio.Promise.create () in
-          Eio.Promise.resolve signal_cancel Agent_runner.Reconciliation;
+          let interrupt, signal_cancel = Eio.Promise.create () in
+          Eio.Promise.resolve signal_cancel
+            (Agent_runner.Cancel Agent_runner.Reconciliation);
           ignore
-            (Eio.Promise.try_resolve signal_cancel Agent_runner.Host_shutdown
+            (Eio.Promise.try_resolve signal_cancel
+               (Agent_runner.Cancel Agent_runner.Host_shutdown)
               : bool);
           let result, signal_result = Eio.Promise.create () in
           Eio.Fiber.fork ~sw (fun () ->
               let actual =
                 capture (fun () ->
                     S.Agent.run controller ~clock:controller
-                      ~workspace:controller ~cancel request)
+                      ~workspace:controller ~interrupt ~emit:ignore
+                      ~refresh:(fun ~turn:_ ->
+                        Alcotest.fail "Interrupted runner refreshed")
+                      request)
               in
               Eio.Promise.resolve signal_result actual;
               S.notify controller);
@@ -970,10 +1073,32 @@ let reused_issue () =
           end;
           H.shutdown host;
           workspace_closed controller (S.key second);
+          let requests = ref [] in
+          (* Retained poll cadence may leave a concurrent tracker or preflight
+             scope. Shutdown joins those canceled requests through their gates. *)
+          List.iter
+            (fun (S.Pending call) ->
+              match S.invocation call with
+              | S.Loading _ | S.Reading _ ->
+                  let key = S.key call in
+                  workspace_closed controller key;
+                  requests := key :: !requests;
+                  S.close call S.Close_ok
+              | S.Removing _ | S.Running _ -> ())
+            (S.pending controller);
           S.close second S.Close_ok;
           graceful_result (Eio.Promise.await result);
           ignore (Eio.Promise.await scope);
           assert_released controller second;
+          List.iter
+            (fun key ->
+              Alcotest.(check bool)
+                "Shutdown joins concurrent request scopes" true
+                (released controller key))
+            !requests;
+          Alcotest.(check int)
+            "Reused issue teardown releases every acquired resource" 0
+            (List.length (S.pending controller));
           H.quiet host))
 
 exception Simulation_failure of string
@@ -1308,6 +1433,780 @@ let independent_ports identity () =
               H.saved_backtrace host backtrace
           | Returned _ -> Alcotest.fail "Observer failure disappeared"))
 
+let checked = function
+  | Ok value -> value
+  | Error message -> Alcotest.fail message
+
+let thread = checked (Thread_id.parse "thread-service")
+let turn = checked (Turn_id.parse "turn-service")
+let session_id = checked (Session_id.parse "thread-service-turn-service")
+let second_turn = checked (Turn_id.parse "turn-next")
+let second_session = checked (Session_id.parse "thread-service-turn-next")
+
+let worker_request (call : Agent_runner.outcome S.call) =
+  match S.invocation call with
+  | S.Running request -> request
+
+let returned_publication controller call sequence =
+  List.exists
+    (function
+      | S.Publication_returned (key, count) ->
+          same_key key (S.key call)
+          && Count.compare
+               (Positive_count.count sequence)
+               (Positive_count.count count)
+             = 0
+      | S.Publication_entered _ | S.Refresh_entered _ | S.Refresh_returned _ ->
+          false)
+    (S.worker_trace controller)
+
+let feed controller call sequence notice =
+  let sequence = checked (Positive_count.parse (string_of_int sequence)) in
+  S.publish call ~sequence notice;
+  ignore
+    (await controller (fun () ->
+         if returned_publication controller call sequence then Some () else None))
+
+let script_session controller call =
+  feed controller call 1 F.Agent.Preparing;
+  F.with_path
+    (F.Agent.workspace (worker_request call))
+    (fun path -> feed controller call 2 (F.Agent.Workspace_ready path));
+  feed controller call 3 F.Agent.Rendering;
+  feed controller call 4 F.Agent.Starting;
+  feed controller call 5
+    (F.Agent.Protocol
+       (Agent_runner.Session_started { session = session_id; thread; turn }))
+
+let refresh_answer controller call turn =
+  List.find_map
+    (function
+      | S.Refresh_returned (key, current, answer)
+        when same_key key (S.key call) && Turn_id.equal turn current ->
+          Some answer
+      | S.Publication_entered _
+      | S.Publication_returned _
+      | S.Refresh_entered _
+      | S.Refresh_returned _ -> None)
+    (S.worker_trace controller)
+
+let progress_and_refresh () =
+  Eio_mock.Backend.run (fun () ->
+      run (fun ~sw ~mono controller ->
+          let module H = Harness (struct
+            let value = controller
+            let mono = mono
+          end) in
+          let host = H.create ~oracle:Causal_worker () in
+          let _, result, scope = H.start ~sw host in
+          let worker = H.prepare controller in
+          script_session controller worker;
+          let projected = H.projection host in
+          (match projected.H.Host.Core.owners with
+          | [ H.Host.Core.Worker current ] ->
+              Alcotest.(check bool)
+                "Acknowledged session is canonical" true
+                (current.H.Host.Core.agent_phase = Agent_observation.Running);
+              Alcotest.(check string)
+                "First accepted turn" "1"
+                (Count.decimal current.H.Host.Core.turn_count)
+          | []
+          | [ (H.Host.Core.Retry _ | H.Host.Core.Cleaning _) ]
+          | _ :: _ :: _ -> Alcotest.fail "Session lost its canonical worker");
+          let usage =
+            Usage.make
+              ~input:(checked (Count.parse "9007199254740993"))
+              ~output:Count.one
+              ~total:(checked (Count.parse "9007199254740998"))
+          in
+          feed controller worker 6
+            (F.Agent.Protocol
+               (Agent_runner.Usage_report { thread; turn; absolute = usage }));
+          let rates = checked (Json.parse "{\"remaining\":0}") in
+          feed controller worker 7
+            (F.Agent.Protocol (Agent_runner.Rate_limits rates));
+          feed controller worker 8
+            (F.Agent.Protocol
+               (Agent_runner.Turn_completed { session = session_id; turn }));
+          Alcotest.(check int)
+            "Inner turn terminal retains worker slot" 1
+            (H.projection host).H.Host.Core.running;
+          S.refresh worker ~turn;
+          let read = reading controller in
+          let current =
+            F.issue ~state:"Doing" ~title:"Refreshed turn" ~id:"service-0"
+              ~identifier:"SERVICE-0" ()
+          in
+          S.respond read (F.reply [ current ]);
+          workspace_closed controller (S.key read);
+          Alcotest.(check bool)
+            "Refresh waits tracker resource closure" true
+            (Option.is_none (refresh_answer controller worker turn));
+          S.close read S.Close_ok;
+          let answer =
+            await controller (fun () -> refresh_answer controller worker turn)
+          in
+          (match answer with
+          | Ok (Agent_runner.Continue issue) ->
+              Alcotest.(check string)
+                "Callback receives current issue" "Refreshed turn"
+                (Issue.title issue)
+          | Ok Agent_runner.Stop | Error _ ->
+              Alcotest.fail "Active turn did not continue");
+          feed controller worker 9
+            (F.Agent.Protocol
+               (Agent_runner.Turn_started
+                  { session = second_session; turn = second_turn }));
+          (match (H.projection host).H.Host.Core.owners with
+          | [ H.Host.Core.Worker current ] ->
+              Alcotest.(check string)
+                "Distinct accepted continuation turn" "2"
+                (Count.decimal current.H.Host.Core.turn_count)
+          | []
+          | [ (H.Host.Core.Retry _ | H.Host.Core.Cleaning _) ]
+          | _ :: _ :: _ -> Alcotest.fail "Continuation lost its worker");
+          H.shutdown host;
+          workspace_closed controller (S.key worker);
+          S.close worker S.Close_ok;
+          graceful_result (Eio.Promise.await result);
+          ignore (Eio.Promise.await scope);
+          assert_released controller worker;
+          H.quiet host;
+          let projected = H.projection host in
+          Alcotest.(check string)
+            "Exact usage survives worker close" "9007199254740998"
+            (Count.decimal (Usage.total projected.H.Host.Core.total_usage));
+          Alcotest.(check bool)
+            "Latest rate limits survive close" true
+            (match projected.H.Host.Core.latest_rate_limits with
+            | Some value -> Json.equal rates value
+            | None -> false);
+          Alcotest.(check bool)
+            "Every registered Host handle retires" true (H.retired_all host)))
+
+let progress_during_receipt () =
+  Eio_mock.Backend.run (fun () ->
+      run (fun ~sw ~mono controller ->
+          let module H = Harness (struct
+            let value = controller
+            let mono = mono
+          end) in
+          let host = H.create ~oracle:Causal_worker () in
+          let _, result, scope = H.start ~sw host in
+          let worker = H.prepare controller in
+          script_session controller worker;
+          feed controller worker 6
+            (F.Agent.Protocol
+               (Agent_runner.Turn_completed { session = session_id; turn }));
+          let entered, signal_entered = Eio.Promise.create () in
+          let receipt, permit_receipt = Eio.Promise.create () in
+          let late, permit_late = Eio.Promise.create () in
+          let permit resolver =
+            ignore (Eio.Promise.try_resolve resolver () : bool)
+          in
+          Fun.protect
+            ~finally:(fun () ->
+              permit permit_late;
+              permit permit_receipt)
+            (fun () ->
+              host.H.observer <- Hold_continue (signal_entered, receipt);
+              let sequence = checked (Positive_count.parse "7") in
+              let usage =
+                Usage.make
+                  ~input:(checked (Count.parse "9007199254740993"))
+                  ~output:Count.one
+                  ~total:(checked (Count.parse "9007199254740998"))
+              in
+              S.refresh_with_progress worker ~turn ~sequence ~after:late
+                (F.Agent.Protocol
+                   (Agent_runner.Usage_report { thread; turn; absolute = usage }));
+              Eio.Promise.await entered;
+              Alcotest.(check int)
+                "Pending continuation receipt retains custody" 1
+                (H.projection host).H.Host.Core.running;
+              permit permit_late;
+              ignore
+                (await controller (fun () ->
+                     if
+                       List.exists
+                         (function
+                           | S.Publication_entered (key, count) ->
+                               same_key key (S.key worker)
+                               && Count.compare
+                                    (Positive_count.count count)
+                                    (Positive_count.count sequence)
+                                  = 0
+                           | S.Publication_returned _
+                           | S.Refresh_entered _
+                           | S.Refresh_returned _ -> false)
+                         (S.worker_trace controller)
+                     then Some ()
+                     else None));
+              Eio.Fiber.yield ();
+              Alcotest.(check bool)
+                "Late publication waits owner acknowledgement" false
+                (returned_publication controller worker sequence);
+              Alcotest.(check bool)
+                "Tracker decision has not answered refresh" true
+                (Option.is_none (refresh_answer controller worker turn));
+              permit permit_receipt;
+              let next =
+                await controller (fun () ->
+                    if returned_publication controller worker sequence then
+                      Some `Receipt
+                    else if closing controller (S.key worker) then Some `Closed
+                    else None)
+              in
+              (match next with
+              | `Closed ->
+                  (* A failing host must still join the fixture resources before
+                     the regression reports the actual callback defect. *)
+                  let actual =
+                    await controller (fun () ->
+                        List.iter
+                          (fun (S.Pending call) -> S.close call S.Close_ok)
+                          (S.pending controller);
+                        Eio.Promise.peek result)
+                  in
+                  ignore (Eio.Promise.await scope);
+                  assert_released controller worker;
+                  graceful_result actual;
+                  Alcotest.fail "Late publication closed a live worker"
+              | `Receipt -> ());
+              let read = reading controller in
+              Alcotest.(check bool)
+                "Progress receipt precedes tracker decision" true
+                (Option.is_none (refresh_answer controller worker turn));
+              let delivered =
+                List.filter_map
+                  (fun transition ->
+                    match transition.H.Host.input with
+                    | H.Host.Core.Worker_continue (_, _, current)
+                      when Turn_id.equal current turn -> Some "continuation"
+                    | H.Host.Core.Worker_progress { progress; _ }
+                      when Count.compare
+                             (Positive_count.count
+                                (H.P.Agent.sequence progress))
+                             (Positive_count.count sequence)
+                           = 0 -> Some "usage"
+                    | H.Host.Core.Poll_due _
+                    | H.Host.Core.Refresh_requested
+                    | H.Host.Core.Workflow_changed
+                    | H.Host.Core.Workflow_loaded _
+                    | H.Host.Core.Tracker_completed _
+                    | H.Host.Core.Worker_started _
+                    | H.Host.Core.Worker_progress _
+                    | H.Host.Core.Worker_continue _
+                    | H.Host.Core.Worker_finished _
+                    | H.Host.Core.Request_canceled _
+                    | H.Host.Core.Retry_due _
+                    | H.Host.Core.Workspace_removed _
+                    | H.Host.Core.Shutdown -> None)
+                  (List.rev host.H.transitions)
+              in
+              Alcotest.(check (list string))
+                "Owner receives both messages in publication order"
+                [ "continuation"; "usage" ]
+                delivered;
+              Alcotest.(check string)
+                "Late usage reaches canonical projection" "9007199254740998"
+                (Count.decimal
+                   (Usage.total (H.projection host).H.Host.Core.total_usage));
+              complete read (F.reply [ service_issue ]);
+              (match
+                 await controller (fun () ->
+                     refresh_answer controller worker turn)
+               with
+              | Ok (Agent_runner.Continue _) -> ()
+              | Ok Agent_runner.Stop | Error _ ->
+                  Alcotest.fail "Refresh lost its fenced tracker answer");
+              H.shutdown host;
+              workspace_closed controller (S.key worker);
+              S.close worker S.Close_ok;
+              graceful_result (Eio.Promise.await result);
+              ignore (Eio.Promise.await scope);
+              assert_released controller worker;
+              H.quiet host;
+              Alcotest.(check bool)
+                "Both receipted messages finish without Host fatal" true
+                (H.retired_all host))))
+
+let progress_observer_failure () =
+  Eio_mock.Backend.run (fun () ->
+      run (fun ~sw ~mono controller ->
+          let module H = Harness (struct
+            let value = controller
+            let mono = mono
+          end) in
+          let host = H.create ~oracle:Causal_worker () in
+          let _, result, scope = H.start ~sw host in
+          let worker = H.prepare controller in
+          let defect = Observer_defect 105 in
+          host.H.observer <- Fail_progress defect;
+          S.publish worker ~sequence:Positive_count.first F.Agent.Preparing;
+          workspace_closed controller (S.key worker);
+          S.close worker S.Close_ok;
+          let actual = Eio.Promise.await result in
+          ignore (Eio.Promise.await scope);
+          assert_released controller worker;
+          Alcotest.(check bool)
+            "Observer failure joins every acquired fake scope" true
+            (List.for_all
+               (function
+                 | S.Acquired key -> released controller key
+                 | S.Closing _ | S.Released _ -> true)
+               (S.trace controller));
+          match actual with
+          | Raised (error, backtrace) ->
+              Alcotest.(check bool)
+                "Receipt observer retains primary identity" true
+                (error == defect);
+              H.saved_backtrace host backtrace
+          | Returned _ -> Alcotest.fail "Progress observer failure disappeared"))
+
+let cancel_refresh_join () =
+  Eio_mock.Backend.run (fun () ->
+      run (fun ~sw ~mono controller ->
+          let module H = Harness (struct
+            let value = controller
+            let mono = mono
+          end) in
+          let host = H.create ~oracle:Causal_worker () in
+          let _, result, scope = H.start ~sw host in
+          let worker = H.prepare controller in
+          script_session controller worker;
+          feed controller worker 6
+            (F.Agent.Protocol
+               (Agent_runner.Turn_completed { session = session_id; turn }));
+          S.refresh worker ~turn;
+          let read = reading controller in
+          H.shutdown host;
+          workspace_closed controller (S.key worker);
+          workspace_closed controller (S.key read);
+          Alcotest.(check int)
+            "Cancellation retains worker until close" 1
+            (H.projection host).H.Host.Core.running;
+          S.close worker S.Close_ok;
+          ignore
+            (await controller (fun () ->
+                 if (H.projection host).H.Host.Core.running = 0 then Some ()
+                 else None));
+          Alcotest.(check bool)
+            "Closed worker cannot skip canceled refresh closure" true
+            (Option.is_none (Eio.Promise.peek result));
+          S.close read S.Close_ok;
+          graceful_result (Eio.Promise.await result);
+          ignore (Eio.Promise.await scope);
+          assert_released controller worker;
+          H.quiet host;
+          Alcotest.(check bool)
+            "Canceled refresh releases its fake resource" true
+            (released controller (S.key read));
+          (match refresh_answer controller worker turn with
+          | Some (Ok Agent_runner.Stop) -> ()
+          | Some (Ok (Agent_runner.Continue _) | Error _) | None ->
+              Alcotest.fail "Interrupted refresh did not return Stop");
+          Alcotest.(check bool)
+            "Canceled waiters and handles retire" true (H.retired_all host)))
+
+let typed_stall () =
+  Eio_mock.Backend.run (fun () ->
+      run (fun ~sw ~mono controller ->
+          let module H = Harness (struct
+            let value = controller
+            let mono = mono
+          end) in
+          let config = F.with_stall ~milliseconds:10 F.A in
+          let host = H.create ~oracle:Causal_worker () in
+          let _, result, scope = H.start ~config ~sw host in
+          let worker = H.prepare ~config controller in
+          advance mono controller (F.instant 10);
+          let equality_read = reading controller in
+          Alcotest.(check bool)
+            "Equality does not interrupt the worker" false
+            (closing controller (S.key worker));
+          complete equality_read (F.reply [ service_issue ]);
+          complete (loading controller) (Ok config);
+          complete (reading controller) (F.reply [ service_issue ]);
+          ignore
+            (await controller (fun () ->
+                 if
+                   List.exists
+                     (fun (transition : H.Host.transition) ->
+                       Clock.Pure.compare transition.H.Host.now (F.instant 10)
+                       = 0
+                       && List.exists
+                            (function
+                              | H.Host.Core.Arm_poll _ -> true
+                              | H.Host.Core.Load_workflow _
+                              | H.Host.Core.Read_tracker _
+                              | H.Host.Core.Start_worker _
+                              | H.Host.Core.Stop_worker _
+                              | H.Host.Core.Continue_worker _
+                              | H.Host.Core.Remove_workspace _
+                              | H.Host.Core.Cancel_request _
+                              | H.Host.Core.Cancel_poll _
+                              | H.Host.Core.Arm_retry _
+                              | H.Host.Core.Cancel_retry _
+                              | H.Host.Core.Report _ -> false)
+                            transition.H.Host.commands)
+                     host.H.transitions
+                 then Some ()
+                 else None));
+          advance mono controller (F.instant 15);
+          workspace_closed controller (S.key worker);
+          let read = reading controller in
+          Alcotest.(check bool)
+            "Owner emits typed Stall interruption" true
+            (List.exists
+               (fun (transition : H.Host.transition) ->
+                 List.exists
+                   (function
+                     | H.Host.Core.Stop_worker (_, _, Agent_runner.Stall) ->
+                         true
+                     | H.Host.Core.Stop_worker (_, _, Agent_runner.Cancel _)
+                     | H.Host.Core.Load_workflow _
+                     | H.Host.Core.Read_tracker _
+                     | H.Host.Core.Start_worker _
+                     | H.Host.Core.Continue_worker _
+                     | H.Host.Core.Remove_workspace _
+                     | H.Host.Core.Cancel_request _
+                     | H.Host.Core.Arm_poll _
+                     | H.Host.Core.Cancel_poll _
+                     | H.Host.Core.Arm_retry _
+                     | H.Host.Core.Cancel_retry _
+                     | H.Host.Core.Report _ -> false)
+                   transition.H.Host.commands)
+               host.H.transitions);
+          Alcotest.(check int)
+            "Stall keeps slot during protected close" 1
+            (H.projection host).H.Host.Core.running;
+          S.close worker S.Close_ok;
+          ignore
+            (await controller (fun () ->
+                 match (H.projection host).H.Host.Core.owners with
+                 | [ H.Host.Core.Retry _ ] -> Some ()
+                 | []
+                 | [ (H.Host.Core.Worker _ | H.Host.Core.Cleaning _) ]
+                 | _ :: _ :: _ -> None));
+          Alcotest.(check bool)
+            "Port publishes Stalled only after scope close" true
+            (List.exists
+               (fun (transition : H.Host.transition) ->
+                 match transition.H.Host.input with
+                 | H.Host.Core.Worker_finished completed ->
+                     S.Agent.outcome completed = Agent_runner.Stalled
+                 | H.Host.Core.Poll_due _
+                 | H.Host.Core.Refresh_requested
+                 | H.Host.Core.Workflow_changed
+                 | H.Host.Core.Workflow_loaded _
+                 | H.Host.Core.Tracker_completed _
+                 | H.Host.Core.Worker_started _
+                 | H.Host.Core.Worker_progress _
+                 | H.Host.Core.Worker_continue _
+                 | H.Host.Core.Request_canceled _
+                 | H.Host.Core.Retry_due _
+                 | H.Host.Core.Workspace_removed _
+                 | H.Host.Core.Shutdown -> false)
+               host.H.transitions);
+          H.shutdown host;
+          workspace_closed controller (S.key read);
+          S.close read S.Close_ok;
+          graceful_result (Eio.Promise.await result);
+          ignore (Eio.Promise.await scope);
+          assert_released controller worker;
+          H.quiet host;
+          Alcotest.(check bool)
+            "Typed stall leaves no Host custody" true (H.retired_all host)))
+
+let stalled_refresh_reconcile () =
+  Eio_mock.Backend.run (fun () ->
+      run (fun ~sw ~mono controller ->
+          let module H = Harness (struct
+            let value = controller
+            let mono = mono
+          end) in
+          let config = F.with_stall ~milliseconds:10 F.A in
+          let host = H.create ~oracle:Causal_worker () in
+          let _, result, scope = H.start ~config ~sw host in
+          let worker = H.prepare ~config controller in
+          script_session controller worker;
+          feed controller worker 6
+            (F.Agent.Protocol
+               (Agent_runner.Turn_completed { session = session_id; turn }));
+          S.refresh worker ~turn;
+          let original = reading controller in
+          let original_id =
+            match S.key original with
+            | S.Read id -> id
+            | S.Load _ | S.Remove _ | S.Run _ ->
+                Alcotest.fail "Expected continuation tracker scope"
+          in
+          let reads (transition : H.Host.transition) =
+            List.filter_map
+              (function
+                | H.Host.Core.Read_tracker request -> Some request
+                | H.Host.Core.Load_workflow _
+                | H.Host.Core.Start_worker _
+                | H.Host.Core.Stop_worker _
+                | H.Host.Core.Continue_worker _
+                | H.Host.Core.Remove_workspace _
+                | H.Host.Core.Cancel_request _
+                | H.Host.Core.Arm_poll _
+                | H.Host.Core.Cancel_poll _
+                | H.Host.Core.Arm_retry _
+                | H.Host.Core.Cancel_retry _
+                | H.Host.Core.Report _ -> None)
+              transition.H.Host.commands
+          in
+          let terminal matches =
+            await controller (fun () ->
+                List.find_opt
+                  (fun (transition : H.Host.transition) ->
+                    matches transition.H.Host.input)
+                  host.H.transitions)
+          in
+          let request_matches expected = function
+            | H.Host.Core.Request_canceled id -> Request_id.equal expected id
+            | H.Host.Core.Poll_due _
+            | H.Host.Core.Refresh_requested
+            | H.Host.Core.Workflow_changed
+            | H.Host.Core.Workflow_loaded _
+            | H.Host.Core.Tracker_completed _
+            | H.Host.Core.Worker_started _
+            | H.Host.Core.Worker_progress _
+            | H.Host.Core.Worker_continue _
+            | H.Host.Core.Worker_finished _
+            | H.Host.Core.Retry_due _
+            | H.Host.Core.Workspace_removed _
+            | H.Host.Core.Shutdown -> false
+          in
+
+          (* The owner poll must defer reconciliation until the canceled read
+             closes; its finalizer cannot be mistaken for an accepted reply. *)
+          advance mono controller (F.instant 15);
+          workspace_closed controller (S.key worker);
+          workspace_closed controller (S.key original);
+          let poll =
+            terminal (function
+              | H.Host.Core.Poll_due _ -> true
+              | H.Host.Core.Refresh_requested
+              | H.Host.Core.Workflow_changed
+              | H.Host.Core.Workflow_loaded _
+              | H.Host.Core.Tracker_completed _
+              | H.Host.Core.Worker_started _
+              | H.Host.Core.Worker_progress _
+              | H.Host.Core.Worker_continue _
+              | H.Host.Core.Worker_finished _
+              | H.Host.Core.Request_canceled _
+              | H.Host.Core.Retry_due _
+              | H.Host.Core.Workspace_removed _
+              | H.Host.Core.Shutdown -> false)
+          in
+          Alcotest.(check int)
+            "Canceled read retains exclusive tracker custody" 0
+            (List.length (reads poll));
+          Alcotest.(check bool)
+            "Canceled tracker remains physically open" false
+            (released controller (S.key original));
+          Alcotest.(check int)
+            "Stalled worker retains its slot during close" 1
+            (H.projection host).H.Host.Core.running;
+          S.close original S.Close_ok;
+          let canceled = terminal (request_matches original_id) in
+          let fresh_id =
+            match reads canceled with
+            | [ Tracker_registry.Contract.Ids { id; binding; ids; _ } ] ->
+                Alcotest.(check bool)
+                  "Reconciliation uses the worker's original binding" true
+                  (Tracker_registry.Contract.equal binding
+                     (F.Config.tracker config));
+                Alcotest.(check bool)
+                  "Reconciliation targets only the stopped issue" true
+                  (Issue_id.Set.equal ids
+                     (Issue_id.Set.singleton (Issue.id service_issue)));
+                id
+            | [] ->
+                Alcotest.fail
+                  "Closed continuation must resume deferred reconciliation"
+            | [ Tracker_registry.Contract.States _ ] | _ :: _ :: _ ->
+                Alcotest.fail "Expected one fresh issue reconciliation"
+          in
+          Alcotest.(check bool)
+            "Canceled request identity is retired" false
+            (Request_id.equal original_id fresh_id);
+          let fresh = reading controller in
+          Alcotest.(check bool)
+            "Fresh tracker starts after original scope release" true
+            (released controller (S.key original));
+          Alcotest.(check bool)
+            "Fresh scope carries the emitted request identity" true
+            (same_key (S.Read fresh_id) (S.key fresh));
+          let done_issue =
+            F.issue ~state:"Done" ~id:"service-0" ~identifier:"SERVICE-0" ()
+          in
+          complete fresh (F.reply [ done_issue ]);
+          ignore
+            (terminal (function
+              | H.Host.Core.Tracker_completed (id, _) ->
+                  Request_id.equal fresh_id id
+              | H.Host.Core.Poll_due _
+              | H.Host.Core.Refresh_requested
+              | H.Host.Core.Workflow_changed
+              | H.Host.Core.Workflow_loaded _
+              | H.Host.Core.Worker_started _
+              | H.Host.Core.Worker_progress _
+              | H.Host.Core.Worker_continue _
+              | H.Host.Core.Worker_finished _
+              | H.Host.Core.Request_canceled _
+              | H.Host.Core.Retry_due _
+              | H.Host.Core.Workspace_removed _
+              | H.Host.Core.Shutdown -> false));
+          Alcotest.(check bool)
+            "Terminal tracker reply cannot release the worker" false
+            (released controller (S.key worker));
+          Alcotest.(check bool)
+            "Cleanup waits for closed worker proof" false
+            (List.exists
+               (function
+                 | S.Acquired (S.Remove _) -> true
+                 | S.Acquired (S.Load _ | S.Read _ | S.Run _)
+                 | S.Closing _ | S.Released _ -> false)
+               (S.trace controller));
+
+          (* Shutdown before retry must retain the accepted terminal cleanup. *)
+          H.shutdown host;
+          ignore
+            (terminal (function
+              | H.Host.Core.Shutdown -> true
+              | H.Host.Core.Poll_due _
+              | H.Host.Core.Refresh_requested
+              | H.Host.Core.Workflow_changed
+              | H.Host.Core.Workflow_loaded _
+              | H.Host.Core.Tracker_completed _
+              | H.Host.Core.Worker_started _
+              | H.Host.Core.Worker_progress _
+              | H.Host.Core.Worker_continue _
+              | H.Host.Core.Worker_finished _
+              | H.Host.Core.Request_canceled _
+              | H.Host.Core.Retry_due _
+              | H.Host.Core.Workspace_removed _ -> false));
+          List.iter
+            (fun (S.Pending call) ->
+              match S.invocation call with
+              | S.Loading _ | S.Reading _ -> S.close call S.Close_ok
+              | S.Removing _ | S.Running _ -> ())
+            (S.pending controller);
+          S.close worker S.Close_ok;
+          let finish_cleanup =
+            await controller (fun () ->
+                List.find_map
+                  (fun (S.Pending call) ->
+                    match S.invocation call with
+                    | S.Removing _ -> Some (fun () -> complete call (Ok ()))
+                    | S.Loading _ | S.Reading _ | S.Running _ -> None)
+                  (S.pending controller))
+          in
+          Alcotest.(check bool)
+            "Cleanup acquisition follows worker release" true
+            (released controller (S.key worker));
+          Alcotest.(check bool)
+            "Service joins the pending cleanup" true
+            (Option.is_none (Eio.Promise.peek result));
+          finish_cleanup ();
+          graceful_result (Eio.Promise.await result);
+          ignore (Eio.Promise.await scope);
+          assert_released controller worker;
+          H.quiet host;
+          Alcotest.(check bool)
+            "Deferred reconciliation leaves no Host custody" true
+            (H.retired_all host)))
+
+let repeated_refresh_contract () =
+  Eio_mock.Backend.run (fun () ->
+      run (fun ~sw ~mono controller ->
+          let module H = Harness (struct
+            let value = controller
+            let mono = mono
+          end) in
+          let host = H.create ~oracle:Causal_worker () in
+          let _, result, scope = H.start ~sw host in
+          let worker = H.prepare controller in
+          script_session controller worker;
+          feed controller worker 6
+            (F.Agent.Protocol
+               (Agent_runner.Turn_completed { session = session_id; turn }));
+          S.refresh worker ~turn;
+          complete (reading controller) (F.reply [ service_issue ]);
+          ignore
+            (await controller (fun () -> refresh_answer controller worker turn));
+          S.refresh worker ~turn;
+          let requests () =
+            List.fold_left
+              (fun count (transition : H.Host.transition) ->
+                match transition.H.Host.input with
+                | H.Host.Core.Worker_continue (_, _, current)
+                  when Turn_id.equal current turn -> count + 1
+                | H.Host.Core.Poll_due _
+                | H.Host.Core.Refresh_requested
+                | H.Host.Core.Workflow_changed
+                | H.Host.Core.Workflow_loaded _
+                | H.Host.Core.Tracker_completed _
+                | H.Host.Core.Worker_started _
+                | H.Host.Core.Worker_progress _
+                | H.Host.Core.Worker_continue _
+                | H.Host.Core.Worker_finished _
+                | H.Host.Core.Request_canceled _
+                | H.Host.Core.Retry_due _
+                | H.Host.Core.Workspace_removed _
+                | H.Host.Core.Shutdown -> count)
+              0 host.H.transitions
+          in
+          let returns () =
+            List.fold_left
+              (fun count -> function
+                | S.Refresh_returned (key, current, _)
+                  when same_key key (S.key worker) && Turn_id.equal current turn
+                  -> count + 1
+                | S.Publication_entered _
+                | S.Publication_returned _
+                | S.Refresh_entered _
+                | S.Refresh_returned _ -> count)
+              0
+              (S.worker_trace controller)
+          in
+          let next =
+            await controller (fun () ->
+                if closing controller (S.key worker) then Some `Rejected
+                else if requests () = 2 then Some `Waiting
+                else None)
+          in
+          begin match next with
+          | `Rejected -> ()
+          | `Waiting ->
+              Alcotest.(check int)
+                "Repeated callback is still awaiting an answer" 1 (returns ());
+              H.shutdown host;
+              workspace_closed controller (S.key worker)
+          end;
+          S.close worker S.Close_ok;
+          let actual = Eio.Promise.await result in
+          ignore (Eio.Promise.await scope);
+          assert_released controller worker;
+          match actual with
+          | Raised (error, _) ->
+              Alcotest.(check bool)
+                "Repeated callback is a port contract defect" true
+                (contains (Printexc.to_string error) "Broken_contract");
+              Alcotest.(check int)
+                "Rejected callback never reaches owner" 1 (requests ());
+              Alcotest.(check int)
+                "Only the accepted callback returns an answer" 1 (returns ())
+          | Returned _ ->
+              Alcotest.fail
+                "Repeated refresh required interruption instead of rejecting \
+                 the port defect"))
+
 let tests =
   [
     Alcotest.test_case "independent ports may raise the same exception" `Quick
@@ -1346,6 +2245,20 @@ let tests =
       (earlier_owner Clock_error);
     Alcotest.test_case "earlier caller cancellation survives cleanup defect"
       `Quick earlier_caller;
+    Alcotest.test_case "acknowledged progress and fenced refresh" `Quick
+      progress_and_refresh;
+    Alcotest.test_case "late usage waits continuation owner receipt" `Quick
+      progress_during_receipt;
+    Alcotest.test_case "observer failure releases pending publication" `Quick
+      progress_observer_failure;
+    Alcotest.test_case "cancellation joins refresh and worker scopes" `Quick
+      cancel_refresh_join;
+    Alcotest.test_case "typed stall waits closed worker proof" `Quick
+      typed_stall;
+    Alcotest.test_case "stalled refresh resumes terminal reconciliation" `Quick
+      stalled_refresh_reconcile;
+    Alcotest.test_case "repeated refresh rejects before owner delivery" `Quick
+      repeated_refresh_contract;
   ]
 
 let properties =

@@ -71,29 +71,64 @@ capacity. Operator API, doctor/dry-run, module laws and adapter profiles ship.
 
 ## Current focus and next action
 
-Branch ethan/capacity adds bounded native capacity evidence to merged d88f0df.
-The producer uses the production Service.Make; fake scope/resource observers and
-numeric samples remain bounded. The parent owns the PID, group guard, ACK/RSS
-checkpoints and final reap. Missing evidence, timeouts and sampled RSS above
-128 MiB fail. Native controls exposed wrong ps path, normalized-state mismatch
-and owner-entry/acquisition ordering before fixes. Independent source reviews
-found no blocker. PR and push Linux/macOS gates pass at implementation head
-f4cb776. All 16 capacity manifests match digests/logs, lifecycle counts and
-reaped producers. Four raw boundary logs confirm the example/property/type
-counts and 335 sources. Receipt: _build/capacity-ci-audit.json.
-Codex reports no findings. Review's missing-latency-budget note matches the
-documented scope; OCaml 5.5 sources disprove the requested extra major GC.
-Both threads have evidence-backed replies and are resolved. Sourcery exhausted
-its review quota and supplied no source review.
+PR #10 merged as 5853f91 on 2026-10-03. Its tree equals reviewed head 24f49b8;
+13 checks pass and Sourcery skipped after quota exhaustion. All 16 final-head
+capacity manifests match emitted JSON, log digests, lifecycle counts and reaped
+producers. Four raw boundary logs confirm test/type/source counts. Receipts:
+_build/capacity-ci-final-audit.json and capacity-merge-receipt.json.
+Pinned Elixir 1.19.5/OTP 28: 302 tests, zero failures, six skips;
+formatting/lint/coverage/Dialyzer pass (_build/capacity-reference-full.log).
 
-- [x] Implement native workload, measurement laws and parent failure controls.
-- [x] Run all four physical workloads and full local OCaml gate.
-- [x] Pinned Elixir 1.19.5/OTP 28 gate: 302 tests, zero failures, six skips;
-  formatting/lint/coverage/Dialyzer pass. Receipt: _build/capacity-reference-full.log.
-- [x] Publish [PR #10](https://github.com/ethan-wickstrom/symphony/pull/10).
-- [x] Audit implementation-head hosted logs/manifests and address reviews.
-- [ ] Finish exact-head checks for this evidence update and merge the checkpoint.
-- [ ] Implement the closed Codex runner after the reviewed capacity merge.
+Branch ethan/codex-runner implements the stable JSONL session and closed runner
+over the existing Agent_process bracket. Progress is acknowledged by the owner;
+continuation reads are fenced by issue/run/turn/epoch; typed stalls retain worker
+custody until closure. Late usage updates accounting without refreshing activity.
+Targeted local gates pass 146 protocol/runner cases, 65 core examples/29 properties,
+36 service examples, 67 schema fixtures/42 controls in both modes and nine native
+agent cases. Workspace/runner cleanup regressions failed before their corrections;
+the mandatory workspace mapper preserves caller errors through lease closure.
+Continuation replies retain accepted read failures after competing operations join.
+Codec fixtures, validator receipts and identity manifests are retained in CI.
+CI selects Python 3.14 for macOS waitid/WNOWAIT, added in
+[Python 3.13](https://docs.python.org/3/library/os.html#os.waitid).
+At ee232f1 all PR/push Linux/macOS gates pass; 16 capacity receipts match emitted
+JSON and independent schema/source/log audits. Receipt:
+_build/runner-ci-ee232f1-audit.json. The final changed head needs fresh hosted
+checks, artifact audits and review before merge.
+
+Regression evidence covers live stall cadence during reads/refreshes, deferred
+terminal reconciliation in both closure orders, accounting-only late usage, and
+whole-cycle capacity timing after held read/finalizer closure. Pending/active
+terminal pairs reject conflicts and retain identical outcomes. Closing settles
+accepted suffixes under its original cause and deadline without future reads.
+All preparation/protocol receipts check synchronous interruption before proceeding.
+Initialization, input and continuation handoffs validate buffered suffixes;
+active and continuation input cleanup propagate typed interruption failures.
+Replay records and bytes retire together at the validated next-turn boundary;
+completed-turn waits retain replay protection. Reader cancellation/join retains the
+captured body's original error or exception/backtrace and exposes closing defects
+after success. The latest four regressions failed before correction and now pass
+alongside three controls; all 146 agent cases pass.
+Pinned integer/int32 schemas and official app-server source resolved the
+fractional rate-limit finding.
+
+The final OCaml gate passes 379 source files, 39 source controls, 17 rejected type
+clients, two valid assemblies and 73 unchanged CMIs in both modes. Pinned Elixir
+passes 302 tests, zero failures and six skips
+plus formatting/lint/coverage/Dialyzer. Latest receipts:
+_build/runner-preparation-{red,green}.log,
+runner-input-receipt-{red,green}.log, runner-handoff-{red,green}.log,
+runner-daemon-close-{red,green}.log, runner-daemon-close-full-check.log and
+runner-receipt-reference.log, runner-turn-boundary-{red,green}.log and
+runner-turn-boundary-full-check.log. Final-head hosted evidence and review are next.
+
+- [x] Record current schema provenance and consumed codecs/framing contracts.
+- [x] Add causal progress/continuation/stall to the existing owner/service boundary.
+- [x] Implement the owned protocol session and closed workspace/process/hook runner.
+- [x] Verify schema fixtures, independent models, native fake-server behavior and closure.
+- [x] Run relevant local gates and independent review.
+- [ ] Publish and audit hosted evidence.
+- [ ] Merge the reviewed green checkpoint.
 
 No live dispatch CLI before progress/continuation/stall contracts pass.
 
@@ -101,7 +136,7 @@ No live dispatch CLI before progress/continuation/stall contracts pass.
 
 The executable supports inspection and cannot dispatch a real agent yet. Fake
 completion witnesses prove no native scope closure. Sampled algebra/model laws are
-not proofs. Native-agent simulation, HTTP API, portable harness, benchmarks,
+not proofs. Live Codex acceptance, HTTP API, portable harness, benchmarks,
 Linux musl and clean-host macOS deployment remain pending.
 
 Historical macOS release qualification imported only libSystem, but used Crypto
@@ -120,8 +155,9 @@ Repeated acceptance authorizes recommendations, signatures, implementation,
 publication and green merges. The latest steer prioritizes architectural debt,
 module boundaries and risky failure modes before more features or polish. It
 superseded the immediate benchmark expansion until the service was closed and
-reviewed. That checkpoint is complete; capacity work now resumes. No user
-decision is pending.
+reviewed. Service and capacity checkpoints are complete. The 2026-10-03 steer
+accepts recommendations and continues the next boundary: the closed Codex runner.
+No user decision is pending.
 
 The complete book repository supersedes sample-only research. GitHub detachment
 was verified; origin is solely ethan-wickstrom/symphony. Upstream links retain spec

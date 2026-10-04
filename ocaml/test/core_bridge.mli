@@ -34,6 +34,7 @@ module Make
          and type tracker_request = Tracker_registry.Contract.request
          and type tracker_reply = Tracker_registry.Contract.reply
          and type agent_request = Agent.request
+         and type agent_progress = Agent.progress
          and type agent_completed = Agent.completed
          and type workspace_cleanup = Core_fixture.Workspace.cleanup) : sig
   type t
@@ -56,10 +57,13 @@ module Make
     projection:Core.projection ->
     t * Core_model.input * Core_model.command list
   (** Reverse-decode the ACTUAL envelope, step the independent model once, then
-      compare complete ordered commands and the derived public projection.
-      Workflow config decoding identifies a declared fixture by Config.equal;
-      expected truth still comes from [config]. Agent completions are observed
-      through this Agent instance, never converted to an empty-scope witness.
+      compare complete ordered commands and scheduling projection fields.
+      Protocol display/usage fields remain outside this scheduling model;
+      protocol progress, continuation, and stall interruption forms raise
+      Difference until the independent model represents them. Workflow config
+      decoding identifies a declared fixture by Config.equal; expected truth
+      still comes from [config]. Agent completions are observed through this
+      Agent instance, never converted to an empty-scope witness.
 
       Retained token bijections reject rebinding/reuse and recognize delayed
       known generations. No Core state/ledger, actual issue snapshot or latest

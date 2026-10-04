@@ -35,12 +35,17 @@ type event =
       turn : Turn_id.t;
     }
   | Turn_started of { session : Session_id.t; turn : Turn_id.t }
+  | Turn_completed of { session : Session_id.t; turn : Turn_id.t }
   | Output of {
       session : Session_id.t;
       event_name : string;
       message : string option;
     }
-  | Usage_report of { thread : Thread_id.t; absolute : Usage.t }
+  | Usage_report of {
+      thread : Thread_id.t;
+      turn : Turn_id.t;
+      absolute : Usage.t;
+    }
   | Rate_limits of Json.t
   | Unsupported_tool of { name : string; diagnostic : Diagnostic.t }
       (** Protocol parsing checks IDs/counters and bounds extension observations
