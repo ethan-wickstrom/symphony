@@ -140,6 +140,13 @@ struct
       sequence := Positive_count.next !sequence;
       callback progress
     in
+    let prepare notice =
+      (* Receipt callbacks can resolve interruption without yielding. *)
+      emit notice;
+      match Eio.Promise.peek interrupt with
+      | Some cause -> Error (stopped cause)
+      | None -> Ok ()
+    in
     let stage = ref Preparing_scope in
     let result, resolve = Eio.Promise.create () in
     let acquire () =
@@ -149,63 +156,50 @@ struct
             ~on_error:(fun error ->
               Agent_runner.Failed (Agent_runner.Workspace_error error))
             (fun cwd ->
-              emit (Workspace_ready cwd);
-              emit Rendering;
-              match
-                Template.compile ~file:(prompt_file request)
-                  (prompt_source request)
-              with
-              | Error error ->
-                  Error
-                    (Agent_runner.Failed (Agent_runner.Template_error error))
-              | Ok template -> (
-                  match
-                    Template.render template ~issue:(issue request)
-                      ~attempt:(attempt request)
-                  with
-                  | Error error ->
-                      Error
-                        (Agent_runner.Failed (Agent_runner.Template_error error))
-                  | Ok prompt -> (
-                      emit Starting;
-                      match Eio.Promise.peek interrupt with
-                      | Some cause -> Error (stopped cause)
-                      | None ->
-                          (* Once protocol owns interruption, its bounded RPC drain
-                         precedes process closure and the workspace's after_run. *)
-                          stage := Protocol_scope;
-                          let value =
-                            Session.with_session ~process:t.process ~clock
-                              ~interrupt ~cwd
-                              ~env:
-                                (Workspace.Contract.environment
-                                   (workspace request))
-                              ~settings:(agent request) ~version:t.version
-                              ~title:
-                                (Issue_identifier.text
-                                   (Issue.identifier (issue request))
-                                ^ ": "
-                                ^ Issue.title (issue request))
-                              (fun session ->
-                                turns session ~interrupt
-                                  ~emit:(fun event -> emit (Protocol event))
-                                  ~refresh
-                                  ~limit:
-                                    (Agent_settings.max_turns (agent request))
-                                  ~prompt)
-                          in
-                          Result.map_error session_error value)))
+              let ( let* ) = Result.bind in
+              let template_error error =
+                Agent_runner.Failed (Agent_runner.Template_error error)
+              in
+              let* () = prepare (Workspace_ready cwd) in
+              let* () = prepare Rendering in
+              let* template =
+                Result.map_error template_error
+                  (Template.compile ~file:(prompt_file request)
+                     (prompt_source request))
+              in
+              let* prompt =
+                Result.map_error template_error
+                  (Template.render template ~issue:(issue request)
+                     ~attempt:(attempt request))
+              in
+              let* () = prepare Starting in
+              (* Protocol interruption drains before process and workspace closure. *)
+              stage := Protocol_scope;
+              let value =
+                Session.with_session ~process:t.process ~clock ~interrupt ~cwd
+                  ~env:(Workspace.Contract.environment (workspace request))
+                  ~settings:(agent request) ~version:t.version
+                  ~title:
+                    (Issue_identifier.text (Issue.identifier (issue request))
+                    ^ ": "
+                    ^ Issue.title (issue request))
+                  (fun session ->
+                    turns session ~interrupt
+                      ~emit:(fun event -> emit (Protocol event))
+                      ~refresh
+                      ~limit:(Agent_settings.max_turns (agent request))
+                      ~prompt)
+              in
+              Result.map_error session_error value)
         with
         | Ok value | Error value -> value
       in
       value
     in
     let execute () =
-      emit Preparing;
-      (* Receipt callbacks may resolve interruption before the watcher runs. *)
-      match Eio.Promise.peek interrupt with
-      | Some cause -> stopped cause
-      | None -> acquire ()
+      match prepare Preparing with
+      | Error outcome -> outcome
+      | Ok () -> acquire ()
     in
     let invoke () =
       let value = capture execute in

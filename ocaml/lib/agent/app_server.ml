@@ -310,7 +310,10 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
   let emit t mode fixed event =
     guard t mode fixed (fun () ->
         t.emit event;
-        Ok ())
+        (* A synchronous receipt may accept interruption before the watcher runs. *)
+        match stop t mode with
+        | Some error -> Error error
+        | None -> Ok ())
 
   let provisional t turn =
     match t.phase with
@@ -707,8 +710,8 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
     rpc t mode (Some until) call
 
   let rec settle t mode fixed =
-    (* Finish the accepted batch before returning a terminal. A terminal prefix
-       cannot hide its known malformed suffix or trailing usage observations. *)
+    (* Finish the accepted batch before handing back a session or outcome.
+       Preserve its known malformed suffix and trailing observations. *)
     match t.frames with
     | _ :: _ ->
         let* json = next t mode fixed in
@@ -720,18 +723,26 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
         let* () = dispatch t mode fixed envelope in
         settle t mode fixed
     | [] -> (
-        match (t.frame_error, mode, t.input) with
-        | Some error, _, _ -> Error error
-        | None, Active, Some d ->
-            Error (failure (Agent_runner.Turn_input_required d))
-        | None, (Active | Closing), None | None, Closing, Some _ -> Ok ())
+        match t.frame_error with
+        | Some error -> Error error
+        | None -> Ok ())
+
+  let ready t =
+    let* () = settle t Active None in
+    match t.input with
+    | Some d -> Error (failure (Agent_runner.Turn_input_required d))
+    | None -> Ok ()
 
   let rec wait_turn t mode fixed =
     match (mode, t.input, t.current) with
-    | Active, Some d, _ -> Ok (Input_required d)
-    | (Active | Closing), _, Some { terminal = Some terminal; _ } ->
+    | Active, Some d, _ ->
         let* () = settle t mode fixed in
-        Ok terminal
+        Ok (Input_required d)
+    | (Active | Closing), _, Some { terminal = Some terminal; _ } -> (
+        let* () = settle t mode fixed in
+        match (mode, t.input) with
+        | Active, Some d -> Ok (Input_required d)
+        | Active, None | Closing, _ -> Ok terminal)
     | (Active | Closing), _, Some { terminal = None; _ } ->
         let* json = next t mode fixed in
         let* envelope =
@@ -787,7 +798,7 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
           ~finally:(fun () -> t.emit <- saved)
           (fun () ->
             match deadline t with
-            | Error _ -> None
+            | Error error -> Error error
             | Ok until -> (
                 let result =
                   let* _ =
@@ -797,25 +808,29 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
                   drain t (Some until) turn
                 in
                 match result with
-                | Ok (Failed d | Input_required d) -> Some d
-                | Ok (Interrupted d) -> d
-                | Error (Failure (Agent_runner.Response_error d)) -> Some d
-                | Ok Completed
-                | Error
-                    ( Failure
-                        ( Agent_runner.Codex_not_found _
-                        | Agent_runner.Invalid_workspace_cwd _
-                        | Agent_runner.Port_exit _
-                        | Agent_runner.Turn_failed _
-                        | Agent_runner.Turn_input_required _
-                        | Agent_runner.Template_error _
-                        | Agent_runner.Workspace_error _
-                        | Agent_runner.Tracker_error _ )
-                    | Deadline _ | Stopped _ ) -> None))
-    | Ended_pipe, _, _ | Open_pipe, Some _, None | Open_pipe, None, _ -> None
+                | Ok (Failed d | Input_required d) -> Ok (Some d)
+                | Ok (Interrupted d) -> Ok d
+                | Ok Completed -> Ok None
+                | Error error -> Error error))
+    | Ended_pipe, _, _ | Open_pipe, Some _, None | Open_pipe, None, _ -> Ok None
 
   let close_error t error =
-    let remote_error = interrupt_turn t in
+    let remote_error =
+      match interrupt_turn t with
+      | Ok diagnostic -> diagnostic
+      | Error (Failure (Agent_runner.Response_error d)) -> Some d
+      | Error
+          ( Failure
+              ( Agent_runner.Codex_not_found _
+              | Agent_runner.Invalid_workspace_cwd _
+              | Agent_runner.Port_exit _
+              | Agent_runner.Turn_failed _
+              | Agent_runner.Turn_input_required _
+              | Agent_runner.Template_error _
+              | Agent_runner.Workspace_error _
+              | Agent_runner.Tracker_error _ )
+          | Deadline _ | Stopped _ ) -> None
+    in
     match error with
     | Stopped { interrupt; _ } -> Error (Stopped { interrupt; remote_error })
     | Failure _ | Deadline _ -> Error error
@@ -934,7 +949,7 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
   let turn t ~prompt ~emit:callback =
     t.emit <- callback;
     let result =
-      let* () = settle t Active None in
+      let* () = ready t in
       let* () = start_turn t prompt in
       let* outcome = wait_turn t Active None in
       match t.current with
@@ -953,7 +968,7 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
     match result with
     | Error error -> close_error t error
     | Ok ({ outcome = Input_required _; _ } as ended) ->
-        ignore (interrupt_turn t);
+        let* _ = interrupt_turn t in
         Ok ended
     | Ok ({ outcome = Completed | Failed _ | Interrupted _; _ } as ended) ->
         Ok ended
@@ -983,7 +998,7 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
       let answer, resolve = Eio.Promise.create () in
       let result =
         Eio.Switch.run (fun sw ->
-            let* () = settle t Active None in
+            let* () = ready t in
             Eio.Fiber.fork_daemon ~sw (fun () ->
                 let value = capture callback in
                 Eio.Promise.resolve resolve value;
@@ -1001,11 +1016,11 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
                     | None -> Ok ()
                   in
                   guard t Active None (fun () ->
-                      let* () = settle t Active None in
+                      let* () = ready t in
                       Ok value)
             in
             let rec loop () =
-              let* () = settle t Active None in
+              let* () = ready t in
               match Eio.Promise.peek answer with
               | Some value -> finish value
               | None -> (
@@ -1039,7 +1054,7 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
                   in
                   match next with
                   | Answer value -> finish value
-                  | Frame json -> (
+                  | Frame json ->
                       let* envelope =
                         Result.map_error
                           (fun e ->
@@ -1048,10 +1063,7 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
                           (Protocol_envelope.decode json)
                       in
                       let* () = dispatch t Active None envelope in
-                      match t.input with
-                      | Some d ->
-                          Error (failure (Agent_runner.Turn_input_required d))
-                      | None -> loop ()))
+                      loop ())
             in
             loop ())
       in
@@ -1085,7 +1097,7 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
         let* _ =
           request t Active (Protocol_codec.Name_thread { thread; name = title })
         in
-        Ok ()
+        ready t
     | Protocol_codec.Initialized
     | Protocol_codec.Named
     | Protocol_codec.Turn_started _
@@ -1152,6 +1164,7 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
                     else Agent_runner.Codex_not_found d)))
             (fun process ->
               acquired := true;
+              let primary = ref None in
               let scoped =
                 capture (fun () ->
                     Eio.Switch.run (fun sw ->
@@ -1193,15 +1206,27 @@ module Make (Process : Agent_process.S) (Clock : Clock.S) = struct
                         Eio.Fiber.fork_daemon ~sw (fun () ->
                             stderr_loop t;
                             `Stop_daemon);
-                        capture (fun () ->
-                            let* () = init t version title in
-                            callback t)))
+                        let value =
+                          capture (fun () ->
+                              let* () = init t version title in
+                              callback t)
+                        in
+                        (* Keep the body result through daemon cancellation/join. *)
+                        primary := Some value;
+                        value))
               in
-              match scoped with
-              | Returned (Returned (Ok value)) -> Ok value
-              | Returned (Returned (Error error)) -> Error (Expected error)
-              | Returned (Raised (error, trace)) | Raised (error, trace) ->
-                  Error (Defect (error, trace)))
+              let value =
+                match (!primary, scoped) with
+                | Some (Raised _ as original), _
+                | Some (Returned (Error _) as original), _ -> original
+                | (None | Some (Returned (Ok _))), Returned value -> value
+                | (None | Some (Returned (Ok _))), Raised (error, trace) ->
+                    Raised (error, trace)
+              in
+              match value with
+              | Returned (Ok value) -> Ok value
+              | Returned (Error error) -> Error (Expected error)
+              | Raised (error, trace) -> Error (Defect (error, trace)))
         in
         match result with
         | Ok value -> Ok value

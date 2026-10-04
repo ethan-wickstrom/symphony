@@ -467,7 +467,13 @@ let defects_drain () =
       Eio.Cancel.Cancelled (Failure "unrequested host stop");
     ]
 
-let invalid_template () =
+type template_fault = Syntax_fault | Value_fault
+
+let failed_prompt = function
+  | Syntax_fault -> "{{ unclosed"
+  | Value_fault -> "{{ issue.absent }}"
+
+let failed_template fault () =
   Eio_mock.Backend.run (fun () ->
       let trace = D.trace () in
       let _, clock = D.clock () in
@@ -479,28 +485,108 @@ let invalid_template () =
         Runner.run runner ~clock ~workspace:(D.workspace trace) ~interrupt
           ~emit:(fun _ -> ())
           ~refresh:(fun ~turn:_ -> Ok Agent_runner.Stop)
-          (request ~prompt:"{{ unclosed" ())
+          (request ~prompt:(failed_prompt fault) ())
       in
-      (match Runner.outcome completed with
-      | Agent_runner.Failed (Agent_runner.Template_error _) -> ()
-      | Agent_runner.Failed
-          ( Agent_runner.Codex_not_found _
-          | Agent_runner.Invalid_workspace_cwd _
-          | Agent_runner.Port_exit _
-          | Agent_runner.Response_error _
-          | Agent_runner.Turn_failed _
-          | Agent_runner.Turn_input_required _
-          | Agent_runner.Workspace_error _
-          | Agent_runner.Tracker_error _ )
-      | Agent_runner.Succeeded
-      | Agent_runner.Timed_out _
-      | Agent_runner.Stalled
-      | Agent_runner.Canceled _ -> Alcotest.fail "Expected template failure");
+      (match (fault, Runner.outcome completed) with
+      | ( Syntax_fault,
+          Agent_runner.Failed
+            (Agent_runner.Template_error (Template.Parse_error _)) )
+      | ( Value_fault,
+          Agent_runner.Failed
+            (Agent_runner.Template_error (Template.Render_error _)) ) -> ()
+      | ( (Syntax_fault | Value_fault),
+          Agent_runner.Failed
+            (Agent_runner.Template_error
+               (Template.Parse_error _ | Template.Render_error _)) ) ->
+          Alcotest.fail "Expected the selected template failure stage"
+      | ( (Syntax_fault | Value_fault),
+          ( Agent_runner.Failed
+              ( Agent_runner.Codex_not_found _
+              | Agent_runner.Invalid_workspace_cwd _
+              | Agent_runner.Port_exit _
+              | Agent_runner.Response_error _
+              | Agent_runner.Turn_failed _
+              | Agent_runner.Turn_input_required _
+              | Agent_runner.Workspace_error _
+              | Agent_runner.Tracker_error _ )
+          | Agent_runner.Succeeded
+          | Agent_runner.Timed_out _
+          | Agent_runner.Stalled
+          | Agent_runner.Canceled _ ) ) ->
+          Alcotest.fail "Expected template failure");
       Alcotest.check
         (Alcotest.list Alcotest.string)
         "template failure closes acquired workspace"
         [ "workspace"; "after-run"; "lease-closing"; "lease-released" ]
         (List.map event_tag (D.events trace)))
+
+type template_receipt = Workspace_receipt | Render_receipt
+
+let interrupt_template receipt cause fault () =
+  Eio_mock.Backend.run (fun () ->
+      let trace = D.trace () in
+      let _, clock = D.clock () in
+      let interrupt, resolver = Eio.Promise.create () in
+      let turns = ref 0 in
+      let process = D.process trace (D.server ~turn:(turn_handler turns)) in
+      let runner = Runner.create ~process ~version:D.version in
+      let notices = ref [] in
+      let refreshed = ref 0 in
+      let emit progress =
+        notices := notice_tag progress :: !notices;
+        match Runner.notice progress with
+        | Runner.Workspace_ready _ -> (
+            match receipt with
+            | Workspace_receipt ->
+                (* The synchronous receipt beats the unscheduled watcher. *)
+                Eio.Promise.resolve resolver cause
+            | Render_receipt -> ())
+        | Runner.Rendering -> (
+            match receipt with
+            | Render_receipt -> Eio.Promise.resolve resolver cause
+            | Workspace_receipt -> ())
+        | Runner.Preparing | Runner.Starting | Runner.Protocol _ -> ()
+      in
+      let completed =
+        Runner.run runner ~clock ~workspace:(D.workspace trace) ~interrupt ~emit
+          ~refresh:(fun ~turn:_ ->
+            incr refreshed;
+            Ok Agent_runner.Stop)
+          (request ~prompt:(failed_prompt fault) ())
+      in
+      Alcotest.check
+        (Alcotest.list Alcotest.string)
+        "receipt interruption closes acquired workspace without process"
+        [ "workspace"; "after-run"; "lease-closing"; "lease-released" ]
+        (List.map event_tag (D.events trace));
+      Alcotest.check Alcotest.int "receipt interruption reaches no refresh" 0
+        !refreshed;
+      (match (cause, Runner.outcome completed) with
+      | ( Agent_runner.Cancel reason,
+          Agent_runner.Canceled { reason = actual; remote_error } ) ->
+          Alcotest.check Alcotest.bool "original receipt cancellation cause"
+            true (actual = reason);
+          Alcotest.check Alcotest.bool "no remote error before process launch"
+            true
+            (Option.is_none remote_error)
+      | Agent_runner.Stall, Agent_runner.Stalled -> ()
+      | ( (Agent_runner.Cancel _ | Agent_runner.Stall),
+          ( Agent_runner.Succeeded
+          | Agent_runner.Failed _
+          | Agent_runner.Timed_out _
+          | Agent_runner.Stalled
+          | Agent_runner.Canceled _ ) ) ->
+          Alcotest.fail
+            "Template failure masked a resolved receipt interruption");
+      let expected =
+        match receipt with
+        | Workspace_receipt -> [ "preparing"; "workspace-ready" ]
+        | Render_receipt -> [ "preparing"; "workspace-ready"; "rendering" ]
+      in
+      Alcotest.check
+        (Alcotest.list Alcotest.string)
+        "receipt interruption stops later preparation notices" expected
+        (List.rev !notices))
 
 type primary_case =
   | Remote_failure
@@ -1226,7 +1312,8 @@ let suite () =
       example "unrelated defects and host cancellation drain unchanged" `Quick
         defects_drain;
       example "template failure closes workspace without launching process"
-        `Quick invalid_template;
+        `Quick
+        (failed_template Syntax_fault);
       example
         "process cleanup defects preserve primary failure and cancellation"
         `Quick process_cleanup_primary;
@@ -1259,4 +1346,26 @@ let suite () =
         (refresh_join_error Clock_fault Stop_refresh);
       example "Error-winning protocol join preserves refresh finalizer defect"
         `Quick error_wins_refresh_defect;
+      example "render failure closes workspace without interruption" `Quick
+        (failed_template Value_fault);
+      example "Workspace_ready Cancel precedes compile failure" `Quick
+        (interrupt_template Workspace_receipt
+           (Agent_runner.Cancel Agent_runner.Reconciliation) Syntax_fault);
+      example "Workspace_ready Stall precedes compile failure" `Quick
+        (interrupt_template Workspace_receipt Agent_runner.Stall Syntax_fault);
+      example "Workspace_ready Cancel precedes render failure" `Quick
+        (interrupt_template Workspace_receipt
+           (Agent_runner.Cancel Agent_runner.Reconciliation) Value_fault);
+      example "Workspace_ready Stall precedes render failure" `Quick
+        (interrupt_template Workspace_receipt Agent_runner.Stall Value_fault);
+      example "Rendering Cancel precedes compile failure" `Quick
+        (interrupt_template Render_receipt
+           (Agent_runner.Cancel Agent_runner.Reconciliation) Syntax_fault);
+      example "Rendering Stall precedes compile failure" `Quick
+        (interrupt_template Render_receipt Agent_runner.Stall Syntax_fault);
+      example "Rendering Cancel precedes render failure" `Quick
+        (interrupt_template Render_receipt
+           (Agent_runner.Cancel Agent_runner.Reconciliation) Value_fault);
+      example "Rendering Stall precedes render failure" `Quick
+        (interrupt_template Render_receipt Agent_runner.Stall Value_fault);
     ] )

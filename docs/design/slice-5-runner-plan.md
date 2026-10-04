@@ -83,6 +83,8 @@ are distinct; every write is bounded. Stderr drains separately and never becomes
 a frame or raw default log.
 Continuation replies preserve accepted read errors after the losing operation
 joins; captured callback defects retain their identity and backtrace.
+The captured session body survives reader cancellation/join faults; a successful
+body still exposes a closing defect.
 
 Initialize → initialized → thread/start → thread/name/set → turn/start; repeat
 turn/start on the same thread, and turn/interrupt on stop. Handle all ten stable
@@ -90,8 +92,10 @@ server-request branches, deny approvals, fail unsupported tools, cancel MCP/inpu
 without fabricated answers, and reject auth/attestation requests. Separate client
 and server correlation identities; completion and interruption acknowledgments do
 not release resources. Pending and active turns reject conflicting terminal
-outcomes; identical replays retain one completion barrier. Every stored terminal
-settles the accepted batch before return. Closing preserves its fixed deadline
+outcomes; identical replays retain one completion barrier. Initialization, input,
+continuation and terminal handoffs settle the accepted batch before return.
+Input cleanup retains typed protocol faults. Every preparation/protocol receipt
+checks interruption after its callback returns. Closing preserves its fixed deadline
 and local interruption while recording buffered protocol faults; it never waits
 for a future packet after a terminal.
 

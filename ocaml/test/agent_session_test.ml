@@ -620,6 +620,406 @@ let user_input () =
   Alcotest.check Alcotest.int "input interrupts active turn" 1
     (List.length (calls trace "turn/interrupt"))
 
+type input_batch =
+  | Clean_input
+  | Active_malformed
+  | Active_conflict
+  | Closing_malformed
+  | Closing_conflict
+
+let input_batch scenario () =
+  Eio_mock.Backend.run (fun () ->
+      let trace = D.trace () in
+      let _, clock = D.clock () in
+      let interrupt, _ = Eio.Promise.create () in
+      let outputs = ref 0 and completions = ref 0 in
+      let emit = function
+        | Agent_runner.Output { event_name; _ } ->
+            if String.equal event_name "fixture/after-input" then incr outputs
+        | Agent_runner.Turn_completed _ -> incr completions
+        | Agent_runner.Session_started _
+        | Agent_runner.Turn_started _
+        | Agent_runner.Usage_report _
+        | Agent_runner.Rate_limits _
+        | Agent_runner.Unsupported_tool _ -> ()
+      in
+      let input =
+        D.obj
+          [
+            ("id", D.text "input-batch");
+            ("method", D.text "item/tool/requestUserInput");
+            ( "params",
+              context
+                [
+                  ("itemId", D.text "input-item");
+                  ("isBlocking", D.json "true");
+                  ( "questions",
+                    D.json
+                      {|[{"id":"q","header":"Choice","question":"Continue?"}]|}
+                  );
+                ] );
+          ]
+      in
+      let output =
+        D.obj
+          [ ("method", D.text "fixture/after-input"); ("params", context []) ]
+      in
+      let turn peer call =
+        D.reply peer call
+          (D.obj [ ("turn", D.turn ~id:"turn-9" ~status:"inProgress" ()) ]);
+        (* Input is the first frame of the next accepted stdout batch. *)
+        let bytes =
+          match scenario with
+          | Active_malformed -> batch_frames [ input; output ] ^ "{broken}\n"
+          | Active_conflict ->
+              batch_frames
+                [
+                  input;
+                  output;
+                  terminal_frame "completed";
+                  terminal_frame "failed";
+                ]
+          | Clean_input | Closing_malformed | Closing_conflict ->
+              batch_frames [ input ]
+        in
+        D.send peer bytes
+      in
+      let process =
+        D.process trace (fun peer call ->
+            match D.method_name call with
+            | Some "turn/interrupt" -> (
+                let ack =
+                  D.obj [ ("id", D.field "id" call); ("result", D.json "{}") ]
+                in
+                match scenario with
+                | Closing_malformed ->
+                    D.send peer
+                      (batch_frames [ ack; terminal_frame "interrupted" ]
+                      ^ "{broken}\n")
+                | Closing_conflict ->
+                    D.send peer
+                      (batch_frames
+                         [
+                           ack;
+                           terminal_frame "interrupted";
+                           terminal_frame "completed";
+                         ])
+                | Clean_input | Active_malformed | Active_conflict ->
+                    D.server ~turn peer call)
+            | Some _ | None -> D.server ~turn peer call)
+      in
+      let result =
+        call_session ~trace ~process ~clock ~interrupt (fun session ->
+            Session.turn session ~prompt:"Input batch" ~emit)
+      in
+      Alcotest.check Alcotest.bool "input scope closes before return" true
+        (has_event trace "process-closed");
+      Alcotest.check Alcotest.int "input publishes no completion" 0 !completions;
+      Alcotest.check Alcotest.int "input invents no response" 0
+        (List.length
+           (List.filter
+              (fun message -> D.method_name message = None)
+              (D.writes trace)));
+      (match scenario with
+      | Clean_input ->
+          check_tag "input-required" result;
+          Alcotest.check Alcotest.int "clean input sends one interrupt" 1
+            (List.length (calls trace "turn/interrupt"))
+      | Active_malformed
+      | Active_conflict
+      | Closing_malformed
+      | Closing_conflict -> (
+          check_tag "failure" result;
+          match result with
+          | Error (App_server.Failure (Agent_runner.Response_error _)) -> ()
+          | Ok _
+          | Error
+              ( App_server.Failure
+                  ( Agent_runner.Codex_not_found _
+                  | Agent_runner.Invalid_workspace_cwd _
+                  | Agent_runner.Port_exit _
+                  | Agent_runner.Turn_failed _
+                  | Agent_runner.Turn_input_required _
+                  | Agent_runner.Template_error _
+                  | Agent_runner.Workspace_error _
+                  | Agent_runner.Tracker_error _ )
+              | App_server.Deadline _ | App_server.Stopped _ ) ->
+              Alcotest.fail "input suffix must retain its response error"));
+      match scenario with
+      | Active_malformed | Active_conflict ->
+          Alcotest.check Alcotest.int "accepted input suffix remains observable"
+            1 !outputs
+      | Clean_input | Closing_malformed | Closing_conflict -> ())
+
+type init_handoff = Init_clean | Init_benign | Init_malformed
+
+let init_handoff suffix () =
+  Eio_mock.Backend.run (fun () ->
+      let trace = D.trace () in
+      let _, clock = D.clock () in
+      let interrupt, _ = Eio.Promise.create () in
+      let entered = ref 0 in
+      let process =
+        D.process trace (fun peer call ->
+            match D.method_name call with
+            | Some "thread/name/set" ->
+                let ack =
+                  D.obj [ ("id", D.field "id" call); ("result", D.json "{}") ]
+                in
+                let benign =
+                  D.obj
+                    [
+                      ("method", D.text "fixture/initialized");
+                      ("params", D.json "{}");
+                    ]
+                in
+                let bytes =
+                  match suffix with
+                  | Init_clean -> batch_frames [ ack ]
+                  | Init_benign -> batch_frames [ ack; benign ]
+                  | Init_malformed ->
+                      batch_frames [ ack; benign ] ^ "{broken}\n"
+                in
+                D.send peer bytes
+            | Some _ | None -> D.server ~turn:completed_turn peer call)
+      in
+      let actual =
+        call_session ~trace ~process ~clock ~interrupt (fun _session ->
+            incr entered;
+            Ok ())
+      in
+      Alcotest.check Alcotest.bool "initialization scope closes before return"
+        true
+        (has_event trace "process-closed");
+      match suffix with
+      | Init_clean | Init_benign ->
+          Alcotest.check Alcotest.bool "valid initialization hands off once"
+            true
+            (actual = Ok () && !entered = 1)
+      | Init_malformed ->
+          (match actual with
+          | Error (App_server.Failure (Agent_runner.Response_error _)) -> ()
+          | Ok ()
+          | Error
+              ( App_server.Failure
+                  ( Agent_runner.Codex_not_found _
+                  | Agent_runner.Invalid_workspace_cwd _
+                  | Agent_runner.Port_exit _
+                  | Agent_runner.Turn_failed _
+                  | Agent_runner.Turn_input_required _
+                  | Agent_runner.Template_error _
+                  | Agent_runner.Workspace_error _
+                  | Agent_runner.Tracker_error _ )
+              | App_server.Deadline _ | App_server.Stopped _ ) ->
+              Alcotest.fail "initialization handoff hid its accepted suffix");
+          Alcotest.check Alcotest.int
+            "faulted initialization enters no callback" 0 !entered)
+
+type await_input = Await_clean | Await_malformed | Await_conflict
+
+let await_input suffix () =
+  Eio_mock.Backend.run (fun () ->
+      Eio.Switch.run (fun sw ->
+          let trace = D.trace () in
+          let _, clock = D.clock () in
+          let interrupt, _ = Eio.Promise.create () in
+          let entered = D.gate () and blocked = D.gate () in
+          let callback_closed = ref false in
+          let peer = ref None in
+          let outputs = ref 0 in
+          let emit = function
+            | Agent_runner.Output { event_name; _ }
+              when String.equal event_name "fixture/await-input" -> incr outputs
+            | Agent_runner.Session_started _
+            | Agent_runner.Turn_started _
+            | Agent_runner.Turn_completed _
+            | Agent_runner.Output _
+            | Agent_runner.Usage_report _
+            | Agent_runner.Rate_limits _
+            | Agent_runner.Unsupported_tool _ -> ()
+          in
+          let process =
+            D.process
+              ~on_launch:(fun value -> peer := Some value)
+              trace
+              (fun peer call ->
+                match D.method_name call with
+                | Some "turn/interrupt" ->
+                    D.send peer
+                      (batch_frames
+                         [
+                           D.obj
+                             [
+                               ("id", D.field "id" call); ("result", D.json "{}");
+                             ];
+                           terminal_frame "completed";
+                         ])
+                | Some _ | None -> D.server ~turn:completed_turn peer call)
+          in
+          Eio.Fiber.fork ~sw (fun () ->
+              D.await entered;
+              let active =
+                match !peer with
+                | Some peer -> peer
+                | None -> Alcotest.fail "pending callback has no owned peer"
+              in
+              let input =
+                D.obj
+                  [
+                    ("id", D.text "await-input");
+                    ("method", D.text "item/tool/requestUserInput");
+                    ( "params",
+                      context
+                        [
+                          ("itemId", D.text "input-item");
+                          ("isBlocking", D.json "true");
+                          ( "questions",
+                            D.json
+                              {|[{"id":"q","header":"Choice","question":"Continue?"}]|}
+                          );
+                        ] );
+                  ]
+              in
+              let output =
+                D.obj
+                  [
+                    ("method", D.text "fixture/await-input");
+                    ("params", context []);
+                  ]
+              in
+              let bytes =
+                match suffix with
+                | Await_clean -> batch_frames [ input ]
+                | Await_malformed ->
+                    batch_frames [ input; output ] ^ "{broken}\n"
+                | Await_conflict ->
+                    batch_frames [ input; output; terminal_frame "failed" ]
+              in
+              (* The callback stays pending; no EOF or callback answer decides this. *)
+              D.send active bytes);
+          let actual =
+            call_session ~trace ~process ~clock ~interrupt (fun session ->
+                match Session.turn session ~prompt:"Before refresh" ~emit with
+                | Error error -> Error error
+                | Ok first ->
+                    Session.await session (fun () ->
+                        D.release entered;
+                        Fun.protect
+                          ~finally:(fun () -> callback_closed := true)
+                          (fun () ->
+                            D.await blocked;
+                            first)))
+          in
+          Alcotest.check Alcotest.bool "pending callback joins before return"
+            true !callback_closed;
+          Alcotest.check Alcotest.bool
+            "await input closes process before return" true
+            (has_event trace "process-closed");
+          let kind =
+            match actual with
+            | Error (App_server.Failure (Agent_runner.Response_error _)) ->
+                "response-error"
+            | Error (App_server.Failure (Agent_runner.Turn_input_required _)) ->
+                "input-required"
+            | Error
+                (App_server.Failure
+                   ( Agent_runner.Codex_not_found _
+                   | Agent_runner.Invalid_workspace_cwd _
+                   | Agent_runner.Port_exit _
+                   | Agent_runner.Turn_failed _
+                   | Agent_runner.Template_error _
+                   | Agent_runner.Workspace_error _
+                   | Agent_runner.Tracker_error _ )) -> "other-failure"
+            | Error (App_server.Deadline _) -> "deadline"
+            | Error (App_server.Stopped _) -> "stopped"
+            | Ok _ -> "callback-answer"
+          in
+          match suffix with
+          | Await_clean ->
+              Alcotest.check Alcotest.string "clean await input outcome"
+                "input-required" kind
+          | Await_malformed | Await_conflict ->
+              Alcotest.check Alcotest.string
+                "await retains accepted suffix fault" "response-error" kind;
+              Alcotest.check Alcotest.int "await input prefix stays observable"
+                1 !outputs))
+
+type stop_receipt = Start_receipt | Final_output
+
+let receipt_interrupt receipt status requested () =
+  Eio_mock.Backend.run (fun () ->
+      let trace = D.trace () in
+      let _, clock = D.clock () in
+      let interrupt, resolver = Eio.Promise.create () in
+      let receipts = ref 0 and completions = ref 0 in
+      let final_name = "fixture/final-receipt" in
+      let stop () =
+        incr receipts;
+        (* Resolve and return without yielding to the interrupt watcher. *)
+        Eio.Promise.resolve resolver requested
+      in
+      let emit event =
+        match (receipt, event) with
+        | Start_receipt, Agent_runner.Session_started _ -> stop ()
+        | Final_output, Agent_runner.Output { event_name; _ }
+          when String.equal event_name final_name -> stop ()
+        | (Start_receipt | Final_output), Agent_runner.Turn_completed _ ->
+            incr completions
+        | ( (Start_receipt | Final_output),
+            ( Agent_runner.Session_started _
+            | Agent_runner.Turn_started _
+            | Agent_runner.Output _
+            | Agent_runner.Usage_report _
+            | Agent_runner.Rate_limits _
+            | Agent_runner.Unsupported_tool _ ) ) -> ()
+      in
+      let turn peer call =
+        let ack =
+          D.obj
+            [
+              ("id", D.field "id" call);
+              ( "result",
+                D.obj [ ("turn", D.turn ~id:"turn-9" ~status:"inProgress" ()) ]
+              );
+            ]
+        in
+        let terminal = terminal_frame status in
+        match receipt with
+        | Start_receipt -> D.send peer (batch_frames [ terminal; ack ])
+        | Final_output ->
+            D.send peer
+              (batch_frames
+                 [
+                   ack;
+                   terminal;
+                   D.obj
+                     [ ("method", D.text final_name); ("params", context []) ];
+                 ])
+      in
+      let process = D.process trace (D.server ~turn) in
+      let actual =
+        call_session ~trace ~process ~clock ~interrupt (fun session ->
+            Session.turn session ~prompt:"Receipt interruption" ~emit)
+      in
+      Alcotest.check Alcotest.bool "receipt interruption closes before return"
+        true
+        (has_event trace "process-closed");
+      Alcotest.check Alcotest.int "receipt resolves once" 1 !receipts;
+      Alcotest.check Alcotest.int "receipt interruption emits no completion" 0
+        !completions;
+      (match actual with
+      | Error (App_server.Stopped { interrupt = cause; remote_error }) ->
+          Alcotest.check Alcotest.bool "receipt retains its typed cause" true
+            (cause = requested);
+          Alcotest.check Alcotest.bool
+            "cached failure diagnostic stays separate"
+            (String.equal status "failed")
+            (Option.is_some remote_error)
+      | Ok _ | Error (App_server.Failure _ | App_server.Deadline _) ->
+          Alcotest.fail "cached remote terminal hid the receipt interruption");
+      Alcotest.check Alcotest.int "receipt sends one bounded interrupt" 1
+        (List.length (calls trace "turn/interrupt")))
+
 let malformed_and_eof () =
   let observed = ref [] in
   let result, _ =
@@ -1311,6 +1711,155 @@ let record_ceiling () =
         "no eviction admits an unbounded replay stream" true
         (!answered < request_count))
 
+module Closing_process = struct
+  module Path = D.Process.Path
+
+  type error = Diagnostic.t
+  type exit = D.Process.exit = Exited of int | Signaled of int
+
+  type t = {
+    source : D.Process.t;
+    entered : D.gate;
+    closing : exn;
+    joined : (exn * Printexc.raw_backtrace) option ref;
+  }
+
+  type process = { peer : D.Process.process; fixture : t }
+
+  let with_process (t : t) ~cwd ~env ~command ~on_error use =
+    D.Process.with_process t.source ~cwd ~env ~command ~on_error (fun peer ->
+        use { peer; fixture = t })
+
+  let read (process : process) = D.Process.read process.peer
+  let write (process : process) = D.Process.write process.peer
+  let await_exit (process : process) = D.Process.await_exit process.peer
+
+  let stderr (process : process) =
+    D.release process.fixture.entered;
+    try
+      (* Only session closure cancels this reader and runs its failing finalizer. *)
+      Fun.protect
+        ~finally:(fun () -> raise process.fixture.closing)
+        Eio.Fiber.await_cancel
+    with error ->
+      let trace = Printexc.get_raw_backtrace () in
+      process.fixture.joined := Some (error, trace);
+      Printexc.raise_with_backtrace error trace
+end
+
+module Closing_session = App_server.Make (Closing_process) (Clock_posix)
+
+type callback_primary = Callback_error | Callback_defect | Callback_success
+
+let daemon_closing_primary primary () =
+  let recorded = Printexc.backtrace_status () in
+  Printexc.record_backtrace true;
+  Fun.protect
+    ~finally:(fun () -> Printexc.record_backtrace recorded)
+    (fun () ->
+      Eio_mock.Backend.run (fun () ->
+          let trace = D.trace () in
+          let _, clock = D.clock () in
+          let interrupt, _ = Eio.Promise.create () in
+          let entered = D.gate () in
+          let closing = Failure "stderr closing defect" in
+          let joined = ref None in
+          let process =
+            {
+              Closing_process.source =
+                D.process trace (D.server ~turn:completed_turn);
+              entered;
+              closing;
+              joined;
+            }
+          in
+          let original_error =
+            App_server.Failure
+              (Agent_runner.Response_error
+                 (Diagnostic.make ~site:(Diagnostic.Host "session callback")
+                    ~message:"original callback error" ~remedy:"Retry the read."))
+          in
+          let original_defect = Failure "original session callback defect" in
+          let original_trace = ref None in
+          let use _session =
+            (* The callback cannot finish until the reader finalizer is installed. *)
+            D.await entered;
+            match primary with
+            | Callback_error -> Error original_error
+            | Callback_success -> Ok ()
+            | Callback_defect -> (
+                try raise original_defect
+                with error ->
+                  let trace = Printexc.get_raw_backtrace () in
+                  original_trace := Some trace;
+                  Printexc.raise_with_backtrace error trace)
+          in
+          let actual =
+            try
+              Ok
+                (D.with_path (fun cwd ->
+                     Closing_session.with_session ~process ~clock ~interrupt
+                       ~cwd ~env:D.environment ~settings:(D.settings ())
+                       ~version:D.version ~title:D.title use))
+            with error -> Error (error, Printexc.get_raw_backtrace ())
+          in
+          let joined_error =
+            match !joined with
+            | Some (error, _trace) -> error
+            | None -> Alcotest.fail "The blocked reader finalizer did not join"
+          in
+          (match joined_error with
+          | Fun.Finally_raised inner ->
+              Alcotest.check Alcotest.bool "reader finalizer raised its marker"
+                true (inner == closing)
+          | _ ->
+              Alcotest.fail "Expected the reader's actual Finally_raised defect");
+          let lifecycle =
+            List.map event_tag (D.events trace)
+            |> List.filter (fun tag ->
+                tag <> "write" && tag <> "stdout" && tag <> "stderr")
+          in
+          Alcotest.check
+            (Alcotest.list Alcotest.string)
+            "joined readers precede closed process return"
+            [ "launch"; "process-closing"; "process-closed" ]
+            lifecycle;
+          Alcotest.check Alcotest.int "callback runs after naming" 1
+            (List.length (calls trace "thread/name/set"));
+          Alcotest.check Alcotest.int "fixture starts no turn" 0
+            (List.length (calls trace "turn/start"));
+          match (primary, actual) with
+          | Callback_error, Ok (Error error) ->
+              Alcotest.check Alcotest.bool
+                "original typed callback error survives" true
+                (error == original_error)
+          | Callback_defect, Error (error, trace) ->
+              Alcotest.check Alcotest.bool
+                "original callback exception survives" true
+                (error == original_defect);
+              let before =
+                match !original_trace with
+                | Some trace -> Printexc.raw_backtrace_entries trace
+                | None ->
+                    Alcotest.fail "The original callback defect did not run"
+              in
+              let after = Printexc.raw_backtrace_entries trace in
+              let length = Array.length before in
+              Alcotest.check Alcotest.bool "original callback has a backtrace"
+                true (length > 0);
+              Alcotest.check Alcotest.bool
+                "original callback backtrace survives" true
+                (Array.length after >= length
+                && Array.sub after 0 length = before)
+          | Callback_success, Error (error, _trace) ->
+              Alcotest.check Alcotest.bool
+                "success exposes the actual joined defect" true
+                (error == joined_error)
+          | ( (Callback_error | Callback_defect | Callback_success),
+              (Ok (Ok () | Error _) | Error _) ) ->
+              Alcotest.fail
+                "Reader closure changed the callback outcome category"))
+
 let suite () =
   let example = Alcotest.test_case in
   let branches =
@@ -1384,6 +1933,46 @@ let suite () =
       example "conflicting early turn identity is rejected" `Quick
         conflicting_early_id;
       example "user input has no invented answer" `Quick user_input;
+      example "input request cannot hide malformed active suffix" `Quick
+        (input_batch Active_malformed);
+      example "input request cannot hide conflicting active terminals" `Quick
+        (input_batch Active_conflict);
+      example "input interruption cannot hide malformed closing suffix" `Quick
+        (input_batch Closing_malformed);
+      example "input interruption cannot hide conflicting closing terminals"
+        `Quick
+        (input_batch Closing_conflict);
+      example "clean input batch retains input-required outcome" `Quick
+        (input_batch Clean_input);
+      example "malformed initialization suffix prevents callback handoff" `Quick
+        (init_handoff Init_malformed);
+      example "clean initialization hands off its callback" `Quick
+        (init_handoff Init_clean);
+      example "benign initialization suffix permits callback handoff" `Quick
+        (init_handoff Init_benign);
+      example "pending callback input cannot hide malformed suffix" `Quick
+        (await_input Await_malformed);
+      example "pending callback input cannot hide conflicting terminal" `Quick
+        (await_input Await_conflict);
+      example "pending callback clean input retains domain outcome" `Quick
+        (await_input Await_clean);
+      example "start receipt cancel outranks cached failed terminal" `Quick
+        (receipt_interrupt Start_receipt "failed"
+           (Agent_runner.Cancel Agent_runner.Reconciliation));
+      example "start receipt stall outranks cached failed terminal" `Quick
+        (receipt_interrupt Start_receipt "failed" Agent_runner.Stall);
+      example "start receipt cancel outranks cached interrupted terminal" `Quick
+        (receipt_interrupt Start_receipt "interrupted"
+           (Agent_runner.Cancel Agent_runner.Reconciliation));
+      example "start receipt stall outranks cached interrupted terminal" `Quick
+        (receipt_interrupt Start_receipt "interrupted" Agent_runner.Stall);
+      example "final output receipt cancel outranks cached failed terminal"
+        `Quick
+        (receipt_interrupt Final_output "failed"
+           (Agent_runner.Cancel Agent_runner.Reconciliation));
+      example "final output receipt stall outranks cached failed terminal"
+        `Quick
+        (receipt_interrupt Final_output "failed" Agent_runner.Stall);
       example
         "early input waits past interrupt ACK for remote terminal on both turns"
         `Quick early_input_terminal;
@@ -1423,5 +2012,14 @@ let suite () =
         early_byte_ceiling;
       example "replay records stop at the declared ceiling" `Quick
         record_ceiling;
+      example "daemon closing defect preserves the callback's typed error"
+        `Quick
+        (daemon_closing_primary Callback_error);
+      example "daemon closing defect preserves callback exception and backtrace"
+        `Quick
+        (daemon_closing_primary Callback_defect);
+      example "successful callback exposes the joined daemon closing defect"
+        `Quick
+        (daemon_closing_primary Callback_success);
     ]
     @ branches )

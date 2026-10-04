@@ -83,46 +83,41 @@ Branch ethan/codex-runner implements the stable JSONL session and closed runner
 over the existing Agent_process bracket. Progress is acknowledged by the owner;
 continuation reads are fenced by issue/run/turn/epoch; typed stalls retain worker
 custody until closure. Late usage updates accounting without refreshing activity.
-Targeted local gates pass 110 protocol/runner cases, 65 core examples/29 properties,
+Targeted local gates pass 139 protocol/runner cases, 65 core examples/29 properties,
 36 service examples, 67 schema fixtures/42 controls in both modes and nine native
 agent cases. Workspace/runner cleanup regressions failed before their corrections;
 the mandatory workspace mapper preserves caller errors through lease closure.
 Continuation replies retain accepted read failures after competing operations join.
 Codec fixtures, validator receipts and identity manifests are retained in CI.
-PR #11's initial a788681 gate passed Linux; macOS failed because
-Python 3.12 lacks waitid/WNOWAIT there. CI now selects Python 3.14; macOS support
-was added in [Python 3.13](https://docs.python.org/3/library/os.html#os.waitid).
-Review regressions reproduced and fixed stall starvation during reads/refreshes,
-deferred terminal reconciliation across both worker/read closure orders, workspace
-acquisition after Preparing interruption, and completed-turn usage refreshing
-activity. One cadence timer remains live through reads; the existing request
-ledger retains exact deferred authority. A held-read capacity regression failed
-before timing moved from timer rearming to actual cycle completion.
-The final local gate passes 379 source files, 39 source controls, 17 rejected
-type clients, two valid assemblies and 73 unchanged CMIs in both modes.
-Receipts: _build/runner-review-full-check.log and runner-reference-review.log.
+CI selects Python 3.14 for macOS waitid/WNOWAIT, added in
+[Python 3.13](https://docs.python.org/3/library/os.html#os.waitid).
+At 80bc18b all PR/push Linux/macOS gates pass; 16 capacity receipts match emitted
+JSON and independent schema/source/log audits. Receipt:
+_build/runner-ci-80bc18b-audit.json. The final changed head needs fresh hosted
+checks, artifact audits and review before merge.
 
-At 80bc18b both PR/push Linux/macOS gates pass. All 16 capacity receipts match
-emitted JSON; independent audits confirm retained schema/source/log hashes and
-all native agent cases. Receipt: _build/runner-ci-80bc18b-audit.json.
-The next review reproduced four conflicting pending/active terminal replays.
-All six regression/control cases pass after one shared checked merge; identical
-outcomes preserve a single completion. Independent review found no new defect.
-The fractional rate-limit finding was answered with pinned integer/int32 schema
-and official app-server source evidence. The full local OCaml gate passes;
-receipt: _build/runner-terminal-full-check.log. Fresh hosted review and merge
-remain pending.
-Pinned Elixir also passes 302 tests, zero failures and six skips plus all
-formatting/lint/coverage/Dialyzer checks (_build/runner-terminal-reference.log).
+Regression evidence covers live stall cadence during reads/refreshes, deferred
+terminal reconciliation in both closure orders, accounting-only late usage, and
+whole-cycle capacity timing after held read/finalizer closure. Pending/active
+terminal pairs reject conflicts and retain identical outcomes. Closing settles
+accepted suffixes under its original cause and deadline without future reads.
+All preparation/protocol receipts check synchronous interruption before proceeding.
+Initialization, input and continuation handoffs validate buffered suffixes;
+input cleanup propagates typed errors. Reader cancellation/join retains the
+captured body's original error or exception/backtrace and exposes closing defects
+after success. The latest 23 regressions failed before correction and now pass
+alongside seven controls; all 139 agent cases pass.
+Pinned integer/int32 schemas and official app-server source resolved the
+fractional rate-limit finding.
 
-The next review reproduced eight active/Closing suffix failures. All 22 terminal
-matrix/closure cases pass after settlement gained explicit mode/deadline custody.
-Every stored terminal checks buffered frames; Closing preserves cancellation or
-stall and records conflicting/malformed suffixes without waiting for new packets.
-Independent review found no further issue. Full local OCaml and pinned Elixir
-gates pass; receipts: _build/runner-terminal-drain-full-check.log and
-runner-terminal-drain-reference.log. Fresh final-head hosted checks, artifact
-audits and review remain the merge gate.
+The final OCaml gate passes 379 source files, 39 source controls, 17 rejected type
+clients, two valid assemblies and 73 unchanged CMIs in both modes. Pinned Elixir
+passes 302 tests, zero failures and six skips
+plus formatting/lint/coverage/Dialyzer. Latest receipts:
+_build/runner-preparation-{red,green}.log,
+runner-input-receipt-{red,green}.log, runner-handoff-{red,green}.log,
+runner-daemon-close-{red,green}.log, runner-daemon-close-full-check.log and
+runner-receipt-reference.log. Fresh final-head hosted evidence and review are next.
 
 - [x] Record current schema provenance and consumed codecs/framing contracts.
 - [x] Add causal progress/continuation/stall to the existing owner/service boundary.
