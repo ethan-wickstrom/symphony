@@ -43,10 +43,11 @@ let run ~fs ~net ~sink ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out
         (Tracker_runtime.registry ~fs ~net ~clock ~runtime ~cwd ~ca_bundle
            ~warning:(fun text -> Format.fprintf err "%s\n%!" text))
     in
-    let* config =
-      Result.map_error config_error (Config.resolve registry ~env ~document)
+    let* startup =
+      Result.map_error config_error
+        (Config.resolve_startup registry ~env ~document)
     in
-    Ok config
+    Ok (Config.runtime startup)
   in
   let doctor filename =
     let* config = load filename in

@@ -59,6 +59,14 @@ handler once outside parser callbacks. Rejected or handled connections only flus
 their response and close. Hard wire/header limits may close a peer without a
 response. Responses half-close the send side before bounded unread-input drainage.
 
+Before body collection, the transport requires one loopback Host with the actual
+bound port. A supplied Origin must match that Host's canonical HTTP origin;
+Fetch metadata permits only same-origin or direct navigation. Foreign, null,
+duplicate and malformed values return 403 with no handler authority. Clients
+without browser metadata remain supported. This blocks cross-origin refresh and
+DNS-rebinding requests where browser network policy permits local connections.
+The policy follows [OWASP origin and Fetch metadata guidance](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html).
+
 Each service owner has a private cancellation context. Caller failure closes its
 source and preserves the primary outcome before canceling and joining the owner.
 The outer native scope captures callback errors before joined closure; induced
@@ -66,7 +74,10 @@ cancellation retains the scope failure instead of replacing it with cancellation
 
 The scoped native listener defaults to loopback. `server.port` enables it;
 `--port` overrides the checked configured port, and zero requests an ephemeral
-port. Listener configuration changes require restart. The host supplies the
+port. Startup resolves listener settings once under the adapter's restricted
+public environment. Runtime configuration never retains or validates them;
+port-only edits cannot change policy identity, dispatch readiness or tracker-job
+cancellation. Listener changes require restart. The host supplies the
 listener/clock/query capabilities explicitly; the service also runs without HTTP.
 
 | Boundary | Limit |
@@ -86,6 +97,8 @@ exact numeric/null/session assertions, escaping, overflow, cleanup lookup, rate
 health and a 1,000-row checked rendering fixture. The fixture makes no physical
 performance claim. Core tests check canonical sample/phase/workspace projections;
 service query tests check actual owner replies and closure. Local normal/optimized
-gates pass 57 native lifecycle cases and 22 actual status CLI scenarios per mode,
-including a 256-input public-server corpus. Hosted review and browser inspection
+gates pass 58 native lifecycle cases and 23 actual status CLI scenarios per mode,
+including a 256-input public-server corpus. Regressions first failed for browser
+authority and valid/invalid listener-only reloads; the corrected executable
+dispatches through those reloads on its original listener. Hosted review and browser inspection
 remain pending; see [conformance receipts](../../CONFORMANCE.md).

@@ -28,13 +28,26 @@ module type S = sig
 
   type registry
 
-  val server_port : t -> Http_port.t option
-
   val resolve :
     registry ->
     env:Environment.t ->
     document:Workflow_document.t ->
     (t, error) result
+end
+
+module type STARTUP = sig
+  include S
+
+  type startup
+
+  val resolve_startup :
+    registry ->
+    env:Environment.t ->
+    document:Workflow_document.t ->
+    (startup, error) result
+
+  val runtime : startup -> t
+  val listener_port : startup -> Http_port.t option
 end
 
 module Make (Tracker : Tracker.CONFIG) = struct
@@ -49,9 +62,9 @@ module Make (Tracker : Tracker.CONFIG) = struct
     prompt : string;
     file : Workflow_path.t;
     child : Environment.child;
-    port : Http_port.t option;
   }
 
+  type startup = { configuration : t; port : Http_port.t option }
   type readiness = Ready | Blocked of error
   type reload = { good : t; validity : readiness }
 
@@ -62,7 +75,8 @@ module Make (Tracker : Tracker.CONFIG) = struct
   let prompt_source t = t.prompt
   let file t = t.file
   let child_env t = t.child
-  let server_port t = t.port
+  let runtime startup = startup.configuration
+  let listener_port startup = startup.port
 
   let equal a b =
     Scheduling_policy.equal a.scheduling b.scheduling
@@ -72,9 +86,6 @@ module Make (Tracker : Tracker.CONFIG) = struct
     && a.prompt = b.prompt
     && Workflow_path.display a.file = Workflow_path.display b.file
     && Environment.bindings a.child = Environment.bindings b.child
-    && Option.equal
-         (fun a b -> Http_port.number a = Http_port.number b)
-         a.port b.port
 
   let initial good = { good; validity = Ready }
 
@@ -103,37 +114,34 @@ module Make (Tracker : Tracker.CONFIG) = struct
 
   let fallback = "You are working on an issue from the configured tracker."
 
-  let resolve registry ~env ~document =
+  let field_errors file errors =
+    Fields
+      (Nonempty_list.map
+         (Diagnostic.at_file (Workflow_path.display file))
+         errors)
+
+  let check_section config file key =
+    match Config_value.field config key with
+    | None -> Ok ()
+    | Some value ->
+        Result.map
+          (fun _ -> ())
+          (Result.map_error
+             (fun error ->
+               field_errors file
+                 (Nonempty_list.singleton (Fields.diagnostic ~key error)))
+             (Fields.mapping value))
+
+  let resolve_core registry ~env ~document =
     let ( let* ) = Result.bind in
     let config = Workflow_document.config document
     and file = Workflow_document.file document in
-    let fields e =
-      Fields
-        (Nonempty_list.map (Diagnostic.at_file (Workflow_path.display file)) e)
-    in
-    let check_section key =
-      match Config_value.field config key with
-      | None -> Ok ()
-      | Some v ->
-          Result.map
-            (fun _ -> ())
-            (Result.map_error
-               (fun e ->
-                 fields (Nonempty_list.singleton (Fields.diagnostic ~key e)))
-               (Fields.mapping v))
-    in
+    let fields errors = field_errors file errors in
     let* _ =
       Fields.sequence
-        (List.map check_section
-           [
-             "tracker";
-             "polling";
-             "workspace";
-             "hooks";
-             "agent";
-             "codex";
-             "server";
-           ])
+        (List.map
+           (check_section config file)
+           [ "tracker"; "polling"; "workspace"; "hooks"; "agent"; "codex" ])
     in
     let* kind =
       match Fields.get config [ "tracker"; "kind" ] with
@@ -175,7 +183,6 @@ module Make (Tracker : Tracker.CONFIG) = struct
       Result.map_error fields
         (Workspace_settings.parse ~env ~workflow_file:file config)
     in
-    let* port = Result.map_error fields (Server_settings.parse ~env config) in
     let prompt = Workflow_document.prompt document in
     let prompt = if prompt = "" then fallback else prompt in
     (* A reload cannot install prompt syntax that fails every future worker. *)
@@ -187,5 +194,19 @@ module Make (Tracker : Tracker.CONFIG) = struct
         (Template.compile ~file prompt)
     in
     let child = Environment.child env ~allow:allow_env in
-    Ok { scheduling; agent; workspace; tracker; prompt; file; child; port }
+    Ok ({ scheduling; agent; workspace; tracker; prompt; file; child }, env)
+
+  let resolve registry ~env ~document =
+    Result.map fst (resolve_core registry ~env ~document)
+
+  let resolve_startup registry ~env ~document =
+    let ( let* ) = Result.bind in
+    let* configuration, env = resolve_core registry ~env ~document in
+    let config = Workflow_document.config document
+    and file = Workflow_document.file document in
+    let* () = check_section config file "server" in
+    let* port =
+      Result.map_error (field_errors file) (Server_settings.parse ~env config)
+    in
+    Ok { configuration; port }
 end

@@ -1,7 +1,7 @@
 (** Host assembly: one Linear module owns parsing and credential-bound reads. *)
 
 module Config :
-  Config_layer.S
+  Config_layer.STARTUP
     with type tracker = Tracker_registry.Contract.binding
      and type registry = Tracker_registry.t
 

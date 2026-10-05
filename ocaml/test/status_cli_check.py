@@ -397,6 +397,55 @@ def check_stopping(binary, base):
         require(not state.defects, "provider fixture defect")
 
 
+def check_listener_reload(binary, base):
+    root = create(base, "listener-reload-keeps-dispatch")
+    receipts = []
+    with SERVICE.provider(root) as (state, provider_port):
+        path = workflow(root, provider_port, configured=0)
+        original = path.read_text()
+        section = "server:\n  port: 0\n"
+        require(original.count(section) == 1, "listener reload fixture lacks its startup port")
+        issue = SERVICE.issue()
+        with SERVICE.running(binary, root, args(path)) as process:
+            bound = ready(process)
+            for replacement in ("server:\n  port: 8081\n", "server:\n  port: -1\n", "server: []\n"):
+                next_path = path.with_suffix(".next")
+                next_path.write_text(original.replace(section, replacement, 1))
+                next_path.replace(path)
+                if replacement == "server: []\n":
+                    state.set_issues([issue])
+                before = sum(row["kind"] == "candidates" for row in state.receipts)
+                response = query(bound, "POST", "/api/v1/refresh")
+                receipts.append(response)
+                value(response, ACCEPTED)
+                state.wait(lambda rows: sum(row["kind"] == "candidates" for row in rows) > before,
+                           "listener-only reload leaves tracker polling enabled")
+                response = query(bound, "GET", "/api/v1/state")
+                receipts.append(response)
+                require(value(response, OK)["workflow_error"] is None,
+                        "restart-only listener edit blocked runtime policy")
+                persist(root / "http.json", receipts)
+            process.wait(lambda: len(SERVICE.turns(root / "control")) == 1,
+                         "dispatch after invalid listener-only reload")
+            process.wait(lambda: bool(process.event("session_started")),
+                         "canonical session after listener-only reload")
+            session = process.event("session_started")[-1]["session_id"]
+            response = query(bound, "GET", "/api/v1/state")
+            receipts.append(response)
+            decoded = value(response, OK)
+            require(decoded["counts"]["running"] == 1 and
+                    decoded["running"][0]["issue_id"] == issue["id"] and
+                    decoded["running"][0]["session_id"] == session,
+                    "listener reload lost active owner")
+            require(len(process.event("status_listening")) == 1,
+                    "listener-only reload rebound the listener")
+            persist(root / "http.json", receipts)
+            process.stop(signal.SIGTERM)
+            SERVICE.assert_closed(root, process)
+            closed(bound)
+        require(not state.defects, "provider fixture defect")
+
+
 def check_partial(binary, base):
     root = create(base, "partial-client-shutdown")
     with SERVICE.provider(root) as (_state, provider_port):
@@ -404,7 +453,7 @@ def check_partial(binary, base):
         with SERVICE.running(binary, root, args(path, 0)) as process:
             bound = ready(process)
             with socket.create_connection(("127.0.0.1", bound), timeout=HTTP_TIMEOUT) as peer:
-                peer.sendall(b"POST /api/v1/refresh HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1\r\n\r\n")
+                peer.sendall(f"POST /api/v1/refresh HTTP/1.1\r\nHost: 127.0.0.1:{bound}\r\nContent-Length: 1\r\n\r\n".encode("ascii"))
                 process.stop(signal.SIGTERM)
                 try:
                     require(peer.recv(1) == b"", "held partial HTTP client remained open after join")
@@ -431,6 +480,7 @@ def run(binary, base):
     check_active(binary, base, manifest)
     record(manifest, base, "between-turns-last-session", lambda: check_between(binary, base), "between-turns")
     record(manifest, base, "reconciliation-stopping", lambda: check_stopping(binary, base))
+    record(manifest, base, "listener-reload-keeps-dispatch", lambda: check_listener_reload(binary, base))
     record(manifest, base, "partial-client-shutdown", lambda: check_partial(binary, base))
     require(digest(binary) == manifest["binary"]["sha256"], "runtime binary changed during status acceptance")
     for relative, before in manifest["sources"].items():

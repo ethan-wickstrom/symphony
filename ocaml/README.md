@@ -124,7 +124,7 @@ resource closure; see the [lifecycle contract](../docs/design/live-dispatch.md).
 
 ## Status API
 
-Local acceptance passes 22 executable scenarios in both modes; hosted review is pending.
+Local acceptance passes 23 executable scenarios in both modes; hosted review is pending.
 Enable the loopback listener with a CLI port:
 
 ```sh
@@ -135,7 +135,10 @@ xh -I POST http://127.0.0.1:8080/api/v1/refresh
 
 Alternatively set `server.port` in workflow front matter. `--port` overrides the
 checked configured value; zero requests an ephemeral port. Listener changes
-require restart. Open `/` for escaped HTML; `/api/v1/<issue_identifier>` shows a
+require restart; listener-only edits do not affect dispatch. Requests require the
+bound loopback Host and, when supplied, matching Origin and same-origin metadata.
+Rejected requests return 403 before reaching the handler. Open `/` for escaped
+HTML; `/api/v1/<issue_identifier>` shows a
 current running/retry/cleanup owner. Released issues return 404; unavailable
 queries return 503. Reads ask the owner for a fresh paired clock sample and never
 reload settings or change scheduling. Refresh queues the existing coalesced

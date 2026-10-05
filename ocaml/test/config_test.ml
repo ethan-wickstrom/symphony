@@ -84,20 +84,23 @@ end
 
 module Loader = Workflow_loader.Make (Loader_io)
 
-module Make (Config : Config_layer.S) = struct
-  let resolve registry ?(environment = env) ?(source = file) ?(prompt = "") text
-      =
-    let document =
-      match
-        Workflow_document.parse ~file:source ("---\n" ^ text ^ "---\n" ^ prompt)
-      with
-      | Ok document -> document
-      | Error
-          ( Workflow_document.Parse_error d
-          | Workflow_document.Front_matter_not_map d ) ->
-          Alcotest.fail (Diagnostic.render d)
-    in
-    Config.resolve registry ~env:environment ~document
+module Make (Config : Config_layer.STARTUP) = struct
+  let document ?(source = file) ?(prompt = "") text =
+    match
+      Workflow_document.parse ~file:source ("---\n" ^ text ^ "---\n" ^ prompt)
+    with
+    | Ok document -> document
+    | Error
+        ( Workflow_document.Parse_error d
+        | Workflow_document.Front_matter_not_map d ) ->
+        Alcotest.fail (Diagnostic.render d)
+
+  let resolve registry ?(environment = env) ?source ?prompt text =
+    Config.resolve registry ~env:environment
+      ~document:(document ?source ?prompt text)
+
+  let startup registry text =
+    Config.resolve_startup registry ~env ~document:(document (base ^ text))
 
   let configured registry ?environment ?source extra =
     match resolve registry ?environment ?source (base ^ extra) with
@@ -821,21 +824,25 @@ module Make (Config : Config_layer.S) = struct
       errors
 
   let listener_settings registry () =
+    let listener extra =
+      match startup registry extra with
+      | Ok settings ->
+          Option.map Http_port.number (Config.listener_port settings)
+      | Error error -> Alcotest.fail (error_text error)
+    in
     Alcotest.(check (option int))
-      "extension disabled without port" None
-      (Option.map Http_port.number
-         (Config.server_port (configured registry "")));
+      "extension disabled without port" None (listener "");
     List.iter
       (fun number ->
-        let settings =
-          configured registry (Printf.sprintf "server:\n  port: %d\n" number)
-        in
         Alcotest.(check (option int))
           "checked listener port" (Some number)
-          (Option.map Http_port.number (Config.server_port settings)))
+          (listener (Printf.sprintf "server:\n  port: %d\n" number)))
       [ 0; 65535 ];
     List.iter
-      (fun text -> ignore (rejected registry (base ^ text)))
+      (fun text ->
+        match startup registry text with
+        | Error _ -> ()
+        | Ok _ -> Alcotest.fail "invalid startup listener was accepted")
       [
         "server: []\n";
         "server:\n  port: -1\n";
@@ -843,24 +850,52 @@ module Make (Config : Config_layer.S) = struct
         "server:\n  port: 1.5\n";
         "server:\n  port: null\n";
         "server:\n  port: $LINEAR_API_KEY\n";
-      ];
-    let good = configured registry "server:\n  port: 0\n" in
-    let bad = rejected registry (base ^ "server:\n  port: -1\n") in
-    let reload = Config.apply (Config.initial good) (Error bad) in
+      ]
+
+  let listener_valid_reload registry () =
+    let initial = configured registry "server:\n  port: 0\n" in
+    let changed = configured registry "server:\n  port: 8081\n" in
     Alcotest.(check bool)
-      "invalid listener reload retains last good config" true
-      (Config.equal good (Config.effective reload));
+      "port-only edit has no policy change" true
+      (Config.equal initial changed);
+    let reload = Config.apply (Config.initial initial) (Ok changed) in
     Alcotest.(check bool)
-      "invalid listener reload blocks dispatch" true
+      "port-only edit preserves dispatch readiness" true
       (match Config.readiness reload with
-      | Config.Blocked _ -> true
-      | Config.Ready -> false)
+      | Config.Ready -> true
+      | Config.Blocked _ -> false)
+
+  let listener_invalid_reload registry () =
+    let initial = configured registry "server:\n  port: 0\n" in
+    List.iter
+      (fun text ->
+        let result = resolve registry (base ^ text) in
+        let reload = Config.apply (Config.initial initial) result in
+        Alcotest.(check bool)
+          "listener error cannot block running policy" true
+          (match Config.readiness reload with
+          | Config.Ready -> true
+          | Config.Blocked _ -> false);
+        Alcotest.(check bool)
+          "listener error cannot change running policy" true
+          (Config.equal initial (Config.effective reload)))
+      [
+        "server: []\n";
+        "server:\n  port: -1\n";
+        "server:\n  port: $LINEAR_API_KEY\n";
+      ]
 
   let tests ~registry =
     [
       Alcotest.test_case
-        "optional listener validates and retains last good port" `Quick
+        "startup listener validates under restricted environment" `Quick
         (listener_settings registry);
+      Alcotest.test_case "valid listener reload leaves scheduling unchanged"
+        `Quick
+        (listener_valid_reload registry);
+      Alcotest.test_case "invalid listener reload cannot block scheduling"
+        `Quick
+        (listener_invalid_reload registry);
       Alcotest.test_case "documented defaults and source identity" `Quick
         (defaults registry);
       Alcotest.test_case "local path expansion and workflow anchor" `Quick

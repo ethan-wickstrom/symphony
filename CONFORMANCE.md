@@ -49,18 +49,22 @@ unavailability causes; query or projection failure cannot kill the owner.
 400/404/405/503 are distinct; 405 carries exact route methods, malformed refresh
 bodies queue nothing, and JSON composition/HTML output remain bounded values.
 The scoped loopback listener has explicit client/header/body/wire/deadline limits,
-and listener settings require restart. [Design and limits](docs/design/status-api.md).
+and listener settings require restart. Host/Origin/Fetch Metadata checks precede
+handler authority; listener-only reloads cannot affect scheduling configuration.
+[Design and limits](docs/design/status-api.md).
 
 `status_test.ml` covers list-model ownership, exact numbers, nullable wall times,
 route authority, cleanup, escaped health fields, response overflow and 1,000
-checked rows. Local configured coverage passes through
-_build/status-full-check-2.log and status-remaining-check.log: 47 service cases,
-83 orchestration cases, 57 native lifecycle cases, 417 sources/39 controls, 17
+checked rows. The complete configured gate passes in
+_build/status-review-full-check.log: 47 service cases, 83 orchestration cases,
+272 boundary cases, 58 native lifecycle cases, 417 sources/39 controls, 17
 rejected clients and 80 unchanged CMIs per mode. Both modes pass 25 service and
-22 status CLI scenarios; native manifests record 274 source hashes. Codec67/42,
-capacity1/10/100/1000, release checks and seeded parser10000 pass. The status native
-corpus executes 256 public-loopback inputs. Receipts are in _build/status-cli-4EkDTA,
-service-cli-1FlOO5, native-evidence{,-optimized} and capacity-xkIUlG.
+23 status CLI scenarios; native manifests record 274 source hashes. Codec67/42,
+capacity1/10/100/1000 and release checks pass. Seeded parser10000 passed before
+the review fixes. The status native corpus executes 256 public-loopback inputs.
+Receipts are in _build/status-cli-AE0HA4, service-cli-62XYqI,
+native-evidence{,-optimized} and capacity-S4lqUJ. Browser authority and listener
+reload regressions failed before their fixes, then passed the complete gate.
 Hosted review and browser inspection remain pending. Binary hashes are execution
 context, not attestation; fake peers do not prove authenticated Codex acceptance.
 

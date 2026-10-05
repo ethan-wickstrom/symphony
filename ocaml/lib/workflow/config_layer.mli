@@ -29,8 +29,8 @@ module type PURE = sig
       and use the same environment for hooks and agent. *)
 
   val equal : t -> t -> bool
-  (** Semantic effective-settings equality, including secret changes without
-      printing them. *)
+  (** Semantic runtime-settings equality, including secret changes without
+      printing them. Restart-only listener settings do not participate. *)
 
   val initial : t -> reload
 
@@ -49,9 +49,6 @@ module type S = sig
 
   type registry
 
-  val server_port : t -> Http_port.t option
-  (** Initial listener setting; a reload does not hot-rebind the HTTP server. *)
-
   val resolve :
     registry ->
     env:Environment.t ->
@@ -63,8 +60,34 @@ module type S = sig
       network request; callers cannot attach a binding parsed from a different
       document. Prompt syntax is checked before either initial or reloaded
       settings become effective. Trusted shell strings retain their literal
-      bytes. *)
+      bytes. Restart-only server settings are ignored; document syntax and
+      runtime fields still validate normally. *)
+end
+
+module type STARTUP = sig
+  include S
+
+  type startup
+
+  val resolve_startup :
+    registry ->
+    env:Environment.t ->
+    document:Workflow_document.t ->
+    (startup, error) result
+  (** Resolve runtime settings and initial listener settings from one document
+      and one adapter bootstrap. The server section and port validate under the
+      same restricted public environment; no environment observer is exposed.
+      Invalid initial listener settings fail startup. *)
+
+  val runtime : startup -> t
+  (** The runtime value has no listener setting; server-only reloads cannot
+      change runtime identity or dispatch readiness. *)
+
+  val listener_port : startup -> Http_port.t option
+  (** Frozen initial listener selection; changes require restart. *)
 end
 
 module Make (Tracker : Tracker.CONFIG) :
-  S with type tracker = Tracker.Contract.binding and type registry = Tracker.t
+  STARTUP
+    with type tracker = Tracker.Contract.binding
+     and type registry = Tracker.t

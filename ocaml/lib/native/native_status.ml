@@ -10,7 +10,9 @@ module Make (Clock : Clock.S) = struct
   let read_chunk_bytes = 4096
   let client_delay = Milliseconds.parse "5000"
   let bad_request = 400
+  let forbidden = 403
   let payload_too_large = 413
+  let default_http_port = 80
   let method_not_allowed = 405
   let min_response_status = 200
   let max_response_status = 599
@@ -23,6 +25,10 @@ module Make (Clock : Clock.S) = struct
   let payload_error_body =
     "{\"error\":{\"code\":\"payload_too_large\",\"message\":\"HTTP request \
      body exceeds the limit.\"}}"
+
+  let forbidden_body =
+    "{\"error\":{\"code\":\"forbidden\",\"message\":\"HTTP request origin is \
+     not permitted.\"}}"
 
   let header_end = "\r\n\r\n"
 
@@ -137,7 +143,9 @@ module Make (Clock : Clock.S) = struct
     phase := Rejected;
     H1.Body.Reader.close (H1.Reqd.request_body reqd);
     let body =
-      if status = payload_too_large then payload_error_body else rejection_body
+      if status = payload_too_large then payload_error_body
+      else if status = forbidden then forbidden_body
+      else rejection_body
     in
     respond reqd { Http_message.status; content_type; body; allow = [] }
 
@@ -156,47 +164,84 @@ module Make (Clock : Clock.S) = struct
           if scan.matched = String.length header_end then scan.done_ <- true))
       data
 
-  let request_handler phase reqd =
+  let authorities port =
+    let suffix = ":" ^ string_of_int port in
+    List.concat_map
+      (fun host ->
+        let origin =
+          "http://" ^ host ^ if port = default_http_port then "" else suffix
+        in
+        let explicit = (host ^ suffix, origin) in
+        if port = default_http_port then [ explicit; (host, origin) ]
+        else [ explicit ])
+      [ "127.0.0.1"; "localhost" ]
+
+  (* Browser origin is authority only for this exact listener. Duplicate
+     headers cannot collapse into a trusted value; CLI clients omit metadata. *)
+  let permitted authorities headers =
+    match H1.Headers.get_multi headers "host" with
+    | [ host ] -> (
+        match List.assoc_opt (String.lowercase_ascii host) authorities with
+        | None -> false
+        | Some origin ->
+            let source =
+              match H1.Headers.get_multi headers "origin" with
+              | [] -> true
+              | [ value ] -> String.equal value origin
+              | _ -> false
+            in
+            let site =
+              match H1.Headers.get_multi headers "sec-fetch-site" with
+              | [] | [ "same-origin" ] | [ "none" ] -> true
+              | _ -> false
+            in
+            source && site)
+    | _ -> false
+
+  let request_handler authorities phase reqd =
     (match !phase with
     | Empty -> phase := Collecting
     | Collecting | Complete _ | Rejected | Handled -> raise Peer_rejected);
     let request = H1.Reqd.request reqd in
-    match decode_path request.H1.Request.target with
-    | None -> reject phase reqd bad_request
-    | Some path -> (
-        let body = H1.Reqd.request_body reqd in
-        match H1.Request.body_length request with
-        | `Error `Bad_request -> reject phase reqd bad_request
-        | `Fixed length
-          when Int64.compare length (Int64.of_int max_body_bytes) > 0 ->
-            reject phase reqd payload_too_large
-        | `Fixed _ | `Chunked ->
-            let bytes = ref 0 in
-            let buffer = Buffer.create 128 in
-            let rec schedule () =
-              H1.Body.Reader.schedule_read body
-                ~on_eof:(fun () ->
-                  let request =
-                    {
-                      Http_message.method_ = method_ request.H1.Request.meth;
-                      path;
-                      body = Buffer.contents buffer;
-                    }
-                  in
-                  (* H1 also closes bodies while reporting parse errors. Defer
+    if not (permitted authorities request.H1.Request.headers) then
+      reject phase reqd forbidden
+    else
+      match decode_path request.H1.Request.target with
+      | None -> reject phase reqd bad_request
+      | Some path -> (
+          let body = H1.Reqd.request_body reqd in
+          match H1.Request.body_length request with
+          | `Error `Bad_request -> reject phase reqd bad_request
+          | `Fixed length
+            when Int64.compare length (Int64.of_int max_body_bytes) > 0 ->
+              reject phase reqd payload_too_large
+          | `Fixed _ | `Chunked ->
+              let bytes = ref 0 in
+              let buffer = Buffer.create 128 in
+              let rec schedule () =
+                H1.Body.Reader.schedule_read body
+                  ~on_eof:(fun () ->
+                    let request =
+                      {
+                        Http_message.method_ = method_ request.H1.Request.meth;
+                        path;
+                        body = Buffer.contents buffer;
+                      }
+                    in
+                    (* H1 also closes bodies while reporting parse errors. Defer
                      authority until the pump has classified that parser result. *)
-                  match !phase with
-                  | Collecting -> phase := Complete (reqd, request)
-                  | Empty | Complete _ | Rejected | Handled -> ())
-                ~on_read:(fun data ~off ~len ->
-                  if len > max_body_bytes - !bytes then
-                    reject phase reqd payload_too_large
-                  else (
-                    bytes := !bytes + len;
-                    Buffer.add_string buffer (Bstr.sub_string data ~off ~len);
-                    schedule ()))
-            in
-            schedule ())
+                    match !phase with
+                    | Collecting -> phase := Complete (reqd, request)
+                    | Empty | Complete _ | Rejected | Handled -> ())
+                  ~on_read:(fun data ~off ~len ->
+                    if len > max_body_bytes - !bytes then
+                      reject phase reqd payload_too_large
+                    else (
+                      bytes := !bytes + len;
+                      Buffer.add_string buffer (Bstr.sub_string data ~off ~len);
+                      schedule ()))
+              in
+              schedule ())
 
   let parser_error phase ?request:_ error reply =
     phase := Rejected;
@@ -216,11 +261,11 @@ module Make (Clock : Clock.S) = struct
     H1.Server_connection.yield_writer parser wake;
     Eio.Promise.await changed
 
-  let serve_client handler socket =
+  let serve_client authorities handler socket =
     let phase = ref Empty in
     let parser =
       H1.Server_connection.create ~error_handler:(parser_error phase)
-        (request_handler phase)
+        (request_handler authorities phase)
     in
     let input = Bstr.create max_wire_bytes in
     let pending = ref 0 in
@@ -334,7 +379,7 @@ module Make (Clock : Clock.S) = struct
     in
     try pump () with Peer_rejected -> Error Peer_closed
 
-  let connection clock handler socket =
+  let connection clock authorities handler socket =
     match client_delay with
     | Error _ -> invalid_arg "Native_status: invalid fixed client deadline"
     | Ok delay ->
@@ -342,7 +387,7 @@ module Make (Clock : Clock.S) = struct
           ~on_error:(fun _ ->
             Host_failed (diagnostic "HTTP status clock failed."))
           ~on_timeout:(fun () -> Peer_closed)
-          (fun () -> serve_client handler socket)
+          (fun () -> serve_client authorities handler socket)
 
   let induced (error, trace) =
     match Eio_failure.leaves (error, trace) with
@@ -384,7 +429,17 @@ module Make (Clock : Clock.S) = struct
               let setup =
                 Native_outcome.capture (fun () ->
                     Native_io.capture (fun () ->
-                        Eio.Net.listen ~sw ~backlog:max_connections net address))
+                        let listener =
+                          Eio.Net.listen ~sw ~backlog:max_connections net
+                            address
+                        in
+                        let bound =
+                          match Eio.Net.listening_addr listener with
+                          | `Tcp (_, value) -> value
+                          | `Unix _ ->
+                              invalid_arg "Native_status: non-TCP listener"
+                        in
+                        (listener, bound)))
               in
               match setup with
               | Native_outcome.Returned (Error _) ->
@@ -397,12 +452,13 @@ module Make (Clock : Clock.S) = struct
                   primary := Some (Native_outcome.Raised (error, trace));
                   Eio.Switch.fail sw Scope_failed;
                   Error (diagnostic "HTTP status listener setup failed.")
-              | Native_outcome.Returned (Ok listener) -> (
+              | Native_outcome.Returned (Ok (listener, bound)) -> (
+                  let authorities = authorities bound in
                   let done_, done_resolve = Eio.Promise.create () in
                   let client socket _address =
                     match
                       Native_outcome.capture (fun () ->
-                          connection clock handler socket)
+                          connection clock authorities handler socket)
                     with
                     | Native_outcome.Returned (Ok () | Error Peer_closed) -> ()
                     | Native_outcome.Returned (Error (Host_failed error)) ->
@@ -456,13 +512,6 @@ module Make (Clock : Clock.S) = struct
                             Eio.Cancel.sub (fun cancel ->
                                 callback := Some cancel;
                                 Eio.Fiber.check ();
-                                let bound =
-                                  match Eio.Net.listening_addr listener with
-                                  | `Tcp (_, value) -> value
-                                  | `Unix _ ->
-                                      invalid_arg
-                                        "Native_status: non-TCP listener"
-                                in
                                 ready bound;
                                 use ()))
                       in

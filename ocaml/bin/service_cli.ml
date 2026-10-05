@@ -311,8 +311,8 @@ let serve ~fs ~net ~clock ~runtime ~cwd ~ca_bundle ~port ~io ~env ~document
     with
     | Error error -> Error (Tracker_error.diagnostic error)
     | Ok registry -> (
-        match Config.resolve registry ~env ~document with
-        | Ok config -> Ok (registry, config)
+        match Config.resolve_startup registry ~env ~document with
+        | Ok startup -> Ok (registry, startup)
         | Error error ->
             Error
               (Diagnostic.make
@@ -335,7 +335,8 @@ let serve ~fs ~net ~clock ~runtime ~cwd ~ca_bundle ~port ~io ~env ~document
            [ ("diagnostic", Diagnostic.render diagnostic) ]
        with _ -> ());
       Error diagnostic
-  | Ok (registry, config) -> (
+  | Ok (registry, startup) -> (
+      let config = Config.runtime startup in
       let host =
         Native.create ~fs ~clock
           ~emit:(fun reference hook event ->
@@ -379,7 +380,7 @@ let serve ~fs ~net ~clock ~runtime ~cwd ~ca_bundle ~port ~io ~env ~document
             let port =
               match port with
               | Some _ -> port
-              | None -> Config.server_port config
+              | None -> Config.listener_port startup
             in
             match port with
             | None -> dispatch ()

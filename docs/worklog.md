@@ -77,14 +77,19 @@ its own waiter; shutdown closes sources before physical drainage.
 - [x] Verify lifecycle, real HTTP behavior, formatting and configured gates.
 - [ ] Review, publish, audit exact-head hosted evidence and merge.
 
-Local coverage passes through status-full-check-2.log and status-remaining-check.log:
-47 service/83 orchestration cases, 57 native lifecycle cases, 417 sources/39
+The complete configured gate passes in status-review-full-check.log:
+47 service/83 orchestration/272 boundary cases, 58 native lifecycle cases, 417 sources/39
 controls, 17 rejected clients/80 CMIs per mode, codec67/42, capacity1/10/100/1000,
-release checks and parser10000. Both modes pass service25 and status22 scenarios;
-native source inventory274. Pinned Elixir302/0/6. Status CLI receipts are in
-_build/status-cli-4EkDTA. Bounded regressions failed before owner cancellation,
+release checks. Parser10000 passed before the review fixes. Both modes pass
+service25 and status23 scenarios; native source inventory274. Fresh pinned
+Elixir302/0/6 passes in status-review-elixir-all.log. Status CLI receipts
+are in _build/status-cli-AE0HA4. Bounded regressions failed before owner cancellation,
 unsolicited cancellation, failure precedence, diagnostic UTF-8 and malformed-body
-authority fixes. Native framing corpus256 passes. Hosted review/audit is next.
+authority fixes. Review regressions first failed for browser authority and
+valid/invalid listener reloads. The corrected executable dispatches through
+listener-only edits while preserving the original listener; rejected browser
+requests grant zero handler authority. Native framing corpus256 passes.
+PR13 is published; corrected-head review and Linux/macOS push/PR audit are next.
 
 Root owns Core projection/composition and serializes executable gates. Independent
 agents own pure rendering, owner queries and native HTTP transport. Native Codex
@@ -112,7 +117,9 @@ Repeated acceptance authorizes recommendations, signatures, implementation,
 publication and green merges. The latest steer accepts all recommendations and continues with the status API
 after the merged live-dispatch checkpoint. Architectural debt,
 module boundaries and risky failure modes remain ahead of polish. No decision is
-pending for this checkpoint; real provider trials require their own fixture scope.
+pending for implementation. Devin's hidden security finding requires its text or
+authorized in-app Browser inspection before merge; real provider trials require
+their own fixture scope.
 
 Only origin ethan-wickstrom/symphony is configured. Upstream links retain spec
 provenance. In-app Browser supersedes Chrome use. Release-host qualification is a

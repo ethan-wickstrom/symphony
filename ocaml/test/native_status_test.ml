@@ -112,7 +112,10 @@ let body expected = function
   | Response bytes ->
       ensure "HTTP body" (String.ends_with ~suffix:expected bytes)
 
-let get path = "GET " ^ path ^ " HTTP/1.1\r\nHost: localhost\r\n\r\n"
+let authority bound = "localhost:" ^ string_of_int bound
+
+let get bound path =
+  "GET " ^ path ^ " HTTP/1.1\r\nHost: " ^ authority bound ^ "\r\n\r\n"
 
 let with_server env handler use =
   let bound = ref None in
@@ -129,20 +132,20 @@ let with_server env handler use =
 
 let fragmentation () =
   Eio_posix.run (fun env ->
-      let wire = get "/api/v1/ISSUE-1" in
       let observations = ref [] in
       let handler request =
         observations := request :: !observations;
         echo request
       in
       with_server env handler (fun bound ->
+          let wire = get bound "/api/v1/ISSUE-1" in
           let chunks =
             [
               [ wire ];
               List.of_seq (Seq.map (String.make 1) (String.to_seq wire));
               [
                 "GET /api/v1/ISSUE-1 HTTP/1.1\r";
-                "\nHost: localhost\r\n\r";
+                "\nHost: " ^ authority bound ^ "\r\n\r";
                 "\n";
               ];
             ]
@@ -164,16 +167,16 @@ let chunked_body () =
           echo request)
         (fun bound ->
           let wire =
-            "POST /api/v1/refresh HTTP/1.1\r\n\
-             Host: localhost\r\n\
-             Transfer-Encoding: chunked\r\n\
-             \r\n\
-             1\r\n\
-             {\r\n\
-             1\r\n\
-             }\r\n\
-             0\r\n\
-             \r\n"
+            "POST /api/v1/refresh HTTP/1.1\r\nHost: " ^ authority bound
+            ^ "\r\n\
+               Transfer-Encoding: chunked\r\n\
+               \r\n\
+               1\r\n\
+               {\r\n\
+               1\r\n\
+               }\r\n\
+               0\r\n\
+               \r\n"
           in
           let response =
             request env bound
@@ -191,7 +194,7 @@ let path_boundary () =
           echo req)
         (fun bound ->
           List.iter
-            (fun path -> status 400 (request env bound [ get path ]))
+            (fun path -> status 400 (request env bound [ get bound path ]))
             [
               "/bad%";
               "/bad%0";
@@ -204,10 +207,10 @@ let path_boundary () =
               "/api/v1/state?query=x";
               "/api/v1/state#fragment";
             ];
-          let once = request env bound [ get "/api/v1/ISSUE%252f1" ] in
+          let once = request env bound [ get bound "/api/v1/ISSUE%252f1" ] in
           status 200 once;
           body "/api/v1/ISSUE%2f1|" once;
-          let unicode = request env bound [ get "/api/v1/%C3%89-1" ] in
+          let unicode = request env bound [ get bound "/api/v1/%C3%89-1" ] in
           status 200 unicode;
           body "/api/v1/É-1|" unicode);
       Alcotest.check Alcotest.int "rejected path never enters handler" 2
@@ -226,14 +229,10 @@ let malformed_http () =
           status 400
             (request env bound
                [
-                 "POST / HTTP/1.1\r\n\
-                  Host: localhost\r\n\
-                  Content-Length: 1\r\n\
-                  Content-Length: 2\r\n\
-                  \r\n\
-                  {}";
+                 "POST / HTTP/1.1\r\nHost: " ^ authority bound
+                 ^ "\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\n{}";
                ]);
-          status 200 (request env bound [ get "/healthy" ]));
+          status 200 (request env bound [ get bound "/healthy" ]));
       Alcotest.check Alcotest.int "parser rejection is client-local" 1 !entered)
 
 let body_limits () =
@@ -247,24 +246,19 @@ let body_limits () =
           status 413
             (request env bound
                [
-                 "POST / HTTP/1.1\r\n\
-                  Host: localhost\r\n\
-                  Content-Length: 65537\r\n\
-                  \r\n";
+                 "POST / HTTP/1.1\r\nHost: " ^ authority bound
+                 ^ "\r\nContent-Length: 65537\r\n\r\n";
                ]);
           let large = String.make 65537 'x' in
           status 413
             (request env bound
                [
-                 "POST / HTTP/1.1\r\n\
-                  Host: localhost\r\n\
-                  Transfer-Encoding: chunked\r\n\
-                  \r\n\
-                  10001\r\n";
+                 "POST / HTTP/1.1\r\nHost: " ^ authority bound
+                 ^ "\r\nTransfer-Encoding: chunked\r\n\r\n10001\r\n";
                  large;
                  "\r\n0\r\n\r\n";
                ]);
-          status 200 (request env bound [ get "/healthy" ]));
+          status 200 (request env bound [ get bound "/healthy" ]));
       Alcotest.check Alcotest.int "oversized body never enters handler" 1
         !entered)
 
@@ -282,10 +276,8 @@ let wire_limit () =
           let response =
             request env bound
               [
-                "POST / HTTP/1.1\r\n\
-                 Host: localhost\r\n\
-                 Transfer-Encoding: chunked\r\n\
-                 \r\n";
+                "POST / HTTP/1.1\r\nHost: " ^ authority bound
+                ^ "\r\nTransfer-Encoding: chunked\r\n\r\n";
                 chunks;
                 "0\r\n\r\n";
               ]
@@ -295,7 +287,7 @@ let wire_limit () =
           | Response bytes ->
               ensure "chunk overhead counts against wire cap"
                 (not (String.starts_with ~prefix:"HTTP/1.1 200 " bytes)));
-          status 200 (request env bound [ get "/healthy" ]));
+          status 200 (request env bound [ get bound "/healthy" ]));
       Alcotest.check Alcotest.int "wire cap precedes application handler" 1
         !entered)
 
@@ -308,7 +300,7 @@ let header_limit () =
           echo req)
         (fun bound ->
           let large =
-            "GET / HTTP/1.1\r\nHost: localhost\r\nX-Large: "
+            "GET / HTTP/1.1\r\nHost: " ^ authority bound ^ "\r\nX-Large: "
             ^ String.make (17 * 1024) 'x'
             ^ "\r\n\r\n"
           in
@@ -317,7 +309,7 @@ let header_limit () =
           | Response bytes ->
               ensure "oversized header is not accepted"
                 (not (String.starts_with ~prefix:"HTTP/1.1 200 " bytes)));
-          status 200 (request env bound [ get "/healthy" ]));
+          status 200 (request env bound [ get bound "/healthy" ]));
       Alcotest.check Alcotest.int "header cap is client-local" 1 !entered)
 
 let bind_failure () =
@@ -469,7 +461,7 @@ let handler_defect () =
                       | None -> Alcotest.fail "Not ready"
                     in
                     Eio.Fiber.fork ~sw (fun () ->
-                        ignore (request env value [ get "/fault" ]));
+                        ignore (request env value [ get value "/fault" ]));
                     Eio.Promise.await (fst (Eio.Promise.create ()))))
           in
           check_fault original result;
@@ -498,7 +490,7 @@ let response_defect () =
                       | None -> Alcotest.fail "Not ready"
                     in
                     Eio.Fiber.fork ~sw (fun () ->
-                        ignore (request env value [ get "/fault" ]));
+                        ignore (request env value [ get value "/fault" ]));
                     Eio.Promise.await (fst (Eio.Promise.create ()))))
           in
           match result with
@@ -575,7 +567,8 @@ let owner_query () =
             (fun bound ->
               let done_, resolve = Eio.Promise.create () in
               Eio.Fiber.fork ~sw (fun () ->
-                  observed := Some (request env bound [ get "/owner-query" ]);
+                  observed :=
+                    Some (request env bound [ get bound "/owner-query" ]);
                   Eio.Promise.resolve resolve ());
               Eio.Promise.await queried;
               ensure "request awaits owner query" (!observed = None);
@@ -610,7 +603,7 @@ let concurrency_limit () =
                   Eio.Fiber.fork ~sw (fun () ->
                       Eio.Switch.run (fun client_sw ->
                           let socket = connect env client_sw bound in
-                          Eio.Flow.copy_string (get "/capacity") socket;
+                          Eio.Flow.copy_string (get bound "/capacity") socket;
                           incr sent;
                           if !sent = limit + 1 then
                             Eio.Promise.resolve sent_resolve ();
@@ -721,7 +714,7 @@ let clock_failure () =
                   | None -> Alcotest.fail "Not ready"
                 in
                 Eio.Fiber.fork ~sw (fun () ->
-                    ignore (request env value [ get "/clock" ]));
+                    ignore (request env value [ get value "/clock" ]));
                 Eio.Promise.await (fst (Eio.Promise.create ())))
           in
           (match result with
@@ -762,7 +755,7 @@ let unrequested_cancellation () =
                            Eio.Fiber.fork ~sw (fun () ->
                                ignore
                                  (request env value
-                                    [ get "/unrequested-cancel" ]));
+                                    [ get value "/unrequested-cancel" ]));
                            Eio.Promise.await (fst (Eio.Promise.create ()))))))
               (fun () ->
                 Eio.Promise.await entered;
@@ -785,7 +778,9 @@ let pipelining () =
           observations := req.Http_message.path :: !observations;
           echo req)
         (fun bound ->
-          let response = request env bound [ get "/first" ^ get "/second" ] in
+          let response =
+            request env bound [ get bound "/first" ^ get bound "/second" ]
+          in
           status 200 response;
           body "/first|" response);
       Alcotest.check
@@ -806,10 +801,8 @@ let malformed_body () =
               let response =
                 request env bound
                   [
-                    "POST /api/v1/refresh HTTP/1.1\r\n\
-                     Host: localhost\r\n\
-                     Transfer-Encoding: chunked\r\n\
-                     \r\n" ^ framing;
+                    "POST /api/v1/refresh HTTP/1.1\r\nHost: " ^ authority bound
+                    ^ "\r\nTransfer-Encoding: chunked\r\n\r\n" ^ framing;
                   ]
               in
               Alcotest.check Alcotest.int
@@ -819,7 +812,7 @@ let malformed_body () =
               (match response with
               | Closed -> ()
               | Response _ -> status 400 response);
-              status 200 (request env bound [ get "/healthy" ]))
+              status 200 (request env bound [ get bound "/healthy" ]))
             [
               "GG\r\nx\r\n0\r\n\r\n";
               "1\r\nx!\r\n0\r\n\r\n";
@@ -838,16 +831,16 @@ let fuzz_cases = 256
 let fuzz_body_limit = 64 * 1024
 let fuzz_wire_limit = 96 * 1024
 
-let chunk_wire path body =
+let chunk_wire bound path body =
   let chunks = Buffer.create (String.length body * 6) in
   String.iter
     (fun c -> Buffer.add_string chunks ("1\r\n" ^ String.make 1 c ^ "\r\n"))
     body;
-  "POST " ^ path
-  ^ " HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n"
-  ^ Buffer.contents chunks ^ "0\r\n\r\n"
+  "POST " ^ path ^ " HTTP/1.1\r\nHost: " ^ authority bound
+  ^ "\r\nTransfer-Encoding: chunked\r\n\r\n" ^ Buffer.contents chunks
+  ^ "0\r\n\r\n"
 
-let fuzz_input state index =
+let fuzz_input bound state index =
   let pick choices =
     List.nth_opt choices (Random.State.int state (List.length choices))
     |> function
@@ -870,7 +863,7 @@ let fuzz_input state index =
           ]
       in
       {
-        wire = get ("/api/v1/" ^ encoded);
+        wire = get bound ("/api/v1/" ^ encoded);
         oracle = Accept ("/api/v1/" ^ decoded, "");
       }
   | 1 ->
@@ -893,19 +886,15 @@ let fuzz_input state index =
             "/api/v1/state#x";
           ]
       in
-      { wire = get path; oracle = Reject [ 400 ] }
+      { wire = get bound path; oracle = Reject [ 400 ] }
   | 2 ->
       {
         wire =
           pick
             [
               "GET / HTTP/1.1\r\nbroken header\r\n\r\n";
-              "POST / HTTP/1.1\r\n\
-               Host: localhost\r\n\
-               Content-Length: 1\r\n\
-               Content-Length: 2\r\n\
-               \r\n\
-               {}";
+              "POST / HTTP/1.1\r\nHost: " ^ authority bound
+              ^ "\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\n{}";
             ];
         oracle = Reject [ 400 ];
       }
@@ -915,13 +904,16 @@ let fuzz_input state index =
           (1 + Random.State.int state 32)
           (fun _ -> Char.chr (Char.code 'a' + Random.State.int state 26))
       in
-      { wire = chunk_wire "/chunked" body; oracle = Accept ("/chunked", body) }
+      {
+        wire = chunk_wire bound "/chunked" body;
+        oracle = Accept ("/chunked", body);
+      }
   | 4 ->
       let length = fuzz_body_limit - 1 + Random.State.int state 3 in
       let body = String.make length 'b' in
       let wire =
-        "POST /fixed HTTP/1.1\r\nHost: localhost\r\nContent-Length: "
-        ^ string_of_int length ^ "\r\n\r\n" ^ body
+        "POST /fixed HTTP/1.1\r\nHost: " ^ authority bound
+        ^ "\r\nContent-Length: " ^ string_of_int length ^ "\r\n\r\n" ^ body
       in
       {
         wire;
@@ -931,7 +923,7 @@ let fuzz_input state index =
       }
   | 5 ->
       let body = String.make (16200 + Random.State.int state 400) 'w' in
-      let wire = chunk_wire "/wire" body in
+      let wire = chunk_wire bound "/wire" body in
       {
         wire;
         oracle =
@@ -942,7 +934,7 @@ let fuzz_input state index =
   | 6 ->
       {
         wire =
-          "GET / HTTP/1.1\r\nHost: localhost\r\nX-Large: "
+          "GET / HTTP/1.1\r\nHost: " ^ authority bound ^ "\r\nX-Large: "
           ^ String.make ((17 * 1024) + Random.State.int state 64) 'h'
           ^ "\r\n\r\n";
         oracle = Budget_close [ 400 ];
@@ -950,10 +942,8 @@ let fuzz_input state index =
   | 7 ->
       {
         wire =
-          "POST /malformed-body HTTP/1.1\r\n\
-           Host: localhost\r\n\
-           Transfer-Encoding: chunked\r\n\
-           \r\n"
+          "POST /malformed-body HTTP/1.1\r\nHost: " ^ authority bound
+          ^ "\r\nTransfer-Encoding: chunked\r\n\r\n"
           ^ pick
               [
                 "GG\r\nx\r\n0\r\n\r\n";
@@ -980,7 +970,7 @@ let framing_corpus () =
           echo req)
         (fun bound ->
           for index = 0 to fuzz_cases - 1 do
-            let input = fuzz_input state index in
+            let input = fuzz_input bound state index in
             let before = !entered in
             let check () =
               let response = request env bound [ input.wire ] in
@@ -1017,7 +1007,7 @@ let framing_corpus () =
                                bytes)
                            statuses)));
               let after = !entered in
-              let healthy = request env bound [ get "/healthy" ] in
+              let healthy = request env bound [ get bound "/healthy" ] in
               status 200 healthy;
               body "/healthy|" healthy;
               Alcotest.check Alcotest.int
@@ -1031,6 +1021,69 @@ let framing_corpus () =
                   (wire_hex input.wire);
                 Printexc.raise_with_backtrace error trace
           done))
+
+let forbidden_status = 403
+
+let browser_authority () =
+  Eio_posix.run (fun env ->
+      let entered = ref 0 in
+      with_server env
+        (fun req ->
+          incr entered;
+          echo req)
+        (fun bound ->
+          let local = "127.0.0.1:" ^ string_of_int bound in
+          let hostname = "localhost:" ^ string_of_int bound in
+          let wire headers =
+            "POST /api/v1/refresh HTTP/1.1\r\n" ^ headers
+            ^ "Content-Length: 0\r\n\r\n"
+          in
+          let host = "Host: " ^ local ^ "\r\n" in
+          let rejected =
+            [
+              host ^ "Origin: https://foreign.example\r\n";
+              host ^ "Origin: null\r\n";
+              host ^ "Origin: \r\n";
+              host ^ "Origin: http://" ^ local ^ "/\r\n";
+              host ^ "Origin: http://" ^ local ^ ", https://foreign.example\r\n";
+              host ^ "Origin: http://" ^ hostname ^ "\r\n";
+              host ^ "Origin: http://127.0.0.1:1\r\n";
+              host ^ "Origin: http://" ^ local ^ "\r\nOrigin: http://" ^ local
+              ^ "\r\n";
+              host ^ "Sec-Fetch-Site: cross-site\r\n";
+              host ^ "Sec-Fetch-Site: same-site\r\n";
+              host ^ "Sec-Fetch-Site: unknown\r\n";
+              host ^ "Sec-Fetch-Site: same-origin, cross-site\r\n";
+              host
+              ^ "Sec-Fetch-Site: same-origin\r\nSec-Fetch-Site: same-origin\r\n";
+              "Host: foreign.example:" ^ string_of_int bound ^ "\r\n";
+              "Host: localhost.foreign.example:" ^ string_of_int bound ^ "\r\n";
+              "Host: user@" ^ local ^ "\r\n";
+              "Host: 127.0.0.1:1\r\n";
+              "Host: localhost\r\n";
+              host ^ host;
+              "";
+            ]
+          in
+          let responses =
+            List.map
+              (fun headers -> request env bound [ wire headers ])
+              rejected
+          in
+          Alcotest.check Alcotest.int
+            "foreign requests obtain no handler authority" 0 !entered;
+          List.iter (status forbidden_status) responses;
+          List.iter
+            (fun headers -> status 200 (request env bound [ wire headers ]))
+            [
+              host;
+              host ^ "Origin: http://" ^ local
+              ^ "\r\nSec-Fetch-Site: same-origin\r\n";
+              host ^ "Sec-Fetch-Site: none\r\n";
+              "Host: " ^ hostname ^ "\r\nOrigin: http://" ^ hostname ^ "\r\n";
+              "Host: LOCALHOST:" ^ string_of_int bound ^ "\r\n";
+            ];
+          Alcotest.check Alcotest.int "local clients remain usable" 5 !entered))
 
 let tests =
   [
@@ -1082,4 +1135,6 @@ let tests =
       malformed_body;
     Alcotest.test_case "seeded public HTTP framing and path corpus" `Quick
       framing_corpus;
+    Alcotest.test_case "browser origin and Host precede handler authority"
+      `Quick browser_authority;
   ]
