@@ -85,9 +85,12 @@ end
 module Loader = Workflow_loader.Make (Loader_io)
 
 module Make (Config : Config_layer.S) = struct
-  let resolve registry ?(environment = env) ?(source = file) text =
+  let resolve registry ?(environment = env) ?(source = file) ?(prompt = "") text
+      =
     let document =
-      match Workflow_document.parse ~file:source ("---\n" ^ text ^ "---\n") with
+      match
+        Workflow_document.parse ~file:source ("---\n" ^ text ^ "---\n" ^ prompt)
+      with
       | Ok document -> document
       | Error
           ( Workflow_document.Parse_error d
@@ -705,6 +708,73 @@ module Make (Config : Config_layer.S) = struct
       "repair clears error" true
       (ready_matches repaired None)
 
+  let syntax_error registry ~settings prompt =
+    match resolve registry ~prompt (base ^ settings) with
+    | Ok _ -> Alcotest.fail "invalid prompt syntax was accepted"
+    | Error (Config_layer.Fields errors as error) ->
+        List.iter
+          (fun diagnostic ->
+            match Diagnostic.site diagnostic with
+            | Diagnostic.Workflow { file = source; key; line = _ } ->
+                Alcotest.(check string)
+                  "prompt error names selected workflow"
+                  (Workflow_path.display file)
+                  source;
+                Alcotest.(check (option string))
+                  "prompt error identifies field" (Some "prompt") key
+            | Diagnostic.Host _ | Diagnostic.Issue _ | Diagnostic.Protocol _ ->
+                Alcotest.fail "prompt error omitted workflow source")
+          (Nonempty_list.to_list errors);
+        error
+    | Error (Config_layer.Workflow _ | Config_layer.Tracker _) ->
+        Alcotest.fail "prompt syntax error had wrong category"
+
+  let initial_template registry () =
+    List.iter
+      (fun prompt -> ignore (syntax_error registry ~settings:"" prompt))
+      [ "{{ unclosed"; "{% if issue.id %}Unclosed conditional" ]
+
+  (* Reject the invalid prompt and its accompanying settings atomically. *)
+  let template_reload registry () =
+    let first_prompt = "First: {{ issue.title }}" in
+    let next_prompt = "{% if issue.id %}Next: {{ issue.title }}{% endif %}" in
+    let settings interval =
+      Printf.sprintf "polling:\n  interval_ms: %d\n" interval
+    in
+    let config interval prompt =
+      match resolve registry ~prompt (base ^ settings interval) with
+      | Ok config -> config
+      | Error error -> Alcotest.fail (error_text error)
+    in
+    let first = config 17 first_prompt in
+    let error = syntax_error registry ~settings:(settings 31) "{{ unclosed" in
+    let failed = Config.apply (Config.initial first) (Error error) in
+    Alcotest.(check bool)
+      "invalid template retains all effective settings" true
+      (Config.equal first (Config.effective failed));
+    Alcotest.(check string)
+      "invalid template retains last good prompt" first_prompt
+      (Config.prompt_source (Config.effective failed));
+    Alcotest.(check string)
+      "invalid template does not install polling changes" "17"
+      (milliseconds
+         (Scheduling_policy.poll_interval
+            (Config.scheduling (Config.effective failed))));
+    Alcotest.(check bool)
+      "invalid template remains visible and gates dispatch" true
+      (ready_matches failed (Some (error_text error)));
+    let next = config 31 next_prompt in
+    let repaired = Config.apply failed (Ok next) in
+    Alcotest.(check bool)
+      "valid recovery installs new settings" true
+      (Config.equal next (Config.effective repaired));
+    Alcotest.(check string)
+      "valid recovery installs new prompt" next_prompt
+      (Config.prompt_source (Config.effective repaired));
+    Alcotest.(check bool)
+      "valid recovery clears dispatch gate and error" true
+      (ready_matches repaired None)
+
   let load_errors registry () =
     let diagnostic =
       Diagnostic.make
@@ -793,6 +863,10 @@ module Make (Config : Config_layer.S) = struct
         `Quick (reload_example registry);
       Alcotest.test_case "loader failures name file remedy and preserve config"
         `Quick (load_errors registry);
+      Alcotest.test_case "initial invalid prompt syntax is rejected" `Quick
+        (initial_template registry);
+      Alcotest.test_case "invalid prompt reload retains config until recovery"
+        `Quick (template_reload registry);
     ]
 
   let properties ~registry =

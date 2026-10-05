@@ -182,3 +182,11 @@ Its independent models, CLI checks and boundary gates are recorded in
 declared before either implementation. No approval gate remains for this slice.
 Whole-service simulation, performance, static linking and live Codex verification
 remain later gates.
+
+## Live executable composition
+
+The [live-dispatch contract](live-dispatch.md) records direct/default CLI behavior,
+one captured registry/environment, the existing scheduling owner, frozen attempt
+configuration, signal custody through output drainage and bounded non-suspending
+operator records. The executable acceptance uses real loopback TLS and an actual
+fake JSONL peer process. Authenticated Codex and HTTP status remain separate gates.

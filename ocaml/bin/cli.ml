@@ -28,11 +28,15 @@ let read_issue io ~cwd filename =
       ^ ": " ^ Text.escape message ^ "; fix the normalized issue JSON")
     (Prompt_fixture.parse text)
 
-let run ~fs ~net ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out ~err =
+let run ~fs ~net ~sink ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out
+    ~err =
   let io = Workflow_file.make fs in
-  let load ?(ca_bundle = default_ca_bundle) filename =
+  let document filename =
     let* file = Workflow_path.resolve ~base:cwd filename in
-    let* document = Result.map_error loader_error (Loader.load io ~file) in
+    Result.map_error loader_error (Loader.load io ~file)
+  in
+  let load ?(ca_bundle = default_ca_bundle) filename =
+    let* document = document filename in
     let* registry =
       Result.map_error
         (fun e -> Diagnostic.render (Tracker_error.diagnostic e))
@@ -42,14 +46,10 @@ let run ~fs ~net ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out ~err =
     let* config =
       Result.map_error config_error (Config.resolve registry ~env ~document)
     in
-    let* template =
-      Result.map_error template_error
-        (Template.compile ~file (Config.prompt_source config))
-    in
-    Ok (config, template)
+    Ok config
   in
   let doctor filename =
-    let* config, _ = load filename in
+    let* config = load filename in
     out
       (Printf.sprintf
          "Workflow valid: %s\nWorkspace root: %s\nConcurrency: %d\n"
@@ -60,7 +60,12 @@ let run ~fs ~net ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out ~err =
     Ok ()
   in
   let dry filename fixture attempt =
-    let* _, template = load filename in
+    let* config = load filename in
+    let* template =
+      Result.map_error template_error
+        (Template.compile ~file:(Config.file config)
+           (Config.prompt_source config))
+    in
     let* issue = read_issue io ~cwd fixture in
     let* attempt =
       match attempt with
@@ -81,7 +86,7 @@ let run ~fs ~net ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out ~err =
     Ok ()
   in
   let workspace filename fixture =
-    let* config, _ = load filename in
+    let* config = load filename in
     let* issue = read_issue io ~cwd fixture in
     let identifier =
       Text.escape (Issue_identifier.text (Issue.identifier issue))
@@ -103,7 +108,7 @@ let run ~fs ~net ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out ~err =
     Ok ()
   in
   let tracker filename ca_bundle =
-    let* config, _ = load ~ca_bundle filename in
+    let* config = load ~ca_bundle filename in
     let* batch =
       Result.map_error
         (fun e -> Diagnostic.render (Tracker_error.diagnostic e))
@@ -119,10 +124,27 @@ let run ~fs ~net ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out ~err =
     out "]\n";
     Ok ()
   in
+  let serve filename ca_bundle =
+    let* document = document filename in
+    (* Runtime failures are already reported by the scoped output writer. *)
+    let status =
+      try
+        match
+          Service_cli.run ~fs ~net ~sink ~clock ~runtime ~cwd ~ca_bundle ~io
+            ~env ~document
+        with
+        | Ok () -> Cmdliner.Cmd.Exit.ok
+        | Error _ -> Cmdliner.Cmd.Exit.some_error
+      with _ -> Cmdliner.Cmd.Exit.some_error
+    in
+    Ok status
+  in
+  let inspected action = Result.map (fun () -> Cmdliner.Cmd.Exit.ok) action in
   let file_arg =
     Cmdliner.Arg.(
       value & pos 0 string "WORKFLOW.md"
-      & info [] ~docv:"WORKFLOW" ~doc:"Workflow file to inspect.")
+      & info [] ~docv:"WORKFLOW"
+          ~doc:"Workflow file; defaults to ./WORKFLOW.md.")
   in
   let issue_arg =
     Cmdliner.Arg.(
@@ -149,19 +171,22 @@ let run ~fs ~net ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out ~err =
     Cmdliner.Cmd.v
       (Cmdliner.Cmd.info "tracker"
          ~doc:"Fetch configured active issues as ordered normalized JSON.")
-      Cmdliner.Term.(const tracker $ file_arg $ ca_arg)
+      Cmdliner.Term.(
+        const (fun file ca -> inspected (tracker file ca)) $ file_arg $ ca_arg)
   in
   let doctor =
     Cmdliner.Cmd.v
       (Cmdliner.Cmd.info "doctor"
          ~doc:"Validate workflow settings and prompt syntax.")
-      Cmdliner.Term.(const doctor $ file_arg)
+      Cmdliner.Term.(const (fun file -> inspected (doctor file)) $ file_arg)
   in
   let dry =
     Cmdliner.Cmd.v
       (Cmdliner.Cmd.info "dry-run"
          ~doc:"Render a prompt using a local issue fixture.")
-      Cmdliner.Term.(const dry $ file_arg $ issue_arg $ attempt_arg)
+      Cmdliner.Term.(
+        const (fun file issue attempt -> inspected (dry file issue attempt))
+        $ file_arg $ issue_arg $ attempt_arg)
   in
   let workspace =
     Cmdliner.Cmd.v
@@ -169,12 +194,42 @@ let run ~fs ~net ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out ~err =
          ~doc:
            "Inspect an existing owned workspace without creating it or running \
             hooks.")
-      Cmdliner.Term.(const workspace $ file_arg $ issue_arg)
+      Cmdliner.Term.(
+        const (fun file issue -> inspected (workspace file issue))
+        $ file_arg $ issue_arg)
   in
+  let run_term = Cmdliner.Term.(const serve $ file_arg $ ca_arg) in
+  let run_command =
+    Cmdliner.Cmd.make
+      (Cmdliner.Cmd.info "run"
+         ~doc:"Run issue polling and closed agent attempts.")
+      run_term
+  in
+  let info =
+    Cmdliner.Cmd.info "symphony" ~version:"0.1.0"
+      ~doc:"Run Symphony using a workflow file."
+      ~man:
+        [
+          `S Cmdliner.Manpage.s_description;
+          `P
+            "SIGINT and SIGTERM stop admission, then join workers, hooks and \
+             workspace leases.";
+          `P
+            "Use the run subcommand when the workflow filename matches an \
+             inspection command.";
+          `S Cmdliner.Manpage.s_commands;
+          `P "run, doctor, dry-run, workspace, tracker";
+        ]
+  in
+  let group =
+    Cmdliner.Cmd.group info [ run_command; doctor; dry; workspace; tracker ]
+  in
+  (* Cmdliner groups require -- before a default positional path. A direct root
+     command gives the specified symphony [WORKFLOW] syntax without rewriting argv. *)
   let command =
-    Cmdliner.Cmd.group
-      (Cmdliner.Cmd.info "symphony" ~version:"0.1.0"
-         ~doc:"Symphony OCaml workflow and workspace inspection.")
-      [ doctor; dry; workspace; tracker ]
+    match Array.to_list argv with
+    | _ :: ("run" | "doctor" | "dry-run" | "workspace" | "tracker") :: _ ->
+        group
+    | [] | [ _ ] | _ :: _ :: _ -> Cmdliner.Cmd.make info run_term
   in
-  Cmdliner.Cmd.eval_result ~catch:false ~env:(fun _ -> None) ~argv ~err command
+  Cmdliner.Cmd.eval_result' ~catch:false ~env:(fun _ -> None) ~argv ~err command

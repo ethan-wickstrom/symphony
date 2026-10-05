@@ -42,6 +42,7 @@ let () =
                 ~wall:(Eio.Stdenv.clock host)
             in
             Cli.run ~fs:(Eio.Stdenv.fs host) ~net:(Eio.Stdenv.net host) ~clock
+              ~sink:(Eio.Stdenv.stderr host :> Eio.Flow.sink_ty Eio.Flow.sink)
               ~runtime ~cwd ~env ~default_ca_bundle ~argv:Sys.argv
               ~out:print_string ~err:Format.err_formatter)
   in

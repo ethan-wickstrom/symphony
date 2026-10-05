@@ -5,6 +5,8 @@
   native_io
   native_outcome
   native_lifetime
+  native_shutdown
+  native_output
   native_http
   workspace_flock
   workspace_directory

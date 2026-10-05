@@ -170,7 +170,8 @@ Issue-scoped faults retain the checked current Issue.t in the emitted command,
 including faults whose transition releases the last owner. The logging edge can
 derive both identities without retaining stale snapshots. Retry-read failures
 have their own issue-scoped fault; startup and batch tracker failures are global.
-Session context waits for the actual Run_observation boundary.
+Session context comes from the actual Run_observation boundary in executable
+operator records; raw agent output never enters those records.
 
 ### Workspace aliases and mutable filesystem state
 
@@ -604,3 +605,17 @@ Git or publication. A boolean cannot stand for schema version1. Descriptor reads
 reject symlinks/nonregular files and cap bytes; exclusive prefix creation follows
 every content check. Vendor tree IDs supply archive bytes; the qualification
 commit is provenance, so shallow checkouts need no history workaround.
+
+### Executable ownership
+
+The CLI creates no second scheduler. Service_cli composes the existing owner,
+closed runner, workspace host and captured tracker registry. The registry's live
+warning callback publishes through bounded operator output; it never formats to
+stderr on the scheduling domain. Initial prompt compilation belongs to
+Config.resolve so invalid templates cannot replace last-good configuration.
+
+Signal custody encloses service and output closure. First-signal coalescing keeps
+handlers installed while active attempts/hooks and the final output flush join.
+The output driver retains a callback's original failure over secondary defects;
+otherwise its first recorded failure wins. Physical executable acceptance and
+live-provider acceptance remain distinct. See [contract](design/live-dispatch.md).

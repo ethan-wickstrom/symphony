@@ -1,6 +1,7 @@
 val run :
   fs:Eio.Fs.dir_ty Eio.Path.t ->
   net:_ Eio.Net.t ->
+  sink:Eio.Flow.sink_ty Eio.Flow.sink ->
   clock:Clock_posix.t ->
   runtime:Native_http.runtime ->
   cwd:Absolute_path.t ->
