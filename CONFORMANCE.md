@@ -1,16 +1,15 @@
 # OCaml conformance
 
-Status: slices 1–3, the scheduler foundation, typed lifecycle and pure scheduling
-reducer are merged. [PR #8](https://github.com/ethan-wickstrom/symphony/pull/8)
-merged as `5c892db` from reviewed head `b13aa73`; local gates and exact-head
-PR/push Linux/macOS CI pass. All four raw boundary logs were independently checked.
-Native owned workspaces, hooks, scoped process
-custody, Linear reads and verified HTTPS inspection pass local and hosted
-macOS/Linux-glibc gates in normal and optimized modes. Slice 3 merged as `98833b3`
-from tested head `06ce6c5`. The historical macOS release-profile build passed
-local physical closure/link checks and available CLI/native tests with affected
+Status: workflow/workspace/Linear slices, pure scheduling, the scoped Eio service,
+physical fake-session capacity and the closed Codex runner are merged through
+[PR #11](https://github.com/ethan-wickstrom/symphony/pull/11) (`5490eb3`).
+Reviewed head `2cbd893` and merged main have identical trees. Local gates and
+Linux/macOS PR/push CI pass; four raw boundary logs and all 16 capacity manifests
+were independently audited. The live-dispatch executable composes those boundaries;
+its acceptance receipts are tracked in [the worklog](docs/worklog.md).
+The historical macOS release profile passed physical closure/link checks with
 Crypto1.2.0. Current2.4.1 requires fresh release qualification. Clean-host
-macOS deployment, Linux musl and the full service remain pending.
+macOS deployment, Linux musl, authenticated Codex acceptance and HTTP API remain pending.
 The upstream Elixir implementation is reference material, not evidence for this port.
 Requirements refer to SPEC.md at `be10a1b79df723d6d7612b5651c8522704dafb2e`.
 Current protocol fixture: Codex 0.159.2. Stable core and experimental tool
@@ -21,24 +20,24 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 
 | Requirement | Planned slice | Implementation/test evidence | Status |
 | --- | --- | --- | --- |
-| Explicit workflow path and cwd default | 1, 7 | `ocaml/bin/cli.ml`; `ocaml/test/cli_check.py` explicit/default/anchoring cases | Inspection CLI passed; daemon pending |
+| Explicit workflow path and cwd default | 1, 7 | `ocaml/bin/cli.ml`; `ocaml/test/cli_check.py` explicit/default/anchoring cases | Direct/default/run service syntax implemented; local executable cases pass |
 | YAML front matter and prompt split | 1 | `workflow_document.ml`, `config_value.ml`; `workflow_parser_test.ml` workflow/YAML examples and tree/line models | Passed locally |
 | Typed defaults and `$` resolution | 1 | `config_layer.ml`, settings modules; `config_test.ml` defaults, env/path/numeric/state cases | Passed locally |
-| Dynamic workflow reload/re-apply | 1, 4 | `Config_layer.Make.apply`, `orchestrator.ml`; config and event models/tests cover last-good settings, epoch fencing, per-cycle preflight and scope drain | Poll-driven Eio application passes fake-port simulation; live daemon pending |
-| Single-authority polling orchestrator | 4 | `ownership.ml`, `agent_plan.ml`, `run_plan.ml`, `issue_lifecycle.ml`, `orchestrator.ml`; independent owner/lifecycle/event models and `core_test.ml`, `core_property_test.ml`, `core_coverage_test.ml` | Pure reducer and Eio owner/polling pass actual-event model simulation; live dispatch pending |
+| Dynamic workflow reload/re-apply | 1, 4 | `Config_layer.Make.apply`, `orchestrator.ml`; config and event models/tests cover last-good settings, epoch fencing, per-cycle preflight and scope drain | Poll/preflight reload implemented in executable; invalid-template initial/reload regressions pass |
+| Single-authority polling orchestrator | 4 | `ownership.ml`, `agent_plan.ml`, `run_plan.ml`, `issue_lifecycle.ml`, `orchestrator.ml`; independent owner/lifecycle/event models and `core_test.ml`, `core_property_test.ml`, `core_coverage_test.ml` | Pure/Eio owner passes actual-event model simulation; executable dispatch passes local fixtures |
 | State-list and ID-refresh tracker reads | 3 | `linear_tracker.ml`, `linear_pager.ml`, `linear_record.ml`, `tracker_registry.ml`; independent boundary/pagination/binding models, `linear_tracker_test.ml`, `native_http_test.ml`, real `tracker_cli_check.py` | Reads, frozen auth/current policy, atomic failures and verified HTTPS passed locally and on both CI hosts |
 | Sanitized collision-resistant workspaces | 2 | `workspace_key.ml`, `workspace_reference.ml`, `workspace_owner.ml`, `native/workspace_directory.ml`, `workspace_store_posix.ml`; key/owner models, hash vectors, parser fuzzing, `native_directory_test.ml`, `native_store_test.ml` | Descriptor/lock/identity/replacement/rollback cases passed locally and on both CI hosts |
 | Four workspace lifecycle hooks | 2 | `workspace_manager.ml`, `workspace_hooks.ml`; policy models, fake-port hook tests and `native_host_test.ml` frozen lifecycle/cancellation/rollback cases | Fake and live cases passed locally and on both CI hosts |
 | Configurable hook timeouts | 1, 2 | `workspace_settings.ml`, `workspace_hooks.ml`, `clock_posix.ml`; config and monotonic-clock models, independent stream faults, noisy output, native hook timeout | Config/interpreter/subprocess cases passed locally and on both CI hosts |
-| App-server subprocess transport/framing | 5 | `protocol_frame.ml`, `protocol_envelope.ml`, `protocol_codec.ml`, `app_server.ml`; independent framing model, schema-validated actual codecs, fake byte peers and `native_agent_test.ml` | Targeted local protocol/native gates pass; hosted gate pending |
+| App-server subprocess transport/framing | 5 | `protocol_frame.ml`, `protocol_envelope.ml`, `protocol_codec.ml`, `app_server.ml`; independent framing model, schema-validated actual codecs, fake byte peers and `native_agent_test.ml` | Protocol/native gates pass locally and hosted on Linux/macOS through PR #11 |
 | Configurable Codex launch command | 1, 5 | `agent_settings.ml`, `codex_runner.ml`; config validation and native acquired-cwd/allowlisted-env launch | Local config and native launch pass; live Codex authentication/sandbox pending |
 | Strict issue/attempt prompt rendering | 1 | `template.ml`; `template_test.ml` strictness/scope/limits, independent AST and rational models; CLI fixture rendering | Passed locally for documented strict Jinja profile |
-| Failure backoff and continuation retries | 4, 5 | `backoff.ml`, `issue_lifecycle.ml`, `orchestrator.ml`, `codex_runner.ml`; independent models, parked reads, stale timers and same-thread continuation cases | Service models and native fake-server continuations pass locally; live dispatch pending |
+| Failure backoff and continuation retries | 4, 5 | `backoff.ml`, `issue_lifecycle.ml`, `orchestrator.ml`, `codex_runner.ml`; independent models, parked reads, stale timers and same-thread continuation cases | Service models, native fake-server and executable same-thread continuation pass locally |
 | Configurable retry cap | 1, 4 | `scheduling_policy.ml`, `backoff.ml`; config/algebra models and `core_coverage_test.ml` exponential growth, current cap and more than 16 retries | Pure policy and Eio mock timers pass; native service pending |
-| Terminal/non-active reconciliation | 4, 5 | `orchestrator.ml`; binding-group reads, closed barrier, refreshed issue, stop disposition and stale completion cases in core/service models | Fenced service decisions and closed runner interruptions pass locally; live dispatch pending |
+| Terminal/non-active reconciliation | 4, 5 | `orchestrator.ml`; binding-group reads, closed barrier, refreshed issue, stop disposition and stale completion cases in core/service models | Fenced service decisions, closed runner interruptions and executable preflight pass locally |
 | Terminal startup/transition cleanup | 2, 4 | `issue_lifecycle.ml`, `orchestrator.ml`; epoch-fenced startup, cleanup closure, original reference and absorbing Cleanup examples/models | Eio startup/cleanup barriers pass fake-port simulation; native service pending |
-| Required structured log context | 4, 6 | `Orchestrator.fault` carries checked current issue for issue-scoped failures, including owner release; global and issue tracker faults are distinct | Self-contained fault commands implemented; structured logging/session context pending |
-| Operator-visible observability | 1–7 | `diagnostic.ml`, `ocaml/bin/cli.ml`, `workspace_cli.ml`; `cli_check.py`, `workspace_cli_check.py` file/key/remedy/redaction, missing/owned/busy/foreign/symlink inspection | Workflow and workspace CLI passed; service snapshots/logs pending |
+| Required structured log context | 4, 6 | `Orchestrator.fault` carries checked current issue for issue-scoped failures, including owner release; global and issue tracker faults are distinct | Structured issue/run/session records implemented with bounded asynchronous output |
+| Operator-visible observability | 1–7 | `diagnostic.ml`, `ocaml/bin/cli.ml`, `workspace_cli.ml`; `cli_check.py`, `workspace_cli_check.py` file/key/remedy/redaction, missing/owned/busy/foreign/symlink inspection | Inspection and service logs implemented; HTTP snapshots/API pending |
 
 ## Design evidence
 
@@ -93,7 +92,7 @@ units and limits. Linux/macOS PR and push capacity gates pass at implementation
 head f4cb776; all 16 archived manifests and four raw boundary logs were checked.
 The current source gate covers 335 files; 12 measurement examples/laws and 23
 parent controls in both Python modes pass. These are scoped fake workers.
-App-server dispatch, static release, latency regression baselines, HTTP API and the
+Authenticated app-server acceptance, static release, latency regression baselines, HTTP API and the
 portable conformance harness remain pending.
 Crowbar random campaigns are distinct from instrumented AFL coverage.
 
@@ -106,10 +105,10 @@ normal and optimized Python modes. Native cases check three turns on one thread,
 one-byte pipe writes, stderr backpressure, exact usage above 2^53, interruption,
 malformed/truncated frames, separate response/silence deadlines and child reaping
 before after_run and lease release. The full local gate checks 379 source files
-and 73 unchanged CMIs; hosted review remains a merge gate. These results do not
+and 73 unchanged CMIs; Linux/macOS hosted receipts were audited before merge. These results do not
 establish live Codex authentication, model
 behavior or sandbox enforcement. Closed fake runners and the native fake server
-remain separate evidence from a dispatching service.
+remain separate evidence from executable assembly acceptance and live provider acceptance.
 Codec receipts retain actual messages, validator logs, schema provenance and
 exporter/checker/lock/Python identities without claiming binary attestation.
 Review regressions cover retained stall cadence during tracker reads and repeated
@@ -199,3 +198,22 @@ diff-size limit excludes this import; independent native reviews completed.
 Each custody campaign passes 5,000 scenarios. Linux records 2,000 successful closes;
 macOS records 1,999 successes plus one conservative EPERM cleanup error preserved
 by the frozen contract, with 73 repeated-signal errors also visible.
+
+## Live executable assembly
+
+`ocaml/bin/service_cli.ml` composes one captured registry, environment, HTTP
+bootstrap, native clock, workspace host and closed runner under the existing
+Service scheduling owner. Direct/default/run CLI syntax, initial validation,
+invalid workflow reload blocking/recovery, fresh issue preflight, same-thread
+continuation, active SIGINT/SIGTERM, hook/worker closure and escaped diagnostics
+pass all 24 local executable scenarios normally and optimized. The full local
+gate covers 391 source files/39 controls, 17 rejected clients, two valid assemblies
+and 73 unchanged CMIs. All 28 native lifecycle cases pass under the watchdog;
+final hosted evidence remains the merge gate recorded in the worklog.
+
+`native_shutdown.ml` owns scoped signal/self-pipe custody through output closure.
+`native_output.ml` publishes bounded non-suspending records to an owned writer.
+Meaningful regressions reproduced false cancellation cleanup reports and recorded
+output failure being superseded by a later clock defect. See
+[live-dispatch contract](docs/design/live-dispatch.md) for arbitration, limits and
+fixture/provider evidence boundaries.

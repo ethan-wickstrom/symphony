@@ -165,6 +165,11 @@
   mtime))
 
 (executable
+ (name host_lifecycle_main)
+ (modules host_lifecycle_main native_shutdown_test native_output_test)
+ (libraries symphony_native symphony_io alcotest eio_posix eio.mock mtime))
+
+(executable
  (name protocol_fixtures)
  (modules protocol_fixtures)
  (libraries agent_protocol_test_support))

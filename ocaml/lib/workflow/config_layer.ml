@@ -162,6 +162,14 @@ module Make (Tracker : Tracker.CONFIG) = struct
     in
     let prompt = Workflow_document.prompt document in
     let prompt = if prompt = "" then fallback else prompt in
+    (* A reload cannot install prompt syntax that fails every future worker. *)
+    let* _ =
+      Result.map_error
+        (function
+          | Template.Parse_error diagnostic | Template.Render_error diagnostic
+            -> fields (Nonempty_list.singleton diagnostic))
+        (Template.compile ~file prompt)
+    in
     let child = Environment.child env ~allow:allow_env in
     Ok { scheduling; agent; workspace; tracker; prompt; file; child }
 end

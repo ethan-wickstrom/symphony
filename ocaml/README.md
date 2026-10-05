@@ -4,8 +4,10 @@ Checked workflow loading, configuration, strict prompt rendering, last-good relo
 and native owned workspaces/hooks are implemented. `doctor`, `dry-run`, `workspace`
 and authenticated Linear `tracker` inspection work locally. Pure scheduling and
 typed lifecycle transitions and the scoped Eio owner are implemented. Native
-fake-session capacity is measured; app-server integration remains pending.
-This executable does not dispatch issues yet.
+fake-session capacity is measured. The executable composes authenticated Linear
+polling, native workspaces and closed Codex app-server attempts. Local acceptance
+uses actual TLS and subprocesses with fake providers; authenticated Codex
+acceptance remains pending.
 
 ## Build
 
@@ -81,13 +83,44 @@ bounded warnings on stderr; malformed envelopes, pagination, TLS or limits fail
 the read. No workflow/workspace inspection triggers networking. See the published
 [Linear profile](../docs/adapters/linear.md) for scope, eligibility, errors and bounds.
 
+## Run the service
+
+Configure the workflow's Linear project, states, credential reference, workspace
+root, hooks and Codex command, then run:
+
+```sh
+_build/default/bin/main.exe /path/to/WORKFLOW.md
+_build/default/bin/main.exe
+_build/default/bin/main.exe run /path/to/WORKFLOW.md --ca-bundle /path/to/anchors.pem
+```
+
+The default workflow is `./WORKFLOW.md`. Relative workspaces anchor to the
+workflow directory. Use `run` or a `./` prefix for a workflow filename that
+matches `doctor`, `dry-run`, `workspace` or `tracker`.
+
+Startup validates settings and prompt syntax before polling. Invalid startup
+returns nonzero with a diagnostic. The owner reloads workflow contents before
+polling and admission; a malformed update keeps last-good settings for existing
+work and blocks new admission until repaired. Each admitted attempt retains its
+original configuration, tracker authority, child environment and hooks.
+
+SIGINT or SIGTERM stops admission and joins workers, process groups, hooks,
+workspace leases and control producers. Normal shutdown returns zero. Operator
+records go to stderr as `event=name key=value` ASCII lines; values escape spaces,
+controls, equals signs, backslashes and UTF-8 bytes as `\xhh`. Records include
+issue/run/session context and closure outcomes. Raw agent output and provider
+payloads are excluded. A blocked or failed output sink fails the host after
+resource closure; see the [lifecycle contract](../docs/design/live-dispatch.md).
+
 ## Check
 
 `just check` runs builds, examples/model properties, CLI integration, formatting,
 source gates, protocol snapshots and watchdog-bounded native ownership/hook suites.
 The native suites include 1,000 seeded lifetime scenarios with replay via
 `SYMPHONY_LIFETIME_SEED`. Retained logs/manifests are in `_build/native-evidence`;
-optimized Python checks have a separate directory. `just fuzz` runs the seeded Crowbar
+optimized Python checks have a separate directory. `just service-cli` runs the
+executable acceptance in both Python modes and retains per-case receipts under a
+fresh `_build/service-cli-*` directory. `just fuzz` runs the seeded Crowbar
 campaign. Without `just`, use the commands in [justfile](justfile).
 
 The [native capacity gate](../docs/design/service-capacity.md) runs the same
@@ -124,4 +157,5 @@ check label/routing eligibility, dispatch order, caps, retry growth, stale token
 and closure barriers. Test-port completions represent closed fake scopes. Eio
 command execution and deterministic service simulation pass the independent
 event model. Native capacity holds 1000 scoped fake sessions through measured
-polling and joined shutdown. Live agent dispatch remains the next slice-4 work.
+polling and joined shutdown. The executable now uses the same owner with the
+closed native runner; live Codex provider acceptance remains separate.

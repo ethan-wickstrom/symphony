@@ -58,7 +58,9 @@ module type S = sig
       before parsing core settings from the same document. Credential material
       cannot enter public settings through names, aliases or exact literals. No
       network request; callers cannot attach a binding parsed from a different
-      document. Trusted shell strings retain their literal bytes. *)
+      document. Prompt syntax is checked before either initial or reloaded
+      settings become effective. Trusted shell strings retain their literal
+      bytes. *)
 end
 
 module Make (Tracker : Tracker.CONFIG) :

@@ -5,12 +5,21 @@ test: build
     opam exec --switch . -- dune runtest
     python3 test/native_check_test.py
     PYTHONOPTIMIZE=1 python3 test/native_check_test.py
-    python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --agent _build/default/test/native_agent_test.exe --out _build/native-evidence
-    PYTHONOPTIMIZE=1 python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --agent _build/default/test/native_agent_test.exe --out _build/native-evidence-optimized
+    python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --agent _build/default/test/native_agent_test.exe --lifecycle _build/default/test/host_lifecycle_main.exe --out _build/native-evidence
+    PYTHONOPTIMIZE=1 python3 test/native_check.py --kernel _build/default/test/native_kernel/test_main.exe --host _build/default/test/native_host/test_main.exe --http _build/default/test/native_http_test.exe --agent _build/default/test/native_agent_test.exe --lifecycle _build/default/test/host_lifecycle_main.exe --out _build/native-evidence-optimized
     python3 test/cli_check.py _build/default/bin/main.exe
     PYTHONOPTIMIZE=1 python3 test/cli_check.py _build/default/bin/main.exe
     python3 test/tracker_cli_check.py _build/default/bin/main.exe
     PYTHONOPTIMIZE=1 python3 test/tracker_cli_check.py _build/default/bin/main.exe
+    just service-cli
+
+service-cli: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    evidence="$(mktemp -d "$PWD/_build/service-cli-XXXXXX")"
+    python3 test/service_cli_check.py _build/default/bin/main.exe --out "$evidence/normal"
+    PYTHONOPTIMIZE=1 python3 test/service_cli_check.py _build/default/bin/main.exe --out "$evidence/optimized"
+    printf '%s\n' "$evidence"
 
 format:
     opam exec --switch . -- dune fmt

@@ -159,6 +159,7 @@ def main():
     parser.add_argument("--host", type=Path, required=True)
     parser.add_argument("--http", type=Path, required=True)
     parser.add_argument("--agent", type=Path, required=True)
+    parser.add_argument("--lifecycle", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=90)
     args = parser.parse_args()
@@ -177,6 +178,8 @@ def main():
     sources += sorted((root / "test/native_host").glob("*.ml*"))
     sources += sorted((root / "test").glob("native_http_test.ml*"))
     sources += sorted((root / "test").glob("native_agent_test.ml*"))
+    for unit in ("native_shutdown_test", "native_output_test", "host_lifecycle_main"):
+        sources += sorted((root / "test").glob(unit + ".ml*"))
     sources += sorted((root / "test").glob("tracker_runtime_test.ml*"))
     sources += sorted((root / "bin").glob("tracker_runtime.ml*"))
     sources += sorted((root / "test/fixtures/tls").glob("*"))
@@ -220,7 +223,7 @@ def main():
     results = {}
     binaries = {}
     targets = [("kernel", args.kernel), ("host", args.host), ("http", args.http),
-               ("agent", args.agent)]
+               ("agent", args.agent), ("lifecycle", args.lifecycle)]
     for name, binary in targets:
         binary = binary.resolve()
         if not binary.is_file():
