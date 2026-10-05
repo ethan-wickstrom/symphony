@@ -99,7 +99,10 @@ workflow directory. Use `run` or a `./` prefix for a workflow filename that
 matches `doctor`, `dry-run`, `workspace` or `tracker`.
 
 Startup validates settings and prompt syntax before polling. Invalid startup
-returns nonzero with a diagnostic. The owner reloads workflow contents before
+returns nonzero with a diagnostic. Early signal-setup failure reports the fixed
+host_startup_failure record after closing acquired resources and preserves the
+original failure; reporting is not retried after output callback entry or sink
+failure. The owner reloads workflow contents before
 polling and admission; a malformed update keeps last-good settings for existing
 work and blocks new admission until repaired. Each admitted attempt retains its
 original configuration, tracker authority, child environment and hooks.
@@ -108,7 +111,13 @@ SIGINT or SIGTERM stops admission and joins workers, process groups, hooks,
 workspace leases and control producers. Normal shutdown returns zero. Operator
 records go to stderr as `event=name key=value` ASCII lines; values escape spaces,
 controls, equals signs, backslashes and UTF-8 bytes as `\xhh`. Records include
-issue/run/session context and closure outcomes. Raw agent output and provider
+issue_id/issue_identifier and run/session context. Worker closure retains its last
+observed session_id, or explicitly reports session_state=not_started. Hooks use
+their checked reference identifier. Unknown Worker/Retry generations retain their
+checked opaque issue ID and generation with context=unavailable; identifier/session
+fields are not fabricated. This exceptional host-port path does not establish full
+log-context conformance.
+Raw agent output and provider
 payloads are excluded. A blocked or failed output sink fails the host after
 resource closure; see the [lifecycle contract](../docs/design/live-dispatch.md).
 
@@ -120,7 +129,13 @@ The native suites include 1,000 seeded lifetime scenarios with replay via
 `SYMPHONY_LIFETIME_SEED`. Retained logs/manifests are in `_build/native-evidence`;
 optimized Python checks have a separate directory. `just service-cli` runs the
 executable acceptance in both Python modes and retains per-case receipts under a
-fresh `_build/service-cli-*` directory. `just fuzz` runs the seeded Crowbar
+fresh `_build/service-cli-*` directory. The suite has 25 cases, including controlled
+descriptor startup failure and strict issue/session context. All 25 pass in both
+modes in `_build/service-cli-JWgykX`; its independent receipt audit verifies actual
+child modes, input/runtime context hashes and causal controls. These digests are
+not build attestation. Configured local coverage
+passes through the combined retained runs; exact replacement-head hosted evidence
+is pending. Earlier 24-case receipts remain historical. `just fuzz` runs the seeded Crowbar
 campaign. Without `just`, use the commands in [justfile](justfile).
 
 The [native capacity gate](../docs/design/service-capacity.md) runs the same

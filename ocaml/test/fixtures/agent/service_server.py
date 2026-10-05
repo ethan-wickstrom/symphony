@@ -3,10 +3,12 @@
 
 import argparse
 import errno
+import fcntl
 import json
 import os
 from pathlib import Path
 import selectors
+import resource
 import sys
 import time
 
@@ -16,6 +18,7 @@ CONTROL_INTERVAL = 0.02
 HOOK_GATE_SECONDS = 15
 STDERR_SENTINEL = "fixture-stderr-never-render\r\nevent=service_stopped forged=yes\n"
 TOKEN = "service-fixture-linear-key-never-print"
+FD_LIMIT = 64
 
 
 def require(condition, message):
@@ -37,6 +40,46 @@ def write(fd, data):
         count = os.write(fd, remaining)
         require(count > 0, "zero-progress fixture write")
         remaining = remaining[count:]
+
+
+def fd_exec(arguments):
+    require(arguments.fd_receipt is not None and arguments.command,
+            "missing descriptor launch receipt/command")
+    command = arguments.command[1:] if arguments.command[0] == "--" else arguments.command
+    require(command and Path(command[0]).is_absolute(), "descriptor launch requires absolute executable")
+    require(0 < arguments.fd_headroom < FD_LIMIT - 3, "invalid descriptor headroom")
+    _soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    require(hard >= FD_LIMIT, "fixture descriptor hard limit below controlled budget")
+    resource.setrlimit(resource.RLIMIT_NOFILE, (FD_LIMIT, hard))
+    receipt_fd = os.open(arguments.fd_receipt, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    owned = []
+    while True:
+        try:
+            fd = os.open(os.devnull, os.O_RDONLY)
+        except OSError as error:
+            require(error.errno == errno.EMFILE, "unexpected descriptor fixture acquisition failure")
+            break
+        os.set_inheritable(fd, True)
+        owned.append(fd)
+    # Closing the receipt itself accounts for the last free descriptor.
+    for _ in range(arguments.fd_headroom - 1):
+        os.close(owned.pop())
+    live = []
+    for fd in range(FD_LIMIT):
+        if fd == receipt_fd:
+            continue
+        try:
+            fcntl.fcntl(fd, fcntl.F_GETFD)
+        except OSError as error:
+            require(error.errno == errno.EBADF, "descriptor fixture inventory failed")
+        else:
+            live.append(fd)
+    require(len(live) + arguments.fd_headroom == FD_LIMIT, "descriptor inventory does not match headroom")
+    write(receipt_fd, (json.dumps({"limit": FD_LIMIT, "free": arguments.fd_headroom,
+                                  "inherited": live, "fillers": owned,
+                                  "optimize": sys.flags.optimize, "command": command}) + "\n").encode())
+    os.close(receipt_fd)
+    os.execve(command[0], command, os.environ)
 
 
 def after_run(arguments):
@@ -211,7 +254,13 @@ def main():
     parser.add_argument("--version", choices=("V1", "V2"))
     parser.add_argument("--hook-gate", choices=("open", "held"), default="open")
     parser.add_argument("--after-run", action="store_true")
+    parser.add_argument("--fd-headroom", type=int)
+    parser.add_argument("--fd-receipt", type=Path)
+    parser.add_argument("command", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
+    if arguments.fd_headroom is not None:
+        fd_exec(arguments)
+        return
     if arguments.after_run:
         after_run(arguments)
         return

@@ -61,52 +61,70 @@ capacity. Operator API, doctor/dry-run, module laws and adapter profiles ship.
 
 ## Current focus and next action
 
-Branch ethan/live-dispatch composes existing service, tracker, workspace host and
-closed runner into `symphony [WORKFLOW]`, defaulting to ./WORKFLOW.md. Inspection
-commands remain. One named clock, registry, HTTP runtime and startup environment
-serve initial configuration and reloads; admitted attempts keep frozen authority.
+Branch ethan/live-dispatch composes the existing owner, tracker, workspace host
+and closed runner into `symphony [WORKFLOW]`, defaulting to ./WORKFLOW.md.
+Admitted attempts retain frozen authority through joined shutdown.
 
-The reference audit found malformed prompt syntax could replace last-good
-configuration. Two regressions reproduced the defect; Config.resolve now checks
-prompt syntax before accepting initial/reloaded settings. Both targeted cases pass
-(_build/live-dispatch-prompt-{red,green}.log).
+Hosted review found missing early signal-setup reporting and incomplete issue/session
+log context. Actual failures are retained in
+_build/live-dispatch-{startup-fd-red,context-red}.log. Corrections pass the targeted
+startup-FD, active-context and no-session shell-closure controls:
+_build/live-dispatch-review-green.log and
+_build/live-dispatch-review-green-xurkg4d2. All 25 cases now pass in both modes;
+exact replacement-head hosted evidence remains pending.
 
-Shutdown uses a scoped first-signal self-pipe. SIGINT/SIGTERM stop admission and
-join Service, control producers, workers, hooks, leases and the signal reader before
-restoring handlers/closing descriptors, including duplicate signals during held
-final output drainage. Bounded nonsuspending log publication feeds one owned
-asynchronous writer; live tracker warnings use it too. Callback primaries and first
-output failures retain precedence. Failed callbacks attempt bounded diagnostic
-drainage. All 28 native lifecycle cases pass.
+The replacement run then exposed an oracle error: continuation turn notices
+change the thread/turn session ID. The last-session check now consumes every
+same-issue/run session/turn notice, not only session_started. Production closure
+was correct; retained failure: _build/service-cli-Uqfwqm/normal. The corrected
+suite passes in _build/service-cli-JWgykX/{normal,optimized}; independent audit:
+_build/service-cli-JWgykX/independent-verification.json. All 50 logs, 30 peer-mode
+receipts, five input hashes and the current binary match. Both controlled FD
+cases prove doctor0 then service123 with limit64/headroom3 and fixed early output.
+
+Issue records use issue_identifier. Closure context comes from the exact previous
+issue/run/session projection, or explicit not_started; hooks use the checked
+reference identifier. Paired secondary context requires the exact generation.
+An unknown Worker/Retry generation retains its checked opaque issue ID and
+generation with context=unavailable, without invented identifier/session fields;
+this exceptional host-port path is not a full-conformance claim.
+Ordered acknowledged runner notices remain
+the causal boundary; a projection session guard alone does not prove sequence
+acceptance. Early setup reporting is bounded, occurs after full closure and
+preserves the original failure. It never retries after output callback entry or
+a failed sink.
 
 - [x] Audit reference CLI behavior and existing composition contracts.
 - [x] Reproduce/fix configuration validation before adding dispatch.
 - [x] Add runnable native assembly and direct/default workflow command syntax.
 - [x] Verify native signal/output boundaries; 28 native cases pass.
-- [x] Complete 24 executable TLS/JSONL cases in both Python modes.
-- [x] Run local gates and independent review.
+- [x] Complete the earlier 24 executable cases and local gates (historical evidence).
+- [x] Reproduce hosted-review defects and pass targeted corrections.
+- [x] Run/audit all 25 cases in both modes and complete configured local coverage.
+- [x] Complete the fresh pinned Elixir reference gate.
 - [ ] Publish/audit hosted evidence and merge the reviewed green checkpoint.
 
-All 24 executable scenarios pass normally and optimized. Receipts:
-_build/service-cli-Q5fOU0/{normal,optimized}; inputs remain unchanged and child
-Python modes propagate. Gates cover accepted reload while an active attempt
-retains authority/env/hooks/command/prompt; next retry adoption; held startup/active
-tracker reads; same-size/mtime-preserved rewrite; path spaces; repeated shutdown
-signals and exact escaped omission context. A projection oracle was corrected for
-Diagnostic.render's additional escape layer; no production change was needed.
-
-Meaningful RED/GREEN regressions cover prompt validation, false cancellation
-cleanup reports, first output failure precedence, queued failure-log drainage and
-watchdog target closure. Native: 28 actual lifecycle cases; watchdog: 11 controls
-in both modes. Configured just check passes: 391 source files/39 source controls,
-17 rejected clients, two valid assemblies, 73 unchanged CMIs; existing native,
-service/model, codec, 1/10/100/1000 fake capacity and release-tool gates pass.
-Pinned Elixir reference: 302 tests, zero failures/six skips; make all passed.
-Independent review found no remaining production/assembly/harness blocker.
-
-Seeded parser campaign passes. Current focus: PR publication, exact-head hosted
-evidence audit and reviewed green merge. Local receipts include live-dispatch-{host-green,
+Historical pre-review evidence: 24 cases passed in both modes, with unchanged
+inputs and propagated child modes (_build/service-cli-Q5fOU0/{normal,optimized}).
+The earlier full gate passed 391 source files/39 controls, 17 rejected clients,
+two valid assemblies, 73 unchanged CMIs, 28 native lifecycle cases and 11 watchdog
+controls per mode. Parser, capacity and release-tool gates passed; pinned Elixir
+passed 302 tests/zero failures/six skips. Hosted review supersedes that checkpoint's
+no-blocker assessment. Historical receipts include live-dispatch-{host-green,
 full-check,reference,watchdog-green,watchdog-green-optimized}.log.
+
+Configured local coverage passes through combined logs: the dependency/native/
+inspection/HTTPS run passed before the old oracle stopped full-check; the corrected
+25-case run and remaining check body then passed, plus formatting. Receipts:
+live-dispatch-review-{full-check,service-cli,remaining-check}.log. Counts remain
+391 source files/39 controls, 17 rejected clients, two assemblies, 73 unchanged
+CMIs per mode and codec67/42. Passed native gates were not repeated.
+Fresh pinned Elixir also passes 302 tests/zero failures/six skips plus
+formatting/lint/coverage/Dialyzer (_build/live-dispatch-review-reference.log).
+
+Next: publish and verify the exact new head before merge. Local executable
+evidence uses fake providers; binary digests are
+context, not build attestation.
 
 ## Remaining boundaries
 

@@ -6,7 +6,10 @@ physical fake-session capacity and the closed Codex runner are merged through
 Reviewed head `2cbd893` and merged main have identical trees. Local gates and
 Linux/macOS PR/push CI pass; four raw boundary logs and all 16 capacity manifests
 were independently audited. The live-dispatch executable composes those boundaries;
-its acceptance receipts are tracked in [the worklog](docs/worklog.md).
+its acceptance receipts are tracked in [the worklog](docs/worklog.md). Hosted
+review corrections and all 25 replacement cases pass locally in both modes;
+combined configured local coverage is complete. Exact new-head hosted evidence
+remains pending.
 The historical macOS release profile passed physical closure/link checks with
 Crypto1.2.0. Current2.4.1 requires fresh release qualification. Clean-host
 macOS deployment, Linux musl, authenticated Codex acceptance and HTTP API remain pending.
@@ -36,7 +39,7 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | Configurable retry cap | 1, 4 | `scheduling_policy.ml`, `backoff.ml`; config/algebra models and `core_coverage_test.ml` exponential growth, current cap and more than 16 retries | Pure policy and Eio mock timers pass; native service pending |
 | Terminal/non-active reconciliation | 4, 5 | `orchestrator.ml`; binding-group reads, closed barrier, refreshed issue, stop disposition and stale completion cases in core/service models | Fenced service decisions, closed runner interruptions and executable preflight pass locally |
 | Terminal startup/transition cleanup | 2, 4 | `issue_lifecycle.ml`, `orchestrator.ml`; epoch-fenced startup, cleanup closure, original reference and absorbing Cleanup examples/models | Eio startup/cleanup barriers pass fake-port simulation; native service pending |
-| Required structured log context | 4, 6 | `Orchestrator.fault` carries checked current issue for issue-scoped failures, including owner release; global and issue tracker faults are distinct | Structured issue/run/session records implemented with bounded asynchronous output |
+| Required structured log context | 4, 6 | `Orchestrator.fault` retains checked current issue after release; `service_cli.ml` uses exact previous issue/run/session closure context and checked hook references; `service_cli_check.py` checks issue_identifier and started/not_started closure | Canonical records pass the 25-case local suite; unknown-generation host-port faults retain explicit partial context; hosted pending |
 | Operator-visible observability | 1–7 | `diagnostic.ml`, `ocaml/bin/cli.ml`, `workspace_cli.ml`; `cli_check.py`, `workspace_cli_check.py` file/key/remedy/redaction, missing/owned/busy/foreign/symlink inspection | Inspection and service logs implemented; HTTP snapshots/API pending |
 
 ## Design evidence
@@ -206,10 +209,36 @@ bootstrap, native clock, workspace host and closed runner under the existing
 Service scheduling owner. Direct/default/run CLI syntax, initial validation,
 invalid workflow reload blocking/recovery, fresh issue preflight, same-thread
 continuation, active SIGINT/SIGTERM, hook/worker closure and escaped diagnostics
-pass all 24 local executable scenarios normally and optimized. The full local
-gate covers 391 source files/39 controls, 17 rejected clients, two valid assemblies
-and 73 unchanged CMIs. All 28 native lifecycle cases pass under the watchdog;
-final hosted evidence remains the merge gate recorded in the worklog.
+passed the earlier 24 local scenarios in both modes. That historical gate covered
+391 source files/39 controls, 17 rejected clients, two valid assemblies and 73
+unchanged CMIs, plus 28 native lifecycle cases. Hosted review then reproduced
+missing signal-setup reporting and incomplete issue/session log context in
+_build/live-dispatch-{startup-fd-red,context-red}.log. Targeted corrections pass
+_build/live-dispatch-review-green.log, with receipts in
+_build/live-dispatch-review-green-xurkg4d2. All 25 replacement scenarios now pass
+in both modes (_build/service-cli-JWgykX). Its independent-verification.json
+checks all 50 bounded operator logs, 30 actual peer acquisitions, five current
+input hashes, runtime digest, FD equivalence and causal controls. Both FD cases
+record limit64/headroom3, successful doctor then service123 with fixed early output.
+Configured local coverage is complete through live-dispatch-review-{full-check,
+service-cli,remaining-check}.log and formatting: passed native dependencies were
+not repeated after the oracle stopped the first full-check. Exact-head hosted
+audit remains pending.
+The replacement run exposed a last-session oracle error: continuation turn notices
+change the thread/turn session ID. The oracle now follows all same-issue/run
+session/turn notices; no production correction was required. Failure receipts
+remain in _build/service-cli-Uqfwqm/normal.
+
+Issue records use issue_identifier. Worker closure selects only the exact previous
+issue/run/session, or reports not_started; hooks carry their checked reference
+identifier. Paired secondary lookup requires the exact generation and marks
+unknown Worker/Retry context unavailable while retaining checked opaque issue_id
+and generation. Identifier/session fields are not invented, and that exceptional
+host-port path is not a full-conformance claim. Ordered acknowledged native runner notices
+are the boundary; the projection session guard alone does not prove general
+sequence acceptance. The early setup reporter runs after full closure, is bounded
+and preserves the original failure. It never retries after output callback entry
+or sink failure.
 
 `native_shutdown.ml` owns scoped signal/self-pipe custody through output closure.
 `native_output.ml` publishes bounded non-suspending records to an owned writer.

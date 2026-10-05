@@ -22,6 +22,10 @@ OUTPUT_LIMIT = 1_048_576
 REQUEST_LIMIT = 1_048_576
 WAIT_SECONDS = 15
 JOIN_SECONDS = 10
+FD_HEADROOM_MAX = 16
+SESSION_EVENTS = frozenset(("session_started", "turn_started", "turn_completed"))
+ISSUE_EVENTS = frozenset(("dispatch", "session_started", "turn_started", "turn_completed",
+                          "hook", "worker_closed"))
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 PEER = FIXTURES / "agent" / "service_server.py"
 CA = FIXTURES / "tls" / "ca.pem"
@@ -288,12 +292,16 @@ def field(value):
 
 
 class Process:
-    def __init__(self, binary, root, arguments):
+    def __init__(self, binary, root, arguments, fd_headroom=None):
         self.root = root
         self.changed = threading.Condition()
         self.output = {"stdout": bytearray(), "stderr": bytearray()}
         self.defects = []
-        self.child = subprocess.Popen([str(binary), *arguments], cwd=root,
+        command = [str(binary), *arguments]
+        if fd_headroom is not None:
+            command = [*PYTHON, str(PEER), "--fd-headroom", str(fd_headroom),
+                       "--fd-receipt", str(root / "fd.json"), "--", *command]
+        self.child = subprocess.Popen(command, cwd=root, close_fds=True,
                                       env=environment(root), stdin=subprocess.DEVNULL,
                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.readers = []
@@ -364,6 +372,7 @@ class Process:
         require(all(token not in self.logs() and token.encode() not in self.output["stdout"]
                     for token in (TOKEN, NEXT_TOKEN)),
                 "tracker credential leaked to CLI output")
+        check_context(self.events())
         return status
 
     def stop(self, selected):
@@ -393,8 +402,8 @@ class Process:
 
 
 @contextmanager
-def running(binary, root, arguments):
-    process = Process(binary, root, arguments)
+def running(binary, root, arguments, fd_headroom=None):
+    process = Process(binary, root, arguments, fd_headroom)
     primary = None
     try:
         yield process
@@ -416,6 +425,81 @@ def running(binary, root, arguments):
 def arguments(workflow, style):
     leading = ["run"] if style == "run" else []
     return [*leading, *([] if style == "default" else [str(workflow)]), "--ca-bundle", str(CA)]
+
+
+def check_context(events):
+    # Closure context is derived from the actual preceding run's session events.
+    for index, event in enumerate(events):
+        if event["event"] not in ISSUE_EVENTS:
+            continue
+        require(event.get("issue_id") and event.get("issue_identifier"),
+                "issue event lacks spec identity: " + event["event"])
+        require("identifier" not in event, "obsolete issue context field")
+        if event["event"] == "hook":
+            continue
+        require(event.get("run_id"), "worker event lacks generation: " + event["event"])
+        dispatches = [value for value in events[:index + 1] if value["event"] == "dispatch"
+                      and value.get("run_id") == event["run_id"]]
+        require(len(dispatches) == 1 and all(event[key] == dispatches[0][key]
+                                           for key in ("issue_id", "issue_identifier")),
+                "issue event lost dispatched context: " + event["event"])
+        if event["event"] in SESSION_EVENTS:
+            require(event.get("session_id"), "session event lacks checked session identity")
+        if event["event"] != "worker_closed":
+            continue
+        sessions = [value for value in events[:index] if
+                    (value["event"] in SESSION_EVENTS or value["event"] == "unsupported_tool")
+                    and value.get("session_id") and value.get("issue_id") == event["issue_id"]
+                    and value.get("run_id") == event["run_id"]]
+        if sessions:
+            require(event.get("session_state") == "started" and
+                    event.get("session_id") == sessions[-1]["session_id"],
+                    "closed worker lost last observed session")
+        else:
+            require(event.get("session_state") == "not_started" and "session_id" not in event,
+                    "closed worker fabricated/missed unstarted session state")
+
+
+def check_fd_startup(binary, base):
+    root = base / "startup-fd-exhaustion"
+    root.mkdir()
+    workflow = root / "WORKFLOW.md"
+    replace(workflow, source(root, 1))
+    attempts = []
+    selected = None
+    for headroom in range(1, FD_HEADROOM_MAX + 1):
+        probe = root / f"doctor-{headroom}"
+        (probe / "control").mkdir(parents=True)
+        with running(binary, probe, ["doctor", str(workflow)], headroom) as process:
+            status = process.joined()
+            receipt = json.loads((probe / "fd.json").read_text())
+            require(receipt["free"] == headroom and receipt["optimize"] == sys.flags.optimize,
+                    "FD launcher did not establish requested budget/mode")
+            attempts.append({"headroom": headroom, "doctor_status": status,
+                             "receipt": str(probe.relative_to(root) / "fd.json")})
+            if status == 0:
+                selected = headroom
+                break
+    require(selected is not None, "no doctor startup within bounded descriptor calibration")
+    service = root / "service"
+    (service / "control").mkdir(parents=True)
+    with running(binary, service, arguments(workflow, "direct"), selected) as process:
+        status = process.joined()
+        receipt = json.loads((service / "fd.json").read_text())
+        require(receipt["free"] == selected, "doctor/service descriptor budget differs")
+        observed = process.events()
+        require(status != 0 and not process.output["stdout"], "exhausted service reported successful startup")
+        require(observed == [{"event": "host_startup_failure", "reason": "signal_setup"}],
+                "signal setup failure lacks fixed pre-output startup record")
+        require(bytes(process.output["stderr"]) == b"event=host_startup_failure reason=signal_setup\n",
+                "startup failure exposed raw error payload")
+    (root / "budget.json").write_text(json.dumps({
+        "attempts": attempts, "selected_headroom": selected,
+        "doctor_status": 0, "service_status": status,
+        "boundary": "controlled inherited fillers in isolated exec; doctor shares workflow and FD budget",
+    }, indent=2) + "\n")
+    for name in ("stdout.log", "stderr.log", "peer.json"):
+        (root / name).write_bytes((service / name).read_bytes())
 
 
 def assert_closed(root, process):
@@ -533,7 +617,7 @@ def check_service(binary, base, case, style="direct", mode="hold", selected=sign
                                 "continuation resent full task")
                     dispatches = process.event("dispatch")
                     require(len(dispatches) == 1 and dispatches[0].get("issue_id") == "opaque:service-A"
-                            and dispatches[0].get("identifier") == expected_id
+                            and dispatches[0].get("issue_identifier") == expected_id
                             and dispatches[0].get("run_id"), "dispatch lacks canonical identity/generation")
                     require(not process.event("forged"), "identifier forged an additional log record")
                     if provider_case == "omission":
@@ -713,6 +797,7 @@ def run(binary, base):
 
     record("missing-explicit", lambda: check_startup(binary, base, "missing-explicit", None))
     record("missing-default", lambda: check_startup(binary, base, "missing-default", None, "default"))
+    record("startup-fd-exhaustion", lambda: check_fd_startup(binary, base))
     for name, content, expected in (
             ("bad-yaml-startup", "---\n[broken\n---\nx\n", ()),
             ("bad-template-startup", lambda root: source(root, 1).rsplit("---\n", 1)[0] + "---\n{% if %}\n",

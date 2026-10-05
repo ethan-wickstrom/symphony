@@ -57,12 +57,27 @@ failures use fixed redacted diagnostics; unknown original defects retain their
 identity/backtrace. A failed sink cannot guarantee delivery of secondary records.
 Signal teardown occurs after the output scope closes; secondary bridge diagnostics
 cannot be delivered through that writer, but primary teardown defects fail the
-process. No synchronous stderr fallback can hold the scheduling domain.
+process. Before output callback entry, a signal-setup failure receives one fixed
+bounded host_startup_failure record after all acquired scopes close. The reporter
+preserves the original failure even if reporting fails. Once the callback has
+entered, or the sink has failed, no second writer or reporting retry is created.
+No synchronous stderr fallback can hold the scheduling domain.
 
 Records expose service start/readiness, dispatch, selected session/turn progress,
 hooks, workflow/tracker/attempt faults, shutdown and joined worker closure.
-Issue fields carry canonical checked IDs; run/session fields come from the actual
-observation. Whitespace, equals, backslash and non-ASCII bytes escape as `\xhh`.
+Issue fields are issue_id and issue_identifier. Worker/session/turn records also
+carry run_id. Hook identifiers come from their checked workspace reference.
+Worker closure uses the previous immutable projection only when both issue and
+run match. It retains the last observed session_id with session_state=started;
+an attempt without a session reports session_state=not_started and no session_id.
+Session IDs include thread and turn; continuation on the same thread changes the
+ID at turn notices.
+Paired secondary context likewise requires an exact generation. Unknown Worker/
+Retry generations retain checked opaque issue_id and generation with
+context=unavailable, without invented identifier/session fields. This exceptional
+host-port boundary is not a full-conformance claim. Runner notices are ordered and acknowledged;
+the projection's session guard is not a generic sequence-acceptance proof.
+Whitespace, equals, backslash and non-ASCII bytes escape as `\xhh`.
 Raw agent messages/stderr and arbitrary provider payloads never enter records.
 
 ## Evidence and limits
@@ -74,6 +89,20 @@ an actual JSONL peer process. Requests are validated semantically; process/cwd,
 prompt, environment, hooks and reap gates produce retained receipts. Normal and
 optimized Python runs have independent manifests, input hashes and runtime IDs.
 Linux/macOS CI runs the same harness and archives its evidence even on failure.
+
+The harness now has 25 cases. Controlled descriptor exhaustion first proves
+doctor startup succeeds with the same workflow and FD budget, then requires the
+service's fixed pre-output failure record and nonzero exit without service_started.
+Strict context checks cover issue_identifier, last-session closure and the
+no-session shell failure. Both defects failed before correction; targeted controls
+pass in _build/live-dispatch-review-green.log. All 25 scenarios pass normally and
+optimized in _build/service-cli-JWgykX; its independent-verification.json checks
+50 bounded logs, 30 peer-mode receipts, current inputs/binary and causal controls.
+Configured local coverage is complete through the combined full-check dependency
+run, corrected executable run and remaining check body. Exact replacement-head
+hosted evidence remains pending. Earlier 24-case receipts are historical evidence.
+The replacement run corrected a test oracle that considered only session_started
+and missed the continuation's new session ID; production closure was correct.
 
 These fixtures establish executable assembly behavior, not authenticated Codex
 compatibility, provider sandbox enforcement or real-process 1000-session capacity.
