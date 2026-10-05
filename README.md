@@ -36,8 +36,9 @@ seeded models and fuzz campaigns complement those tests.
 [Conformance](CONFORMANCE.md) records working behavior and remaining requirements.
 [Design](docs/design/README.md), [decisions](docs/decisions.md) and
 [slice evidence](docs/slice-2.md) explain the contracts, laws and validation.
-Authenticated Codex acceptance, the operator HTTP API and clean-host/static
-releases remain delivery targets.
+The [operator HTTP API](docs/design/status-api.md) is implemented on this branch;
+its local verification gates pass; hosted review is pending. Authenticated Codex acceptance and
+clean-host/static releases remain delivery targets.
 
 The [specification](SPEC.md) and [Elixir reference](elixir/README.md) retain source
 provenance; they are not evidence that this OCaml port conforms.

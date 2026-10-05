@@ -28,6 +28,8 @@ module type S = sig
 
   type registry
 
+  val server_port : t -> Http_port.t option
+
   val resolve :
     registry ->
     env:Environment.t ->
@@ -47,6 +49,7 @@ module Make (Tracker : Tracker.CONFIG) = struct
     prompt : string;
     file : Workflow_path.t;
     child : Environment.child;
+    port : Http_port.t option;
   }
 
   type readiness = Ready | Blocked of error
@@ -59,6 +62,7 @@ module Make (Tracker : Tracker.CONFIG) = struct
   let prompt_source t = t.prompt
   let file t = t.file
   let child_env t = t.child
+  let server_port t = t.port
 
   let equal a b =
     Scheduling_policy.equal a.scheduling b.scheduling
@@ -68,6 +72,9 @@ module Make (Tracker : Tracker.CONFIG) = struct
     && a.prompt = b.prompt
     && Workflow_path.display a.file = Workflow_path.display b.file
     && Environment.bindings a.child = Environment.bindings b.child
+    && Option.equal
+         (fun a b -> Http_port.number a = Http_port.number b)
+         a.port b.port
 
   let initial good = { good; validity = Ready }
 
@@ -118,7 +125,15 @@ module Make (Tracker : Tracker.CONFIG) = struct
     let* _ =
       Fields.sequence
         (List.map check_section
-           [ "tracker"; "polling"; "workspace"; "hooks"; "agent"; "codex" ])
+           [
+             "tracker";
+             "polling";
+             "workspace";
+             "hooks";
+             "agent";
+             "codex";
+             "server";
+           ])
     in
     let* kind =
       match Fields.get config [ "tracker"; "kind" ] with
@@ -160,6 +175,7 @@ module Make (Tracker : Tracker.CONFIG) = struct
       Result.map_error fields
         (Workspace_settings.parse ~env ~workflow_file:file config)
     in
+    let* port = Result.map_error fields (Server_settings.parse ~env config) in
     let prompt = Workflow_document.prompt document in
     let prompt = if prompt = "" then fallback else prompt in
     (* A reload cannot install prompt syntax that fails every future worker. *)
@@ -171,5 +187,5 @@ module Make (Tracker : Tracker.CONFIG) = struct
         (Template.compile ~file prompt)
     in
     let child = Environment.child env ~allow:allow_env in
-    Ok { scheduling; agent; workspace; tracker; prompt; file; child }
+    Ok { scheduling; agent; workspace; tracker; prompt; file; child; port }
 end

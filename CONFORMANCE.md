@@ -1,18 +1,15 @@
 # OCaml conformance
 
 Status: workflow/workspace/Linear slices, pure scheduling, the scoped Eio service,
-physical fake-session capacity and the closed Codex runner are merged through
-[PR #11](https://github.com/ethan-wickstrom/symphony/pull/11) (`5490eb3`).
-Reviewed head `2cbd893` and merged main have identical trees. Local gates and
-Linux/macOS PR/push CI pass; four raw boundary logs and all 16 capacity manifests
-were independently audited. The live-dispatch executable composes those boundaries;
-its acceptance receipts are tracked in [the worklog](docs/worklog.md). Hosted
-review corrections and all 25 replacement cases pass locally in both modes;
-combined configured local coverage is complete. Exact new-head hosted evidence
-remains pending.
+physical fake-session capacity, the closed Codex runner and live executable are
+merged through [PR #12](https://github.com/ethan-wickstrom/symphony/pull/12)
+(`40d6b63`). Local and exact-head Linux/macOS PR/push gates passed; the 25-case
+executable acceptance and retained artifact audits are recorded in
+[the worklog](docs/worklog.md). The new status API checkpoint is implemented;
+its local verification gates pass; exact-head hosted review remains pending.
 The historical macOS release profile passed physical closure/link checks with
 Crypto1.2.0. Current2.4.1 requires fresh release qualification. Clean-host
-macOS deployment, Linux musl, authenticated Codex acceptance and HTTP API remain pending.
+macOS deployment, Linux musl and authenticated Codex acceptance remain pending.
 The upstream Elixir implementation is reference material, not evidence for this port.
 Requirements refer to SPEC.md at `be10a1b79df723d6d7612b5651c8522704dafb2e`.
 Current protocol fixture: Codex 0.159.2. Stable core and experimental tool
@@ -39,8 +36,33 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | Configurable retry cap | 1, 4 | `scheduling_policy.ml`, `backoff.ml`; config/algebra models and `core_coverage_test.ml` exponential growth, current cap and more than 16 retries | Pure policy and Eio mock timers pass; native service pending |
 | Terminal/non-active reconciliation | 4, 5 | `orchestrator.ml`; binding-group reads, closed barrier, refreshed issue, stop disposition and stale completion cases in core/service models | Fenced service decisions, closed runner interruptions and executable preflight pass locally |
 | Terminal startup/transition cleanup | 2, 4 | `issue_lifecycle.ml`, `orchestrator.ml`; epoch-fenced startup, cleanup closure, original reference and absorbing Cleanup examples/models | Eio startup/cleanup barriers pass fake-port simulation; native service pending |
-| Required structured log context | 4, 6 | `Orchestrator.fault` retains checked current issue after release; `service_cli.ml` uses exact previous issue/run/session closure context and checked hook references; `service_cli_check.py` checks issue_identifier and started/not_started closure | Canonical records pass the 25-case local suite; unknown-generation host-port faults retain explicit partial context; hosted pending |
-| Operator-visible observability | 1–7 | `diagnostic.ml`, `ocaml/bin/cli.ml`, `workspace_cli.ml`; `cli_check.py`, `workspace_cli_check.py` file/key/remedy/redaction, missing/owned/busy/foreign/symlink inspection | Inspection and service logs implemented; HTTP snapshots/API pending |
+| Required structured log context | 4, 6 | `Orchestrator.fault` retains checked current issue after release; `service_cli.ml` uses exact previous issue/run/session closure context and checked hook references; `service_cli_check.py` checks issue_identifier and started/not_started closure | Canonical records pass the 25-case local/hosted suite; unknown-generation host-port faults retain explicit partial context |
+| Operator-visible observability | 1–7 | `diagnostic.ml`, inspection CLIs, `snapshot.ml`, `status_surface.ml`, `service_query.ml`, `native_status.ml`; inspection, status/model/query and executable route tests | Fresh status/API passes local normal/optimized executable acceptance; hosted review pending |
+
+## Status API checkpoint
+
+`Core.snapshot` projects one fresh paired sample without changing scheduling.
+Checked immutable `Snapshot.t` retains current issue, exact runtime/usage, acquired
+session/workspace facts, retries and cleanup. `Status_source.S` returns four typed
+unavailability causes; query or projection failure cannot kill the owner.
+`Status_surface` renders baseline state/detail/refresh routes and escaped HTML;
+400/404/405/503 are distinct; 405 carries exact route methods, malformed refresh
+bodies queue nothing, and JSON composition/HTML output remain bounded values.
+The scoped loopback listener has explicit client/header/body/wire/deadline limits,
+and listener settings require restart. [Design and limits](docs/design/status-api.md).
+
+`status_test.ml` covers list-model ownership, exact numbers, nullable wall times,
+route authority, cleanup, escaped health fields, response overflow and 1,000
+checked rows. Local configured coverage passes through
+_build/status-full-check-2.log and status-remaining-check.log: 47 service cases,
+83 orchestration cases, 57 native lifecycle cases, 417 sources/39 controls, 17
+rejected clients and 80 unchanged CMIs per mode. Both modes pass 25 service and
+22 status CLI scenarios; native manifests record 274 source hashes. Codec67/42,
+capacity1/10/100/1000, release checks and seeded parser10000 pass. The status native
+corpus executes 256 public-loopback inputs. Receipts are in _build/status-cli-4EkDTA,
+service-cli-1FlOO5, native-evidence{,-optimized} and capacity-xkIUlG.
+Hosted review and browser inspection remain pending. Binary hashes are execution
+context, not attestation; fake peers do not prove authenticated Codex acceptance.
 
 ## Design evidence
 
@@ -222,8 +244,11 @@ input hashes, runtime digest, FD equivalence and causal controls. Both FD cases
 record limit64/headroom3, successful doctor then service123 with fixed early output.
 Configured local coverage is complete through live-dispatch-review-{full-check,
 service-cli,remaining-check}.log and formatting: passed native dependencies were
-not repeated after the oracle stopped the first full-check. Exact-head hosted
-audit remains pending.
+not repeated after the oracle stopped the first full-check. The exact-head hosted
+audit passed for Linux/macOS push and PR runs: 200 CLI cases, 120 peer acquisitions,
+224 lifecycle checks and 16 capacity manifests. PR #12 merged as 40d6b63 on
+2026-10-05 with an identical tree to reviewed 2b58097; receipts are retained in
+_build/live-dispatch-hosted-audit.json and live-dispatch-merge-receipt.json.
 The replacement run exposed a last-session oracle error: continuation turn notices
 change the thread/turn session ID. The oracle now follows all same-issue/run
 session/turn notices; no production correction was required. Failure receipts

@@ -5,6 +5,7 @@
 module type S = sig
   type config
   type instant
+  type clock_sample
   type tracker_request
   type tracker_reply
   type agent_request
@@ -152,6 +153,10 @@ module type S = sig
       binding, reference, pending ledger, epoch or acquired Path escapes.
       Reading changes no state; equal states/time yield equal observations. *)
 
+  val snapshot : sample:clock_sample -> state -> (Snapshot.t, string) result
+  (** One supplied monotonic/wall sample derives every current owner row,
+      duration and display timestamp. No read reloads or steps scheduling. *)
+
   val quiescent : state -> bool
   (** Exactly Shutting_down with no owner or pending resource obligation.
       Timer/watcher/interpreter switch drainage remains a separate Host law. *)
@@ -174,6 +179,7 @@ module Make
   S
     with type config = Config.t
      and type instant = Clock.instant
+     and type clock_sample = Clock.sample
      and type tracker_request = Tracker.request
      and type tracker_reply = Tracker.reply
      and type agent_request = Agent.request

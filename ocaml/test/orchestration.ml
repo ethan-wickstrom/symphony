@@ -10,6 +10,7 @@ let () =
       ("event core", Core_test.tests);
       ("core coverage", Core_coverage_test.tests);
       ("agent observation", Agent_observation_test.tests);
+      ("status surface", Status_test.tests);
     ];
   Printf.printf "\nproperty seed: %d\n%!" property_seed;
   if
@@ -17,6 +18,7 @@ let () =
       ~rand:(Random.State.make [| property_seed |])
       (Scheduler_algebra_test.properties @ Ownership_test.properties
      @ Run_plan_test.properties @ Lifecycle_test.properties
-     @ Core_property_test.properties @ Agent_observation_test.properties)
+     @ Core_property_test.properties @ Agent_observation_test.properties
+     @ Status_test.properties)
     <> 0
   then exit 1

@@ -42,6 +42,7 @@ module Make (Clock : Clock.PURE) (Agent : Agent_runner.PURE) : sig
     last_activity : Clock.instant option;
     usage : Usage.t;
     rate_limits : Json.t option;
+    workspace : string option;
   }
 
   val empty : Agent_settings.t -> t

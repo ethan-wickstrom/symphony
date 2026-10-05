@@ -124,14 +124,14 @@ let run ~fs ~net ~sink ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out
     out "]\n";
     Ok ()
   in
-  let serve filename ca_bundle =
+  let serve filename ca_bundle port =
     let* document = document filename in
     (* Runtime failures are already reported by the scoped output writer. *)
     let status =
       try
         match
-          Service_cli.run ~fs ~net ~sink ~clock ~runtime ~cwd ~ca_bundle ~io
-            ~env ~document
+          Service_cli.run ~fs ~net ~sink ~clock ~runtime ~cwd ~ca_bundle ~port
+            ~io ~env ~document
         with
         | Ok () -> Cmdliner.Cmd.Exit.ok
         | Error _ -> Cmdliner.Cmd.Exit.some_error
@@ -198,7 +198,22 @@ let run ~fs ~net ~sink ~clock ~runtime ~cwd ~env ~default_ca_bundle ~argv ~out
         const (fun file issue -> inspected (workspace file issue))
         $ file_arg $ issue_arg)
   in
-  let run_term = Cmdliner.Term.(const serve $ file_arg $ ca_arg) in
+  let port_arg =
+    let converter =
+      Cmdliner.Arg.Conv.make ~docv:"PORT" ~parser:Http_port.parse
+        ~pp:(fun formatter port ->
+          Format.fprintf formatter "%d" (Http_port.number port))
+        ()
+    in
+    Cmdliner.Arg.(
+      value
+      & opt (some converter) None
+      & info [ "port" ] ~docv:"PORT"
+          ~doc:
+            "Serve status on loopback. Zero selects an ephemeral port; \
+             overrides server.port.")
+  in
+  let run_term = Cmdliner.Term.(const serve $ file_arg $ ca_arg $ port_arg) in
   let run_command =
     Cmdliner.Cmd.make
       (Cmdliner.Cmd.info "run"

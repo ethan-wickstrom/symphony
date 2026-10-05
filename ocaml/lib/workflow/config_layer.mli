@@ -49,6 +49,9 @@ module type S = sig
 
   type registry
 
+  val server_port : t -> Http_port.t option
+  (** Initial listener setting; a reload does not hot-rebind the HTTP server. *)
+
   val resolve :
     registry ->
     env:Environment.t ->

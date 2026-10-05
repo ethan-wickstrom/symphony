@@ -820,8 +820,47 @@ module Make (Config : Config_layer.S) = struct
               (ready_matches failed (Some (error_text error))))
       errors
 
+  let listener_settings registry () =
+    Alcotest.(check (option int))
+      "extension disabled without port" None
+      (Option.map Http_port.number
+         (Config.server_port (configured registry "")));
+    List.iter
+      (fun number ->
+        let settings =
+          configured registry (Printf.sprintf "server:\n  port: %d\n" number)
+        in
+        Alcotest.(check (option int))
+          "checked listener port" (Some number)
+          (Option.map Http_port.number (Config.server_port settings)))
+      [ 0; 65535 ];
+    List.iter
+      (fun text -> ignore (rejected registry (base ^ text)))
+      [
+        "server: []\n";
+        "server:\n  port: -1\n";
+        "server:\n  port: 65536\n";
+        "server:\n  port: 1.5\n";
+        "server:\n  port: null\n";
+        "server:\n  port: $LINEAR_API_KEY\n";
+      ];
+    let good = configured registry "server:\n  port: 0\n" in
+    let bad = rejected registry (base ^ "server:\n  port: -1\n") in
+    let reload = Config.apply (Config.initial good) (Error bad) in
+    Alcotest.(check bool)
+      "invalid listener reload retains last good config" true
+      (Config.equal good (Config.effective reload));
+    Alcotest.(check bool)
+      "invalid listener reload blocks dispatch" true
+      (match Config.readiness reload with
+      | Config.Blocked _ -> true
+      | Config.Ready -> false)
+
   let tests ~registry =
     [
+      Alcotest.test_case
+        "optional listener validates and retains last good port" `Quick
+        (listener_settings registry);
       Alcotest.test_case "documented defaults and source identity" `Quick
         (defaults registry);
       Alcotest.test_case "local path expansion and workflow anchor" `Quick

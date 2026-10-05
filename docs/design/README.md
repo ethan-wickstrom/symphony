@@ -189,4 +189,10 @@ The [live-dispatch contract](live-dispatch.md) records direct/default CLI behavi
 one captured registry/environment, the existing scheduling owner, frozen attempt
 configuration, signal custody through output drainage and bounded non-suspending
 operator records. The executable acceptance uses real loopback TLS and an actual
-fake JSONL peer process. Authenticated Codex and HTTP status remain separate gates.
+fake JSONL peer process. Authenticated Codex remains a separate gate.
+
+The [status checkpoint](status-api.md) adds a fresh owner query, checked immutable
+snapshot, baseline JSON routes and escaped HTML. The scoped loopback listener is
+enabled by checked `server.port` or `--port`; zero requests an ephemeral port.
+Expected query/projection errors answer 503 without killing scheduling.
+Implementation is present; its replacement verification gates are pending.

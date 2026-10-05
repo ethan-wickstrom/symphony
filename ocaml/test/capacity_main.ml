@@ -3,6 +3,11 @@ module M = Capacity_measurements
 module Workload = Capacity_fixture
 module Cycle = Capacity_cycle
 
+let query_timeout =
+  match Milliseconds.parse "15000" with
+  | Ok value -> value
+  | Error _ -> failwith "invalid capacity query fixture timeout"
+
 let schema = 1
 let total_cycles = Workload.warmup_cycles + Workload.measured_cycles
 let worker_event_budget = 20
@@ -425,7 +430,8 @@ struct
     ignore (checkpoint ~sessions:Controller.custody.sessions "baseline" None);
     Controller.custody.origin <- Some (now Controller.custody.clock);
     Eio.Fiber.fork ~sw (fun () ->
-        let result = Host.run ~sw host ~controls Workload.config in
+        let run = Host.create_run ~sw host ~query_timeout in
+        let result = Host.run run ~controls Workload.config in
         Eio.Promise.resolve signal_joined result;
         S.notify Controller.controller);
     drive issues joined (fun () ->

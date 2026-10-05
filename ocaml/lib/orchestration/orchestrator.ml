@@ -3,6 +3,7 @@
 module type S = sig
   type config
   type instant
+  type clock_sample
   type tracker_request
   type tracker_reply
   type agent_request
@@ -147,6 +148,8 @@ module type S = sig
       binding, reference, pending ledger, epoch or acquired Path escapes.
       Reading changes no state; equal states/time yield equal observations. *)
 
+  val snapshot : sample:clock_sample -> state -> (Snapshot.t, string) result
+
   val quiescent : state -> bool
   (** Exactly Shutting_down with no owner or pending resource obligation.
       Timer/watcher/interpreter switch drainage remains a separate Host law. *)
@@ -202,6 +205,7 @@ struct
 
   type config = Config.t
   type instant = Clock.instant
+  type clock_sample = Clock.sample
   type tracker_request = Tracker.request
   type tracker_reply = Tracker.reply
   type agent_request = Agent.request
@@ -2149,6 +2153,205 @@ struct
       total_usage;
       latest_rate_limits = state.latest_rate_limits;
     }
+
+  let retry_error issue cause =
+    let message =
+      match cause with
+      | Life.Continuation -> None
+      | Life.No_slots -> Some "No available orchestrator slots"
+      | Life.Stall -> Some "Agent stalled"
+      | Life.Planning_failed _ -> Some "Workspace planning failed"
+      | Life.Refresh_failed _ -> Some "Tracker refresh failed"
+      | Life.Attempt_timed_out (Agent_runner.Response_deadline _) ->
+          Some "Agent response deadline expired"
+      | Life.Attempt_timed_out (Agent_runner.Turn_silence _) ->
+          Some "Agent turn deadline expired"
+      | Life.Attempt_failed failure ->
+          Some
+            (match failure with
+            | Agent_runner.Codex_not_found _ -> "Agent executable unavailable"
+            | Agent_runner.Invalid_workspace_cwd _ ->
+                "Workspace cwd unavailable"
+            | Agent_runner.Port_exit _ -> "Agent process exited"
+            | Agent_runner.Response_error _ -> "Agent response failed"
+            | Agent_runner.Turn_failed _ -> "Agent turn failed"
+            | Agent_runner.Turn_input_required _ -> "Agent requires input"
+            | Agent_runner.Template_error _ -> "Prompt rendering failed"
+            | Agent_runner.Workspace_error _ -> "Workspace operation failed"
+            | Agent_runner.Tracker_error _ -> "Tracker operation failed")
+    in
+    Option.map
+      (fun message ->
+        Diagnostic.make
+          ~site:
+            (Diagnostic.Issue
+               { id = Issue.id issue; identifier = Issue.identifier issue })
+          ~message ~remedy:"Wait for the retry or request a tracker refresh.")
+      message
+
+  type snapshot_scope = Running_scope | Stopping_scope
+
+  let snapshot ~sample (state : state) =
+    let ( let* ) = Result.bind in
+    let now = sample.Clock.monotonic in
+    let wall = Clock.wall_at sample in
+    let session observed =
+      match
+        ( observed.Observation.session,
+          observed.Observation.thread,
+          observed.Observation.turn,
+          observed.Observation.last_event )
+      with
+      | Some id, Some thread, Some turn, Some last_event ->
+          Result.map
+            (fun turn_count ->
+              {
+                Snapshot.id;
+                thread;
+                turn;
+                turn_count;
+                last_event;
+                last_message = observed.Observation.last_message;
+                last_event_at =
+                  Option.bind observed.Observation.last_activity wall;
+                tokens = observed.Observation.usage;
+              })
+            (Positive_count.parse
+               (Count.decimal observed.Observation.turn_count))
+      | _ -> Error "Incomplete canonical session projection"
+    in
+    let phase observed scope =
+      match observed.Observation.session with
+      | Some _ -> (
+          let* current = session observed in
+          match scope with
+          | Stopping_scope -> Ok (Snapshot.Stopping_session current)
+          | Running_scope -> (
+              match observed.Observation.phase with
+              | Agent_observation.Running -> Ok (Snapshot.Streaming current)
+              | Agent_observation.Turn_completed
+              | Agent_observation.Continuation_queued
+              | Agent_observation.Turn_answered ->
+                  Ok (Snapshot.Between_turns current)
+              | Agent_observation.Awaiting
+              | Agent_observation.Preparing
+              | Agent_observation.Workspace_ready
+              | Agent_observation.Rendering
+              | Agent_observation.Starting ->
+                  Error "Canonical preparation has a session"))
+      | None when scope = Stopping_scope -> Ok Snapshot.Stopping_before_session
+      | None -> (
+          match observed.Observation.phase with
+          | Agent_observation.Awaiting -> Ok Snapshot.Awaiting
+          | Agent_observation.Preparing -> Ok Snapshot.Preparing
+          | Agent_observation.Workspace_ready -> Ok Snapshot.Workspace_ready
+          | Agent_observation.Rendering -> Ok Snapshot.Rendering
+          | Agent_observation.Starting -> Ok Snapshot.Starting
+          | Agent_observation.Running
+          | Agent_observation.Turn_completed
+          | Agent_observation.Continuation_queued
+          | Agent_observation.Turn_answered ->
+              Error "Canonical active phase has no session")
+    in
+    let running owner run scope =
+      let issue = Life.issue owner in
+      let* observed =
+        match observation state (Issue.id issue) with
+        | Some value -> Ok (Observation.view value)
+        | None -> Error "Canonical worker has no observation"
+      in
+      let* phase = phase observed scope in
+      let request = Plan.request (Life.plan run) in
+      Ok
+        {
+          Snapshot.issue;
+          run_id = Agent.run_id request;
+          attempt = Agent.attempt request;
+          phase;
+          started_at = wall (Life.started run);
+          seconds_running = Clock.elapsed ~since:(Life.started run) ~until:now;
+          workspace = observed.Observation.workspace;
+        }
+    in
+    let retry owner value phase =
+      let issue = Life.issue owner in
+      {
+        Snapshot.issue;
+        retry_id = Life.retry_id value;
+        attempt = Life.attempt value;
+        phase;
+        error = retry_error issue (Life.cause value);
+      }
+    in
+    let row owner =
+      match owner with
+      | Life.Starting run ->
+          Result.map
+            (fun row -> Snapshot.Running row)
+            (running owner run Running_scope)
+      | Life.Active run ->
+          Result.map
+            (fun row -> Snapshot.Running row)
+            (running owner run Running_scope)
+      | Life.Stopping run ->
+          Result.map
+            (fun row -> Snapshot.Running row)
+            (running owner run Stopping_scope)
+      | Life.Waiting value ->
+          Ok
+            (Snapshot.Retrying
+               (retry owner value (Snapshot.Waiting (wall (Life.due value)))))
+      | Life.Refreshing value ->
+          Ok (Snapshot.Retrying (retry owner value Snapshot.Refreshing))
+      | Life.Parked value ->
+          Ok (Snapshot.Retrying (retry owner value Snapshot.Parked))
+      | Life.Cleaning _ -> Ok (Snapshot.Cleaning (Life.issue owner))
+    in
+    let* running, retrying, cleaning =
+      List.fold_left
+        (fun result owner ->
+          let* running, retrying, cleaning = result in
+          let* current = row owner in
+          Ok
+            (match current with
+            | Snapshot.Running value -> (value :: running, retrying, cleaning)
+            | Snapshot.Retrying value -> (running, value :: retrying, cleaning)
+            | Snapshot.Cleaning value -> (running, retrying, value :: cleaning)))
+        (Ok ([], [], []))
+        (owners state)
+    in
+    let projection = project ~now state in
+    let workflow_error =
+      match Config.readiness state.config with
+      | Config.Ready -> None
+      | Config.Blocked _ ->
+          Some
+            (Diagnostic.make
+               ~site:
+                 (Diagnostic.Workflow
+                    {
+                      file =
+                        Workflow_path.display
+                          (Config.file (Config.effective state.config));
+                      key = None;
+                      line = None;
+                    })
+               ~message:
+                 "Workflow configuration is invalid; dispatch is blocked."
+               ~remedy:"Correct the workflow before the next reload.")
+    in
+    (* Totals and rows share this sample; no display field can grant authority. *)
+    Snapshot.make
+      {
+        Snapshot.generated_at = sample.Clock.wall;
+        running = List.rev running;
+        retrying = List.rev retrying;
+        cleaning = List.rev cleaning;
+        tokens = projection.total_usage;
+        seconds_running = projection.total_runtime;
+        rate_limits = projection.latest_rate_limits;
+        workflow_error;
+      }
 
   let quiescent (state : state) =
     match state.stage with

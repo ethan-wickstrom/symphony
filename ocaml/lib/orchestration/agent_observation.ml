@@ -57,6 +57,7 @@ module Make (Clock : Clock.PURE) (Agent : Agent_runner.PURE) = struct
     last_message : string option;
     last_activity : Clock.instant option;
     rate_limits : Json.t option;
+    workspace : string option;
   }
 
   type view = {
@@ -71,6 +72,7 @@ module Make (Clock : Clock.PURE) (Agent : Agent_runner.PURE) = struct
     last_activity : Clock.instant option;
     usage : Usage.t;
     rate_limits : Json.t option;
+    workspace : string option;
   }
 
   let empty settings =
@@ -84,6 +86,7 @@ module Make (Clock : Clock.PURE) (Agent : Agent_runner.PURE) = struct
       last_message = None;
       last_activity = None;
       rate_limits = None;
+      workspace = None;
     }
 
   let phase = function
@@ -120,6 +123,7 @@ module Make (Clock : Clock.PURE) (Agent : Agent_runner.PURE) = struct
       last_activity = value.last_activity;
       usage;
       rate_limits = value.rate_limits;
+      workspace = value.workspace;
     }
 
   let session_agrees session thread turn =
@@ -289,9 +293,12 @@ module Make (Clock : Clock.PURE) (Agent : Agent_runner.PURE) = struct
             Result.map
               (fun next -> (next, Accepted, Usage.zero))
               (prepare value Initial Prepare "preparing")
-        | Agent.Workspace_ready _ ->
+        | Agent.Workspace_ready path ->
             Result.map
-              (fun next -> (next, Accepted, Usage.zero))
+              (fun (next : t) ->
+                ( { next with workspace = Some (Agent.Path.display path) },
+                  Accepted,
+                  Usage.zero ))
               (prepare value Prepare Ready "workspace_ready")
         | Agent.Rendering ->
             Result.map
