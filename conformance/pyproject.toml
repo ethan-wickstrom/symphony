@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "symphony-conformance"
+version = "0.1.0"
+description = "Portable Symphony fixtures, evidence collection, and offline judging"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = ["jsonschema==4.26.0", "graphql-core==3.3.0"]
+
+[project.scripts]
+symphony-conformance = "symphony_conformance.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+symphony_conformance = ["assets/**/*"]

@@ -7,17 +7,19 @@ import os
 from pathlib import Path
 import platform
 import re
-import selectors
 import signal
 import subprocess
 import sys
 import time
 
-import bounded_process
+from symphony_conformance.driver import capture
+from symphony_conformance.driver import process
+from symphony_conformance.driver.process import Cleanup, Process, Stdin
 
 
 SCHEMA = 1
 PHASES = ("baseline", "plateau", "steady", "joined")
+MAX_ACK_BYTES = sum(len(f"ACK {phase}\n".encode("ascii")) for phase in PHASES)
 SESSION_COUNTS = (1, 10, 100, 1000)
 MEMORY_KEYS = frozenset(("live_heap_bytes", "fiber_stack_bytes",
                          "reserved_heap_bytes", "allocated_bytes"))
@@ -39,14 +41,12 @@ MAX_STDOUT_BYTES = len(PHASES) * (MAX_LINE_BYTES + 1)
 MAX_STDERR_BYTES = 64 * 1024
 MAX_RSS_BYTES = 64 * 1024
 MAX_BINARY_BYTES = 256 * 1024 * 1024
+HASH_CHUNK_BYTES = 64 * 1024
 RSS_CEILING_BYTES = 128 * 1024 * 1024
-READ_CHUNK = 16 * 1024
-REAP_TIMEOUT = 5
 RSS_TIMEOUT = 2
 DEFAULT_TIMEOUT = 60
 MAX_TIMEOUT = 60
 POLL_INTERVAL = 0.01
-HANDLED_SIGNALS = (signal.SIGINT, signal.SIGTERM)
 SIGNAL_EXIT_BASE = 128
 BYTES_PER_KIB = 1024
 LINUX_RSS = (
@@ -55,45 +55,6 @@ LINUX_RSS = (
     f"data = source.read({MAX_RSS_BYTES + 1}); "
     "source.close(); sys.stdout.buffer.write(data)"
 )
-LAUNCHER = r"""
-import os
-import signal
-import sys
-
-# A live same-UID guard makes the final group signal meaningful on macOS,
-# where a group containing only zombies returns EPERM.
-previous = {signum: signal.signal(signum, signal.SIG_IGN)
-            for signum in (signal.SIGINT, signal.SIGTERM)}
-ready = b'guard-ready'
-reader, writer = os.pipe()
-if os.fork() == 0:
-    try:
-        os.close(reader)
-        for fd in (0, 1, 2):
-            os.close(fd)
-        os.write(writer, ready)
-        os.close(writer)
-        while True:
-            signal.pause()
-    except BaseException:
-        os._exit(1)
-
-os.close(writer)
-try:
-    if os.read(reader, len(ready)) != ready:
-        raise RuntimeError('capacity group guard failed before producer exec')
-finally:
-    os.close(reader)
-
-for signum, handler in previous.items():
-    signal.signal(signum, handler)
-for name in ('SIGPIPE', 'SIGXFZ', 'SIGXFSZ'):
-    signum = getattr(signal, name, None)
-    if signum is not None:
-        signal.signal(signum, signal.SIG_DFL)
-binary, sessions = sys.argv[1:]
-os.execv(binary, [binary, '--sessions', sessions])
-"""
 
 
 class Rejected(ValueError):
@@ -244,13 +205,13 @@ def rss(pid, timeout):
     else:
         reject("rss", "Resident-memory measurement requires Linux or macOS.")
     try:
-        result = bounded_process.run(
+        result = capture.run(
             argv, timeout=min(RSS_TIMEOUT, timeout), stdout_limit=MAX_RSS_BYTES,
             stderr_limit=MAX_RSS_BYTES, env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
         )
-    except (subprocess.SubprocessError, bounded_process.OutputLimit, OSError) as error:
+    except (subprocess.SubprocessError, capture.OutputLimit, OSError) as error:
         rejection = Rejected("rss", "Required resident-memory sampler failed.")
-        for note in bounded_process.cleanup_notes(error):
+        for note in capture.cleanup_notes(error):
             rejection.add_note(note)
         raise rejection from error
     if result.returncode != 0 or result.stderr:
@@ -265,175 +226,101 @@ def check_rss(value):
         reject("rss", "Resident-memory sample exceeds the calibrated absolute ceiling.")
 
 
-def require_waitid():
-    names = ("P_PID", "WEXITED", "WNOHANG", "WNOWAIT")
-    if not callable(getattr(os, "waitid", None)) or any(not hasattr(os, name) for name in names):
-        reject("cleanup", "Capacity watchdog requires POSIX waitid with WNOWAIT.")
 
 
-def exited(child):
-    # Observe without reaping: the owned leader reserves the group ID.
-    return os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None
 
 
-def release(child, selector):
-    failures = []
-
-    def kill():
-        try:
-            os.killpg(child.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-
-    operations = [("kill", kill), ("reap", lambda: child.wait(timeout=REAP_TIMEOUT))]
-    operations += [(name, pipe.close) for name, pipe in (
-        ("stdin-close", child.stdin), ("stdout-close", child.stdout), ("stderr-close", child.stderr)
-    )]
-    if selector is not None:
-        operations.append(("selector-close", selector.close))
-    for stage, operation in operations:
-        try:
-            operation()
-        except BaseException:
-            failures.append((stage, *sys.exc_info()))
-    return failures
 
 
-def add_notes(error, failures, pid):
-    for stage, _, secondary, _ in failures:
-        error.add_note(f"Capacity cleanup failed: stage={stage} pid={pid} class={type(secondary).__name__}")
 
 
 def execute(binary, sessions, *, timeout=DEFAULT_TIMEOUT, sample=rss):
-    """Sample four acknowledged checkpoints; no service clock owns the watchdog.
-
-    The sole deadline covers admission, protocol, RSS subprocesses, drain and
-    normal exit. Failure cleanup has a separate bounded reap. Final group KILL
-    precedes the sole reap on success too, closing any owned descendants.
-    """
+    """Keep checkpoint/RSS policy above canonical process ownership."""
     if type(sessions) is not int or sessions not in SESSION_COUNTS or not 0 < timeout <= MAX_TIMEOUT:
         raise ValueError("capacity requires a supported session count and a timeout in (0, 60]")
-    require_waitid()
     binary = Path(binary)
     if not binary.is_absolute() or not binary.is_file() or not os.access(binary, os.X_OK):
         reject("binary", "Capacity producer must be an absolute executable file.")
 
     started = time.monotonic_ns()
     deadline = time.monotonic() + timeout
-    output, errors, line = bytearray(), bytearray(), bytearray()
-    checkpoints = []
-    sampled_rss = []
+    checkpoints, sampled_rss = [], []
     ready = None
-    selector = None
-    child = None
-    cleanup = None
-    pending = None
-
-    def collect(signum, _frame):
-        nonlocal pending
-        if pending is None:
-            pending = signum
+    owner = None
+    retained = None
 
     def remaining():
-        if pending == signal.SIGINT:
-            raise KeyboardInterrupt
-        if pending is not None:
-            raise SystemExit(SIGNAL_EXIT_BASE + pending)
+        if owner is not None and not owner.snapshot()["closed"]:
+            return owner.remaining()
         value = deadline - time.monotonic()
         if value <= 0:
             raise subprocess.TimeoutExpired([str(binary), "--sessions", str(sessions)], timeout)
         return value
 
     def evidence():
+        observed = owner.snapshot() if owner is not None else retained
+        observed = observed or {}
         return {"schema": SCHEMA, "sessions": sessions, "checkpoints": checkpoints,
-                "process_ready_ns": ready, "stdout": bytes(output), "stderr": bytes(errors),
-                "producer_pid": child.pid if child is not None else None,
-                "producer_status": child.returncode if child is not None else None,
-                "producer_reaped": child is not None and child.returncode is not None,
+                "process_ready_ns": ready, "stdout": observed.get("stdout", b""),
+                "stderr": observed.get("stderr", b""),
+                "producer_pid": observed.get("pid"), "producer_status": observed.get("returncode"),
+                "producer_reaped": observed.get("reaped", False),
+                "process_lifecycle": observed.get("lifecycle", ()),
+                "process_failures": observed.get("failures", ()),
                 "rss_ceiling_bytes": RSS_CEILING_BYTES,
                 "max_sampled_rss_bytes": max(sampled_rss, default=None)}
 
-    previous = {signum: signal.signal(signum, collect) for signum in HANDLED_SIGNALS}
     try:
-        remaining()
-        child = subprocess.Popen(
-            [sys.executable, "-I", "-c", LAUNCHER, str(binary), str(sessions)], cwd=binary.parent,
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            bufsize=0, start_new_session=True,
-        )
-        selector = selectors.DefaultSelector()
-        os.set_blocking(child.stdin.fileno(), False)
-        for pipe, name, limit, buffer in (
-            (child.stdout, "stdout", MAX_STDOUT_BYTES, output),
-            (child.stderr, "stderr", MAX_STDERR_BYTES, errors),
-        ):
-            os.set_blocking(pipe.fileno(), False)
-            selector.register(pipe, selectors.EVENT_READ, (name, limit, buffer))
-
-        while selector.get_map():
-            for key, _ in selector.select(min(POLL_INTERVAL, remaining())):
-                name, limit, buffer = key.data
-                available = limit - len(buffer)
-                chunk = os.read(key.fd, min(READ_CHUNK, available + 1))
-                if len(chunk) > available:
-                    reject("output", f"Producer {name} exceeds its byte bound.")
-                if not chunk:
-                    selector.unregister(key.fileobj)
-                    if name == "stdout" and (line or len(checkpoints) != len(PHASES)):
+        with Process([str(binary), "--sessions", str(sessions)], binary.parent,
+                     dict(os.environ), {"stdout": MAX_STDOUT_BYTES, "stderr": MAX_STDERR_BYTES},
+                     deadline, stdin=Stdin.PIPE, stdin_limit=MAX_ACK_BYTES, cleanup=Cleanup.KILL) as owner:
+            cursor = 0
+            for phase in PHASES:
+                while True:
+                    observed = owner.pump(min(POLL_INTERVAL, remaining()))
+                    line = observed["stdout"][cursor:]
+                    if b"\n" in line:
+                        break
+                    if len(line) > MAX_LINE_BYTES:
+                        reject("protocol", "Producer checkpoint line exceeds its byte bound.")
+                    if "stdout" in observed["eof"]:
                         reject("protocol", "Producer closed stdout before four complete checkpoints.")
-                    continue
-                buffer.extend(chunk)
-                if name == "stderr":
-                    continue
-                line.extend(chunk)
-                while b"\n" in line:
-                    raw, _, tail = line.partition(b"\n")
-                    if tail:
-                        reject("protocol", "Producer pipelined bytes beyond an unacknowledged checkpoint.")
-                    line = bytearray(tail)
-                    if len(checkpoints) == len(PHASES):
-                        reject("protocol", "Producer emitted stdout after the joined checkpoint.")
-                    phase = PHASES[len(checkpoints)]
-                    record = read_record(raw, phase=phase, sessions=sessions)
-                    if checkpoints and record["memory"]["allocated_bytes"] < checkpoints[-1]["memory"]["allocated_bytes"]:
-                        reject("memory", "Lifetime allocation bytes reversed across checkpoints.")
-                    if ready is None:
-                        ready = time.monotonic_ns() - started
-                    if exited(child):
+                    if observed["returncode"] is not None:
                         reject("producer", "Producer exited before its RSS checkpoint was acknowledged.")
-                    resident = sample(child.pid, remaining())
-                    if integer(resident) and resident > 0:
-                        sampled_rss.append(resident)
-                    check_rss(resident)
-                    if phase in ("plateau", "steady") and resident < checkpoints[0]["rss_bytes"]:
-                        reject("rss", "Active RSS is below the preallocated-workload baseline.")
-                    remaining()
-                    try:
-                        early = os.read(child.stdout.fileno(), 1)
-                    except BlockingIOError:
-                        early = None
-                    if early is not None:
-                        reject("protocol", "Producer advanced or closed stdout before its acknowledgement.")
-                    checkpoints.append({**record, "rss_bytes": resident})
-                    ack = f"ACK {phase}\n".encode("ascii")
-                    if os.write(child.stdin.fileno(), ack) != len(ack):
-                        reject("protocol", "Producer acknowledgement was incomplete.")
-                if len(line) > MAX_LINE_BYTES:
-                    reject("protocol", "Producer checkpoint line exceeds its byte bound.")
+                raw, _, tail = line.partition(b"\n")
+                if tail:
+                    reject("protocol", "Producer pipelined bytes beyond an unacknowledged checkpoint.")
+                cursor = len(observed["stdout"])
+                record = read_record(raw, phase=phase, sessions=sessions)
+                if checkpoints and record["memory"]["allocated_bytes"] < checkpoints[-1]["memory"]["allocated_bytes"]:
+                    reject("memory", "Lifetime allocation bytes reversed across checkpoints.")
+                if ready is None:
+                    ready = time.monotonic_ns() - started
+                if observed["returncode"] is not None:
+                    reject("producer", "Producer exited before its RSS checkpoint was acknowledged.")
+                resident = sample(observed["pid"], remaining())
+                if integer(resident) and resident > 0:
+                    sampled_rss.append(resident)
+                check_rss(resident)
+                if phase in ("plateau", "steady") and resident < checkpoints[0]["rss_bytes"]:
+                    reject("rss", "Active RSS is below the preallocated-workload baseline.")
 
-        while not exited(child):
-            time.sleep(min(POLL_INTERVAL, remaining()))
-        remaining()
-        if errors:
-            reject("producer", "Producer emitted stderr.")
-        cleanup = release(child, selector)
-        selector = None
-        if cleanup:
-            _, _, error, traceback = cleanup[0]
-            add_notes(error, cleanup, child.pid)
-            raise error.with_traceback(traceback)
-        if child.returncode != 0:
-            reject("producer", "Producer exited with a nonzero status.")
+                observed = owner.pump()
+                if len(observed["stdout"]) != cursor or "stdout" in observed["eof"]:
+                    reject("protocol", "Producer advanced or closed stdout before its acknowledgement.")
+                if observed["returncode"] is not None:
+                    reject("producer", "Producer exited before its RSS checkpoint was acknowledged.")
+                checkpoints.append({**record, "rss_bytes": resident})
+                owner.write(f"ACK {phase}\n".encode("ascii"))
+
+            status = owner.join(remaining())
+            observed = owner.snapshot()
+            if len(observed["stdout"]) != cursor:
+                reject("protocol", "Producer emitted stdout after the joined checkpoint.")
+            if observed["stderr"]:
+                reject("producer", "Producer emitted stderr.")
+            if status != 0:
+                reject("producer", "Producer exited with a nonzero status.")
         remaining()
         result = evidence()
         result["rss_per_session"] = {
@@ -452,13 +339,16 @@ def execute(binary, sessions, *, timeout=DEFAULT_TIMEOUT, sample=rss):
         result["status"] = "passed"
         return result
     except BaseException as error:
-        if child is not None and cleanup is None:
-            add_notes(error, release(child, selector), child.pid)
+        retained = getattr(error, "_process_snapshot", None)
+        if isinstance(error, capture.OutputLimit):
+            rejected = Rejected("output", "Producer exceeded its independent byte bound.")
+            for note in getattr(error, "__notes__", ()):
+                rejected.add_note(note)
+            rejected._capacity_evidence = evidence()
+            raise rejected from error
         error._capacity_evidence = evidence()
         raise
-    finally:
-        for signum, handler in previous.items():
-            signal.signal(signum, handler)
+
 
 
 def digest_file(path):
@@ -466,7 +356,7 @@ def digest_file(path):
     total = 0
     with path.open("rb") as source:
         while True:
-            chunk = source.read(READ_CHUNK)
+            chunk = source.read(HASH_CHUNK_BYTES)
             if not chunk:
                 return digest.hexdigest()
             total += len(chunk)
@@ -516,8 +406,9 @@ def main():
         (args.out / f"{name}.log").write_bytes(data)
         result[f"{name}_sha256"] = hashlib.sha256(data).hexdigest()
     result["watchdog_sha256"] = digest_file(Path(__file__))
-    result["rss_capture_sha256"] = digest_file(Path(bounded_process.__file__))
-    result["launcher_sha256"] = hashlib.sha256(LAUNCHER.encode("utf-8")).hexdigest()
+    result["rss_capture_sha256"] = digest_file(Path(capture.__file__))
+    result["process_sources"] = {path.name: digest_file(path) for path in
+                                 (Path(capture.__file__), Path(process.__file__), process.SENTINEL)}
     result["producer_sha256"] = producer_digest
     result["platform"] = {"sys_platform": sys.platform, "platform": platform.platform(),
                           "machine": platform.machine(), "processor": platform.processor(),

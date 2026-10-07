@@ -76,37 +76,47 @@ type identity = Matching | Wrong_name | Rsa_signed | Rsa_zero | Rsa_one
 type closure = Close_reply | Await_close
 type reply = Wire of string list * closure | Silent
 
-let pem cwd name =
+let private_pem cwd name =
   let directory = Eio.Path.( / ) cwd "fixtures/tls" in
   Eio.Path.load (Eio.Path.( / ) directory name)
 
+let shared_pem fs name =
+  let directory = Sys.getenv "SYMPHONY_TEST_TLS_DIRECTORY" in
+  if Filename.is_relative directory then
+    Alcotest.fail "Shared TLS directory must be absolute";
+  Eio.Path.load (Eio.Path.( / ) (Eio.Path.( / ) fs directory) name)
+
 type anchors = Trusted | Unrelated | Rsa_trusted
 
-let trust cwd anchors =
-  let name =
+let trust ~fs cwd anchors =
+  let certificate =
     match anchors with
-    | Trusted -> "ca.pem"
-    | Unrelated -> "other-ca.pem"
-    | Rsa_trusted -> "rsa-ca.pem"
+    | Trusted -> shared_pem fs "ca.pem"
+    | Unrelated -> private_pem cwd "other-ca.pem"
+    | Rsa_trusted -> private_pem cwd "rsa-ca.pem"
   in
-  succeeded (Http.trust ~pem:(pem cwd name))
+  succeeded (Http.trust ~pem:certificate)
 
-let server_config cwd identity =
+let server_config ~fs cwd identity =
   let certificate, key =
     match identity with
-    | Matching -> ("server.pem", "server.key")
-    | Wrong_name -> ("wrong-host.pem", "wrong-host.key")
-    | Rsa_signed -> ("rsa-signed.pem", "server.key")
-    | Rsa_zero -> ("rsa-signature-0.pem", "server.key")
-    | Rsa_one -> ("rsa-signature-1.pem", "server.key")
+    | Matching -> (shared_pem fs "server.pem", shared_pem fs "server.key")
+    | Wrong_name ->
+        (private_pem cwd "wrong-host.pem", private_pem cwd "wrong-host.key")
+    | Rsa_signed ->
+        (private_pem cwd "rsa-signed.pem", shared_pem fs "server.key")
+    | Rsa_zero ->
+        (private_pem cwd "rsa-signature-0.pem", shared_pem fs "server.key")
+    | Rsa_one ->
+        (private_pem cwd "rsa-signature-1.pem", shared_pem fs "server.key")
   in
   let chain =
-    match X509.Certificate.decode_pem_multiple (pem cwd certificate) with
+    match X509.Certificate.decode_pem_multiple certificate with
     | Ok chain -> chain
     | Error (`Msg message) -> Alcotest.fail message
   in
   let key =
-    match X509.Private_key.decode_pem (pem cwd key) with
+    match X509.Private_key.decode_pem key with
     | Ok key -> key
     | Error (`Msg message) -> Alcotest.fail message
   in
@@ -169,7 +179,7 @@ let with_server runtime ~identity ~anchors ~limits ~reply run =
   Eio_posix.run (fun host ->
       let net = Eio.Stdenv.net host in
       let cwd = Eio.Stdenv.cwd host in
-      let trust = trust cwd anchors in
+      let trust = trust ~fs:(Eio.Stdenv.fs host) cwd anchors in
       let clock =
         Test_clock.System
           (Clock_posix.create
@@ -203,7 +213,9 @@ let with_server runtime ~identity ~anchors ~limits ~reply run =
               Eio.Switch.run (fun server_sw ->
                   let socket, _ = Eio.Net.accept ~sw:server_sw listener in
                   match
-                    Tls_eio.server_of_flow (server_config cwd identity) socket
+                    Tls_eio.server_of_flow
+                      (server_config ~fs:(Eio.Stdenv.fs host) cwd identity)
+                      socket
                   with
                   | flow -> (
                       captured := Some (receive_request flow);
@@ -438,7 +450,7 @@ let defect runtime () =
       in
       let http =
         Http.create ~net:(Eio.Stdenv.net host) ~clock
-          ~trust:(trust (Eio.Stdenv.cwd host) Trusted)
+          ~trust:(trust ~fs:(Eio.Stdenv.fs host) (Eio.Stdenv.cwd host) Trusted)
           ~runtime ~limits:(limits ())
       in
       match Http.post http credential ~body with
@@ -473,7 +485,7 @@ let preflight runtime () =
       in
       let create limits =
         Http.create ~net:(Eio.Stdenv.net host) ~clock
-          ~trust:(trust (Eio.Stdenv.cwd host) Trusted)
+          ~trust:(trust ~fs:(Eio.Stdenv.fs host) (Eio.Stdenv.cwd host) Trusted)
           ~runtime ~limits
       in
       rejected
@@ -527,7 +539,8 @@ let replacement runtime () =
           in
           let http =
             Http.create ~net:(Eio.Stdenv.net host) ~clock
-              ~trust:(trust (Eio.Stdenv.cwd host) Trusted)
+              ~trust:
+                (trust ~fs:(Eio.Stdenv.fs host) (Eio.Stdenv.cwd host) Trusted)
               ~runtime ~limits:(limits ())
           in
           rejected (Http.post http credential ~body)))

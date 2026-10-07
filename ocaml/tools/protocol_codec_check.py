@@ -10,21 +10,24 @@ import platform
 import re
 import sys
 
+from symphony_conformance.assets import decode, load, resource
+from symphony_conformance.schema import Schema, formats
+
 
 PROTOCOL_VERSION = "0.159.2"
 JSONSCHEMA_VERSION = "4.26.0"
 DRAFT7 = "http://json-schema.org/draft-07/schema#"
 MAX_LINE_BYTES = 1024 * 1024
-FORMAT_BITS = {"int64": 64, "uint16": 16, "uint32": 32, "uint64": 64, "uint": 64}
-SCHEMA_DIRECTORY = Path(__file__).resolve().parents[1] / "protocol" / PROTOCOL_VERSION / "codec"
+FIXTURE_MANIFEST = Path(__file__).resolve().parents[1] / "protocol" / PROTOCOL_VERSION / "codec" / "manifest.json"
 RECORD_KEYS = frozenset({"name", "schema", "value"})
 EXPECTED_FIXTURES = 67
-EXPECTED_CONTROLS = 42
+EXPECTED_CONTROLS = 46
+NATIVE_WORD_BITS = 64
 MAX_FIXTURE_BYTES = MAX_LINE_BYTES * EXPECTED_FIXTURES
 STATUS_PASSED = "passed"
 STATUS_FAILED = "failed"
 CHECKER = Path(__file__).resolve()
-REQUIREMENTS = CHECKER.with_name("protocol_codec_requirements.lock")
+REQUIREMENTS = CHECKER.parents[2] / "conformance" / "requirements.lock"
 SCHEMA_RECORD_FORMAT = "sorted filename, NUL, raw-file SHA-256 hex, newline"
 ARTIFACT_NAMES = {
     "fixtures": "fixtures.jsonl",
@@ -38,21 +41,11 @@ class Rejected(ValueError):
     pass
 
 
-def distinct(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise Rejected("Duplicate JSON object key")
-        result[key] = value
-    return result
-
-
-def constant(_value):
-    raise Rejected("Nonstandard JSON numeric constant")
-
-
 def parse(raw):
-    return json.loads(raw, object_pairs_hook=distinct, parse_constant=constant)
+    try:
+        return decode(raw)
+    except ValueError as error:
+        raise Rejected(str(error)) from error
 
 
 def identity(path):
@@ -66,7 +59,10 @@ def evidence_paths(arguments):
     directory = arguments.evidence_dir.resolve()
     paths = {key: directory / name for key, name in ARTIFACT_NAMES.items()}
     protected = {CHECKER, REQUIREMENTS, arguments.exporter.resolve()}
-    protected.update(path.resolve() for path in arguments.schemas.glob("*.json"))
+    protected.add(FIXTURE_MANIFEST)
+    protected.add(Path(str(resource("protocol/manifest.json"))).resolve())
+    protected.update(Path(str(resource("protocol/schemas/" + name))).resolve()
+                     for name in load("protocol/manifest.json")["files"])
     if arguments.fixtures != "-":
         protected.add(Path(arguments.fixtures).resolve())
     if any(path.resolve() in protected for path in paths.values()):
@@ -139,46 +135,15 @@ def manifest(paths, arguments, consumed, counts, inputs):
     paths["manifest"].write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
-def references(value):
-    if isinstance(value, dict):
-        reference = value.get("$ref")
-        if reference is not None and (not isinstance(reference, str) or not reference.startswith("#/")):
-            raise Rejected("Retained schemas must use local references")
-        format_name = value.get("format")
-        if format_name is not None and format_name not in FORMAT_BITS:
-            raise Rejected("Retained schema uses a format without an explicit checker")
-        for child in value.values():
-            references(child)
-    elif isinstance(value, list):
-        for child in value:
-            references(child)
-
-
-def formats(FormatChecker):
-    checker = FormatChecker()
-    bounds = {}
-    for name, bits in FORMAT_BITS.items():
-        signed = name.startswith("int")
-        minimum = -(1 << (bits - 1)) if signed else 0
-        maximum = (1 << (bits - 1)) - 1 if signed else (1 << bits) - 1
-        bounds[name] = (minimum, maximum)
-        # Draft-7 formats need explicit checkers; Python integers retain all bits.
-        checker.checks(name)(
-            lambda value, low=minimum, high=maximum:
-                value is None or type(value) is int and low <= value <= high
-        )
-    return checker, bounds
-
-
-def schemas(directory, Draft7Validator, checker):
-    manifest = parse((directory / "manifest.json").read_bytes())
+def schemas():
+    manifest = parse(FIXTURE_MANIFEST.read_bytes())
     if not isinstance(manifest, dict):
         raise Rejected("Consumed schema manifest must be an object")
     if manifest.get("version") != "codex-cli " + PROTOCOL_VERSION:
         raise Rejected("Consumed schema manifest has the wrong Codex version")
     if manifest.get("profile") != "stable (no --experimental)":
         raise Rejected("Consumed schema manifest has the wrong protocol profile")
-    if manifest.get("native_word_bits") != FORMAT_BITS["uint"]:
+    if manifest.get("native_word_bits") != NATIVE_WORD_BITS:
         raise Rejected("Consumed schema manifest has the wrong native integer width")
     validator = manifest.get("validator")
     if not isinstance(validator, dict) or validator.get("version") != JSONSCHEMA_VERSION:
@@ -194,31 +159,40 @@ def schemas(directory, Draft7Validator, checker):
         raise Rejected("Consumed schema inventory disagrees with fixture inventory")
     if len(expected) != EXPECTED_FIXTURES:
         raise Rejected("Consumed schema manifest has the wrong fixture count")
+    canonical = load("protocol/manifest.json")
+    oracle = Schema()
+    # Verify the entire generated corpus, including schemas unused by the OCaml codec.
+    for name in canonical["files"]:
+        oracle.validator(name)
+    bundle_records = "".join(name + "\0" + canonical["files"][name] + "\n"
+                             for name in sorted(canonical["files"]))
+    if hashlib.sha256(bundle_records.encode()).hexdigest() != canonical["bundle_sha256"]:
+        raise Rejected("Canonical protocol bundle aggregate mismatch")
+
     validators = {}
     for name, digest in hashes.items():
         if Path(name).name != name or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
             raise Rejected("Consumed schema manifest has an invalid filename or digest")
-        raw = (directory / name).read_bytes()
-        if hashlib.sha256(raw).hexdigest() != digest:
+        if canonical["files"].get(name) != digest:
             raise Rejected("Consumed schema hash mismatch: " + name)
-        schema = parse(raw)
-        if schema.get("$schema") != DRAFT7:
+        validator = oracle.validator(name)
+        if validator.schema.get("$schema") != DRAFT7:
             raise Rejected("Consumed schema uses an unexpected draft: " + name)
-        references(schema)
-        Draft7Validator.check_schema(schema)
-        validators[name] = Draft7Validator(schema, format_checker=checker)
+        validators[name] = validator
     records = "".join(name + "\0" + hashes[name] + "\n" for name in sorted(hashes))
     consumed = {
-        "directory": str(directory.resolve()),
-        "manifest": identity(directory / "manifest.json"),
+        "directory": str(resource("protocol/schemas")),
+        "manifest": identity(Path(str(resource("protocol/manifest.json")))),
+        "fixture_manifest": identity(FIXTURE_MANIFEST),
         "files": hashes,
         "sha256": hashlib.sha256(records.encode("utf-8")).hexdigest(),
         "record_format": SCHEMA_RECORD_FORMAT,
+        "bundle": canonical,
         "provenance": {
             key: manifest.get(key)
             for key in ("version", "profile", "generator", "source", "validator", "bundle")
         },
-        "boundary": "Only retained consumed schemas are verified; upstream bundle metadata is recorded as declared",
+        "boundary": "All canonical generated schema bytes and their aggregate are verified; fixture expectations remain OCaml-specific",
     }
     return expected, validators, consumed
 
@@ -308,7 +282,6 @@ def controls(observed, validators, Draft7Validator, checker, bounds):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("fixtures", help="Codec exporter JSONL file, or - for stdin")
-    parser.add_argument("--schemas", type=Path, default=SCHEMA_DIRECTORY)
     parser.add_argument("--evidence-dir", type=Path, required=True)
     parser.add_argument("--exporter", type=Path, required=True)
     arguments = parser.parse_args()
@@ -318,7 +291,7 @@ def main():
             raise Rejected("Protocol codec schema checking requires Python >=3.11")
         paths = evidence_paths(arguments)
         retain_fixtures(arguments, paths["fixtures"])
-        from jsonschema import Draft7Validator, FormatChecker
+        from jsonschema import Draft7Validator
 
         if version("jsonschema") != JSONSCHEMA_VERSION:
             raise Rejected("Use the pinned protocol codec requirements environment")
@@ -327,15 +300,15 @@ def main():
             "requirements": identity(REQUIREMENTS),
             "exporter": identity(arguments.exporter),
         }
-        checker, bounds = formats(FormatChecker)
-        expected, validators, consumed = schemas(arguments.schemas, Draft7Validator, checker)
+        checker, bounds = formats()
+        expected, validators, consumed = schemas()
         with paths["fixtures"].open("rb") as stream:
             observed = fixtures(stream, expected, validators)
         negative_count = controls(observed, validators, Draft7Validator, checker, bounds)
         if negative_count != EXPECTED_CONTROLS:
             raise Rejected("Protocol codec schema check has the wrong negative-control count")
     except ModuleNotFoundError:
-        message = "Install tools/protocol_codec_requirements.lock in an isolated environment."
+        message = "Install conformance/requirements.lock and the conformance package in an isolated environment."
         if paths is not None:
             receipt(paths, STATUS_FAILED, message)
         parser.exit(1, message + "\n")

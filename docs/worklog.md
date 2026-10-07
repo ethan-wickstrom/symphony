@@ -62,40 +62,162 @@ capacity. Operator API, doctor/dry-run, module laws and adapter profiles ship.
 
 ## Current focus and next action
 
-Branch ethan/status-api adds fresh owner queries, checked immutable snapshots,
-JSON/HTML routes and an optional scoped loopback HTTP server. Status reads must
-not reload configuration, mutate scheduling state or reconnect to another run.
-Each new run has a single-use scoped source. Request cancellation retires only
-its own waiter; shutdown closes sources before physical drainage.
+[PR #13](https://github.com/ethan-wickstrom/symphony/pull/13) merged as
+806bbc8 on 2026-10-07 UTC. The reviewed c73a037 and merge have identical trees.
+The scoped status service, browser authority checks and startup listener settings
+passed local and Linux/macOS hosted gates. Fresh Codex review had no findings.
+Devin's retry arithmetic suggestion was declined against SPEC 1553–1569 and the
+retry lifecycle: these fields describe the current retry series, not historical
+worker launches. Browser inspection is complete. Receipts:
+`ocaml/_build/status-api-merge-receipt.json` and hosted audit evidence.
 
-- [x] Merge the reviewed live-dispatch checkpoint and verify tree identity.
-- [x] Audit reference routes and the missing owner-query boundary.
-- [x] Implement checked snapshots and one-sample owner projection.
-- [x] Implement bounded per-run query/refresh lifecycle and migrate callers.
-- [x] Implement pure JSON/HTML routes and joined native HTTP transport.
-- [x] Compose optional port/configuration into the actual CLI.
-- [x] Verify lifecycle, real HTTP behavior, formatting and configured gates.
-- [ ] Review, publish, audit exact-head hosted evidence and merge.
+Branch `ethan/conformance-harness` builds the accepted portable black-box layer.
+Its first case must use the public CLI, fake HTTPS tracker and schema-valid
+stdio peer through same-thread continuation, terminal reconciliation, all four
+hooks, workspace removal and joined shutdown. Sealed raw observations must replay
+without executing a candidate. Profiles translate public operations and logs;
+the fixed corpus and independent judge own expected behavior.
 
-The complete configured gate passes in status-review-full-check.log:
-47 service/83 orchestration/272 boundary cases, 58 native lifecycle cases, 417 sources/39
-controls, 17 rejected clients/80 CMIs per mode, codec67/42, capacity1/10/100/1000,
-release checks. Parser10000 passed before the review fixes. Both modes pass
-service25 and status23 scenarios; native source inventory274. Fresh pinned
-Elixir302/0/6 passes in status-review-elixir-all.log. Status CLI receipts
-are in _build/status-cli-AE0HA4. Bounded regressions failed before owner cancellation,
-unsolicited cancellation, failure precedence, diagnostic UTF-8 and malformed-body
-authority fixes. Review regressions first failed for browser authority and
-valid/invalid listener reloads. The corrected executable dispatches through
-listener-only edits while preserving the original listener; rejected browser
-requests grant zero handler authority. Native framing corpus256 passes.
-PR13 is published; corrected-head review and Linux/macOS push/PR audit are next.
+- [x] Prepare all 106 spec rows plus 12 supplemental rows; no portable pass claims.
+- [x] Regenerate and hash all 314 stable Codex 0.159.2 schema files.
+- [x] Extract canonical bounded process/capture ownership; initial nine controls
+  pass in normal and optimized Python.
+- [x] Implement offline inventory, protocol, lifecycle and report controls.
+- [x] Verify the public CLI lifecycle: twelve assertions pass; numeric usage is
+  unobservable. Scripted calibration passes all thirteen.
+- [x] Correct reproduced TLS admission, recorder closure, cancellation, nullable
+  schema formats, retained asset custody and quiet descendant verdict defects.
+  Final 90 controls pass normally and with assertions disabled, including
+  request/fixture grading, wire integrity, bounded inventory and marker races.
+- [x] Transfer shared schemas/TLS/lock and native/capacity/service ownership.
+- [x] Complete all nine independent fault calibrations in both Python modes.
+  Public lifecycle and scripted calibration replay identically from sealed bytes.
+- [x] Complete current receipt-reader controls and final wheel qualification.
+  Both modes reject 97 corrupted receipts, including raw unit-log corruption.
+  The final external wheel passes all eleven lifecycle/calibration cases per mode.
+- [x] Correct final review defects: absolute HTTP connection custody/deadlines
+  for tracker and collector; correlate replies by outstanding request occurrence.
+  All 90 controls and eleven cases per mode pass in conformance-dkmsfl.
+  The single-owner TLS probe rejects the old fixture after continued drip input.
+  Pinned Elixir and native custody/admission gates pass. Configured native,
+  capacity, codec, lifecycle, source, verification, release and seeded fuzz gates
+  pass through combined logs; the original full-check command stopped at defects
+  subsequently reproduced and corrected.
+- [x] Verify installed-wheel execution outside the checkout in both modes.
+  All eleven lifecycle/calibration cases per mode pass from the external env.
+- [x] Publish PR #14 and address five Codex/Copilot findings. Full predicate
+  validation rejects malformed hidden branches as candidate requests; codec
+  evidence cannot replace the canonical manifest; release docs require the
+  locked installed harness; host cancellation survives cleanup and sealing.
+  Regressions failed before fixes, including actual CLI SIGTERM returning zero.
+  The corrected CLI returns 143. Local `just check` passed with 101 portable
+  controls and eleven cases in each Python mode, plus configured native,
+  capacity, codec, lifecycle, source, verification and release gates.
+- [x] Remove the inherited reverse-DNS lookup from numeric fixture binding.
+  A deterministic regression failed in normal/optimized Python before the fix;
+  real HTTP response, metadata and joined listener closure now pass in both.
+  Failed child joins retain bounded capture and lifecycle notes before/after
+  cleanup. Budgets remain unchanged.
+  The affected installed package now passes all 102 controls in both modes.
+- [x] Verify numeric binding against exact-head macOS fixture subprocess timeouts.
+  Both push/PR portable steps pass at e46928cf7318; the PR matrix is green.
+- [x] Correct the scenario's premature terminal transition. Push Linux recorded
+  the second request before its ACK, then canceled the pending start. A delayed
+  ACK regression reproduces that ordering in both modes. Wait for the matching
+  ACK and the candidate's accepted public turn observation; keep verdicts strict.
+  Both delayed barriers fail before the fix and pass after it in both modes.
+- [x] Retain host signal custody through final sealing. The fresh review found
+  default SIGTERM handling restored after child closure. Both regression modes
+  reproduce an absent manifest and OS exit -15 during sealing. Restoration
+  failures also reproduce lost cancellation in the runner and generic drivers.
+  The fixed paths return 143, retain bounded notes and preserve sealed evidence.
+  All 108 controls and eleven lifecycle/calibration cases pass in both modes.
+  Full configured checks, external-wheel cases and 97 receipt-reader corruption
+  controls per mode also pass on the final source.
+- [x] Correct fresh review findings: classify output overflow as candidate failure,
+  enforce effective GraphQL selections and cover all seven schema numeric formats.
+  Output/numeric/projection controls pass in both modes; the failed verdict cites
+  its exact journal events. Linear's supported types/shapes follow its published
+  SDL; typed-variable and fragment regressions failed before correction.
+  The full 123-control gate and all eleven external-wheel cases pass per mode;
+  codec 67/46, native, service/status, capacity, source and release gates pass.
+  All 97 receipt-reader corruption controls pass per mode. Current evidence:
+  `ocaml/_build/conformance-linear-final-full-check.log` and reader JSON receipts.
+- [x] Correct four fresh review defects: nested GraphQL parser recursion,
+  recovery after the execution deadline, embedded fixture credentials and
+  verified exit before shutdown. Real HTTP/child regressions reproduce the
+  all four failure paths in both Python modes. Independent review found no
+  blocker; the full 129-control native/portable/release gauntlet passes.
+  Current log: `ocaml/_build/conformance-four-final-full-check-resumed.log`.
+  The installed external wheel passes eleven cases per mode; 97 receipt-reader
+  corruption controls pass per mode on the current receipts and raw logs.
+- [x] Correct ignored-SIGTERM recovery and oversized malformed diagnostics.
+  Actual timeout/overflow and 900 KiB observation regressions fail before fixes
+  and pass in both Python modes. Forced cleanup records actual reap/EOF proof
+  before its join; canonical cleanup errors and cancellation retain priority.
+  Raw capture supplies malformed records without oversized diagnostic copies.
+  Independent source reviews found no blocker. All 132 portable controls and
+  eleven lifecycle/calibration cases pass per mode in the fresh full-gate run.
+  The first full run stopped on an existing tracker body-expiry child timeout.
+  Isolated runs pass at 5.74 seconds; bounded stage diagnostics preserve deadlines.
+  The fresh full run passes that control in both modes. No root cause is claimed
+  for the earlier timeout; its failed log and exit receipt remain retained.
+  Full gauntlet: `ocaml/_build/conformance-forced-final-full-check-retry.log`.
+  The new external wheel passes all eleven cases per mode; both modes reject
+  all 97 receipt-reader corruptions using current receipts and raw logs.
+  Seeded 10,000-input boundaries pass. Pinned Elixir: 302 tests, zero failures,
+  six skips; formatting/lint/coverage/Dialyzer and PR body validation pass.
+- [ ] Publish, audit exact-head Linux/macOS evidence and merge.
+  Fresh review on 4857854 requires bounding malformed diagnostic count and encoded
+  normalized views, plus preserving candidate overflow during recovery TERM grace.
+  Accept before edits and reproduce all three before correction. Current hosted
+  evidence is superseded for merge; numeric implementation still waits.
+  All three regressions and atomic envelope rejection fail in both modes.
+  Shared bounded admission, exact omissions, raw framing and atomic validation
+  pass focused controls in both modes, including fragmented real pipe reads.
+  Snapshots retain ownership phases with separate verified native stream files; the new
+  native control fails before correction and passes after it in both modes.
+  Source review found reserved answer fields could still poison offline replay.
+  Shared admission/replay rejects them atomically; real controls pass both modes.
+  Actual SIGTERM during native stream persistence reproduced incomplete evidence;
+  outer signal custody preserves all writes and exit 143 in both modes.
+  Independent source review has no remaining blocker. Fresh full gauntlet passes:
+  142 portable controls and eleven cases per mode, native/service/status/capacity,
+  codec 67/46, source/lifecycle/verification/release, external wheel and 103
+  receipt-reader controls per mode. Serial seeded 10,000-input boundaries pass;
+  pinned Elixir has 302 tests, zero failures and six skips, with all other gates.
+  Logs: `ocaml/_build/conformance-admission-final-full-check.log`, external and
+  reader receipts, and `conformance-admission-final-fuzz-serial.log`.
+  Published 926d61e; fresh review requires four more corrections: malformed peer
+  readiness, aggregate tracker body evidence, GraphQL alias identity and pending
+  host cancellation during exception cleanup. Accepted before edits. Reproduce
+  each before correction; current head is superseded for merge qualification.
+  All four fresh findings reproduce in both modes. Peer readiness and all four
+  physical cancellation controls now pass in both modes; aliases pass real HTTPS
+  and replay. Provider quota preserves exact admitted bodies and omission counts;
+  the controlled 32-request flood counts expected quota transport closures.
+  Linux push/PR on 926d61e also fail on response-write BrokenPipe after candidate
+  SIGTERM/service_stopped and a final active poll. Retained evidence preserves all
+  other lifecycle assertions. Real TLS peer closure reproduces BrokenPipe fixture
+  failure in normal/optimized Python. Retain a bounded typed disconnect receipt;
+  genuine recorder/socket faults remain harness errors.
+  The corrected real TLS reset and six replay mutations pass both modes. All 23
+  tracker controls pass both modes; independent frozen source review has no
+  blocker. Pinned Elixir passes 302 tests, zero failures, six skips and all gates.
+  Frozen full gauntlet passes all 154 controls and eleven cases per mode, native,
+  service/status, capacity, codec 67/46, source, verification and release gates.
+  Serial 10,000-input fuzz and the isolated external wheel pass; all eleven
+  lifecycle/calibration cases pass per mode outside the checkout.
+  All 103 receipt-reader controls pass both modes on current receipts/raw logs.
+  Current qualification: publication, fresh review and exact new-head
+  Linux/macOS evidence before merge.
+  Current focus: fix, qualify, publish and merge. Numeric implementation waits.
 
-Root owns Core projection/composition and serializes executable gates. Independent
-agents own pure rendering, owner queries and native HTTP transport. Native Codex
-acceptance and release qualification remain separate boundaries. In-app Browser
-control restoration was rejected by automatic approval review under the browser
-restriction; browser inspection remains unverified pending authorization.
+Missing or unobservable evidence blocks complete core conformance. The public
+OCaml event log omits numeric usage totals; the baseline cannot require the
+optional HTTP extension. Native provider acceptance, release qualification and
+historical physical identity remain separate evidence boundaries. Root serializes
+all executable gates; independent agents own source-only modules and reviews.
 
 ## Remaining boundaries
 
@@ -114,11 +236,12 @@ service-retrospective,release-evidence,static-release-plan}.md.
 ## Steering and open questions
 
 Repeated acceptance authorizes recommendations, signatures, implementation,
-publication and green merges. The latest steer accepts all recommendations and continues with the status API
-after the merged live-dispatch checkpoint. Architectural debt,
+publication and green merges. The latest "Continue" resumes final portable
+harness qualification and publication. The next accepted slice exposes exact
+numeric usage in public CLI logs; implementation waits for this checkpoint merge.
+Architectural debt,
 module boundaries and risky failure modes remain ahead of polish. No decision is
-pending for implementation. Devin's hidden security finding requires its text or
-authorized in-app Browser inspection before merge; real provider trials require
+pending for implementation. PR13 review is complete; real provider trials require
 their own fixture scope.
 
 Only origin ethan-wickstrom/symphony is configured. Upstream links retain spec

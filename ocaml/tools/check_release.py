@@ -2,7 +2,6 @@
 
 import argparse
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -14,11 +13,7 @@ import sys
 import tempfile
 
 
-CAPTURE_SPEC = importlib.util.spec_from_file_location(
-    "symphony_bounded_process", Path(__file__).resolve().with_name("bounded_process.py")
-)
-CAPTURE = importlib.util.module_from_spec(CAPTURE_SPEC)
-CAPTURE_SPEC.loader.exec_module(CAPTURE)
+from symphony_conformance.driver import capture as CAPTURE
 
 
 PROFILE = "macos-arm64-26.0-sdk26.5"

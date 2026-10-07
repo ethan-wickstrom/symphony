@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 
+from symphony_conformance.assets import resource
 
 TOKEN = "fixture-linear-key-never-print"
 PROVIDER_SECRET = "provider-description-or-error-never-log"
@@ -19,6 +20,15 @@ ENDPOINT_SECRET = "endpoint-query-never-log"
 PAGE_SIZE = 50
 SERVER_TIMEOUT_SECONDS = 5
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "tls"
+TLS = Path(str(resource("tls")))
+
+
+def shared_tls(name):
+    return TLS / name
+
+
+def private_tls(name):
+    return FIXTURES / name
 
 
 def require(condition: bool, message: str) -> None:
@@ -144,7 +154,10 @@ def provider(responses: list[bytes], certificate: str = "server"):
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     server.daemon_threads = False
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(FIXTURES / f"{certificate}.pem", FIXTURES / f"{certificate}.key")
+    certificate_path, key_path = (
+        (shared_tls("server.pem"), shared_tls("server.key")) if certificate == "server"
+        else (private_tls(f"{certificate}.pem"), private_tls(f"{certificate}.key")))
+    context.load_cert_chain(certificate_path, key_path)
     server.socket = context.wrap_socket(server.socket, server_side=True,
                                        do_handshake_on_connect=False)
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01})
@@ -177,7 +190,8 @@ def run(binary: Path) -> None:
             )
             arguments = [str(binary), command, str(workflow)]
             if command == "tracker" and ca is not None:
-                arguments += ["--ca-bundle", str(FIXTURES / ca)]
+                bundle = shared_tls(ca) if ca == "ca.pem" else private_tls(ca)
+                arguments += ["--ca-bundle", str(bundle)]
             result = subprocess.run(arguments, cwd=root, env=env, capture_output=True,
                                     text=True, timeout=15)
             require(TOKEN not in result.stdout + result.stderr, "credential leaked")

@@ -146,11 +146,11 @@ class ProtocolTest(unittest.TestCase):
 
     def test_sampler_failures(self):
         failures = (subprocess.TimeoutExpired(["sample"], 1),
-                    GATE.bounded_process.OutputLimit("overflow"), OSError("missing"))
+                    GATE.capture.OutputLimit("overflow"), OSError("missing"))
         for platform in ("linux", "darwin"):
             for error in failures:
                 with patch.object(GATE.sys, "platform", platform), \
-                        patch.object(GATE.bounded_process, "run", side_effect=error), \
+                        patch.object(GATE.capture, "run", side_effect=error), \
                         self.subTest(platform=platform, error=type(error).__name__), \
                         self.assertRaises(GATE.Rejected):
                     GATE.rss(123, GATE.RSS_TIMEOUT)
@@ -159,7 +159,7 @@ class ProtocolTest(unittest.TestCase):
                            subprocess.CompletedProcess(["sample"], 1, b"1\n", b""),
                            subprocess.CompletedProcess(["sample"], 0, b"1\n", b"warning")):
                 with patch.object(GATE.sys, "platform", platform), \
-                        patch.object(GATE.bounded_process, "run", return_value=result), \
+                        patch.object(GATE.capture, "run", return_value=result), \
                         self.assertRaises(GATE.Rejected):
                     GATE.rss(123, GATE.RSS_TIMEOUT)
 
@@ -331,15 +331,15 @@ class ParentTest(unittest.TestCase):
     def test_primary_survives_cleanup(self):
         primary = RuntimeError("sample failed")
         secondary = RuntimeError("close failed")
-        release = GATE.release
+        close = GATE.capture.Capture.close
 
         def fail(_pid, _timeout):
             raise primary
 
-        def close(child, selector):
-            return release(child, selector) + [("selector-close", RuntimeError, secondary, None)]
+        def broken_close(reader):
+            return close(reader) + [("selector-close", RuntimeError, secondary, None)]
 
-        with patch.object(GATE, "release", close), self.assertRaises(RuntimeError) as raised:
+        with patch.object(GATE.capture.Capture, "close", broken_close), self.assertRaises(RuntimeError) as raised:
             self.run_producer(sample=fail)
         self.assertIs(primary, raised.exception)
         self.assertEqual(1, len(raised.exception.__notes__))
