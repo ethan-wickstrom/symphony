@@ -1,7 +1,7 @@
 """Validate and project queries against the fixed lifecycle tracker schema.
 
-Effective nodes.id, identifier, title and state.name paths must select their
-actual fields. GraphQL handles fragments, directives, aliases and field merging.
+Effective nodes.id, identifier, title and state.name paths select their schema
+fields independently of response aliases. GraphQL handles field execution.
 The fixture exposes one issue connection and retains a closed filter contract.
 """
 
@@ -90,7 +90,8 @@ def select(raw):
             values[name] = value_from_ast_untyped(definition.default_value)
 
     selected = []
-    observed = set()
+    observed = {}
+    schema_paths = {}
     empty = {"nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
     probe = {"nodes": [{"id": "probe-id", "identifier": "probe-identifier",
                         "title": "probe-title", "state": {"name": "probe-state"},
@@ -109,18 +110,35 @@ def select(raw):
         return probe
 
     def observe(source, info, **arguments):
-        path = tuple(info.path.as_list()[1:])
+        response_path = tuple(info.path.as_list())
+        if info.parent_type.name == "Query":
+            schema_paths[response_path] = ()
+            return default_field_resolver(source, info, **arguments)
+
+        parent = response_path[:-1]
+        schema_parent = (schema_paths[parent[:-1]] + (0,)
+                         if type(parent[-1]) is int else schema_paths[parent])
+        path = schema_parent + (info.field_name,)
+        schema_paths[response_path] = path
         identity = (info.parent_type.name, info.field_name)
         if _REQUIRED_FIELDS.get(path) == identity:
-            observed.add(path)
+            # Each effective nodes branch proves its own complete projection.
+            branch = response_path[1:2]
+            fields = observed.setdefault(branch, {})
+            fields.setdefault(path, response_path[1:])
         return default_field_resolver(source, info, **arguments)
 
     result = execute_sync(_SCHEMA, document, root_value={"issues": choose},
                           variable_values=variables, operation_name=operation_name,
                           field_resolver=observe, check_sync=True)
-    if result.errors or len(selected) != 1 or not _REQUIRED_FIELDS.keys() <= observed:
+    if (result.errors or len(selected) != 1 or not observed
+            or any(not _REQUIRED_FIELDS.keys() <= fields.keys() for fields in observed.values())):
         raise ValueError("Missing effective fixture projection")
     selection = selected[0]
+    selection["response_paths"] = [{"nodes": fields[("nodes",)],
+                                     "id": fields[("nodes", 0, "id")][2:],
+                                     "state_name": fields[("nodes", 0, "state", "name")][2:]}
+                                    for fields in observed.values()]
     if set(result.data) != {selection["response_key"]}:
         raise ValueError("Fixture supports one effective root field")
 

@@ -52,6 +52,93 @@ class Ownership(unittest.TestCase):
     def exited(self, owner):
         owner.join(WAIT_BUDGET)
 
+    def _late_cancel(self, number, primary, recorder_error=None):
+        source = (
+            "import signal, time\n"
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+            "print('ready', flush=True)\n"
+            f"time.sleep({FIXTURE_LIFETIME})\n"
+        )
+        delivered = []
+
+        def cancel(kind, fields):
+            if (kind == "group.cleanup" and fields.get("stage") == "signal"
+                    and fields.get("signal") == signal.SIGTERM and fields.get("result") == "sent"):
+                delivered.append(number)
+                os.kill(os.getpid(), number)
+                if recorder_error is not None:
+                    raise recorder_error
+
+        handler = signal.default_int_handler if number == signal.SIGINT else signal.SIG_DFL
+        baseline = signal.signal(number, handler)
+        error = None
+        try:
+            try:
+                with self.start(source, emit=cancel) as owner:
+                    owner.wait_for(lambda: owner.snapshot()["stdout"] == b"ready\n", WAIT_BUDGET)
+                    raise primary
+            except BaseException as caught:
+                error = caught
+        finally:
+            signal.signal(number, baseline)
+
+        observed = owner.snapshot()
+        self.assertEqual(delivered, [number])
+        self.assertTrue(observed["closed"] and observed["reaped"])
+        self.assertEqual(observed["eof"], ("stderr", "stdout"))
+        self.assertEqual(observed["returncode"], -signal.SIGKILL)
+        self.assertEqual(observed["stdout"], b"ready\n")
+        self.assertEqual(observed["stderr"], b"")
+        kills = [row for row in observed["lifecycle"] if row["kind"] == "group.cleanup"
+                 and row.get("stage") == "signal" and row.get("signal") == signal.SIGKILL]
+        self.assertEqual(len(kills), 1)
+        self.assertEqual(kills[0]["result"], "sent")
+        self.assertFalse(alive(observed["pid"]))
+        self.assertFalse(alive(observed["guard_pid"]))
+        with self.assertRaises(ChildProcessError):
+            os.waitpid(observed["pid"], os.WNOHANG)
+        self.assertIsNotNone(error)
+        self.assertEqual(error._process_snapshot, observed)
+        return error
+
+    def test_cleanup_sigterm(self):
+        error = self._late_cancel(signal.SIGTERM, PrimaryFault("body details must stay private"))
+        self.assertIsInstance(error, SystemExit)
+        self.assertEqual(error.code, capture.SIGNAL_EXIT_BASE + signal.SIGTERM)
+        notes = getattr(error, "__notes__", ())
+        self.assertIn("Process cleanup failed: stage=body class=PrimaryFault", notes)
+        self.assertFalse(any("body details" in note for note in notes))
+
+    def test_cleanup_sigint(self):
+        error = self._late_cancel(signal.SIGINT, PrimaryFault("body details must stay private"))
+        self.assertIsInstance(error, KeyboardInterrupt)
+        notes = getattr(error, "__notes__", ())
+        self.assertIn("Process cleanup failed: stage=body class=PrimaryFault", notes)
+        self.assertFalse(any("body details" in note for note in notes))
+
+    def test_primary_cancel_identity(self):
+        primary = KeyboardInterrupt("body cancellation")
+        error = self._late_cancel(signal.SIGTERM, primary)
+        self.assertIs(error, primary)
+        self.assertIn("Process cleanup failed: stage=signal-check class=SystemExit", getattr(error, "__notes__", ()))
+
+    def test_cleanup_cancel_identity(self):
+        cancellation = KeyboardInterrupt("recorder cancellation")
+        error = self._late_cancel(signal.SIGTERM, PrimaryFault("body details must stay private"), cancellation)
+        self.assertIs(error, cancellation)
+        notes = getattr(error, "__notes__", ())
+        self.assertIn("Process cleanup failed: stage=body class=PrimaryFault", notes)
+        self.assertIn("Process cleanup failed: stage=signal-check class=SystemExit", notes)
+        failures = error._process_snapshot["failures"]
+        self.assertEqual(failures, ({"stage": "term", "class": "KeyboardInterrupt"},))
+        recorder = [row for row in error._process_snapshot["lifecycle"]
+                    if row["kind"] == "capture.closed" and row.get("stage") == "recorder"]
+        self.assertEqual(len(recorder), 1)
+        self.assertEqual(recorder[0]["class"], "KeyboardInterrupt")
+        self.assertEqual(recorder[0]["result"], "failed")
+        self.assertEqual(recorder[0]["status"], "error")
+        self.assertFalse(any("body details" in note for note in notes))
+
     def test_streams_and_journal(self):
         events = []
         source = f"import os; os.write(1, b'O' * {STREAM_BOUND}); os.write(2, b'E' * {STREAM_BOUND})"

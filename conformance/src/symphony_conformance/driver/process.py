@@ -478,21 +478,24 @@ class Process:
             errors.append(("recorder", type(self._recorder_error), self._recorder_error, self._recorder_error.__traceback__))
             self._failure("recorder", self._recorder_error)
 
-        if primary is not None:
-            for stage, _, error, _ in errors:
-                primary.add_note(f"Process cleanup failed: stage={stage} class={type(error).__name__}")
-            primary._process_snapshot = self.snapshot()
-            return
         try:
             self._cancellation.check()
         except BaseException:
             errors.append(("signal-check", *sys.exc_info()))
-        if errors:
-            # Without a caller primary, the first cancellation wins cleanup defects.
-            _, _, error, traceback = next(
-                (failure for failure in errors if not isinstance(failure[2], Exception)), errors[0])
-            for stage, _, secondary, _ in errors:
-                if secondary is not error:
-                    BaseException.add_note(error, f"Process cleanup failed: stage={stage} class={type(secondary).__name__}")
-            error._process_snapshot = self.snapshot()
-            raise error.with_traceback(traceback)
+
+        failures = [("body", type(primary), primary, primary.__traceback__)] if primary is not None else []
+        failures.extend(errors)
+        if not failures:
+            return
+
+        # Preserve the first cancellation, including one collected while a
+        # caller exception unwinds; ordinary failures remain bounded notes.
+        _, _, error, traceback = next(
+            (failure for failure in failures if not isinstance(failure[2], Exception)), failures[0])
+        for stage, _, secondary, _ in failures:
+            if secondary is not error:
+                BaseException.add_note(error, f"Process cleanup failed: stage={stage} class={type(secondary).__name__}")
+        error._process_snapshot = self.snapshot()
+        if error is primary:
+            return
+        raise error.with_traceback(traceback)

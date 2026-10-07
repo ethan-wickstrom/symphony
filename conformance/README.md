@@ -36,6 +36,17 @@ fake marker and redact unrelated credentials.
 The tracker validates its supported GraphQL schema and returns selected fields.
 This case requires effective `nodes.id`, `identifier`, `title` and `state.name`.
 Fragments, directives and aliases preserve GraphQL selection semantics.
+Required schema fields are checked per effective nodes branch; replay follows
+their original response aliases.
+Provider traffic reserves 4 MiB and 2,048 events, including 1 KiB of collector
+envelope space per record and 64 KiB for limit, summary and closure receipts.
+Admission checks encoded headers, target and body, then reserves a maximal
+response before reading. Overbudget requests stop body admission and receive a
+bounded HTTP rejection. One limit receipt and exact final omission counts prevent
+a candidate pass; admitted wire bodies remain exact.
+Broken pipe, connection reset and TLS EOF during response writes retain a matched
+disconnect receipt. They leave fixture health intact and supply no response proof.
+Recorder failures and other socket errors still fail the harness.
 Queries beyond parser recursion limits receive a healthy fixture rejection.
 Supported type names follow [Linear's SDL](https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql).
 

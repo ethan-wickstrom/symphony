@@ -2,20 +2,26 @@ import base64
 import os
 import http.client
 import json
+import socket
 import ssl
+import struct
 from enum import Enum
 from http import HTTPStatus
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
 
+from symphony_conformance import runner
 from symphony_conformance.driver.process import Process
 from symphony_conformance.assets import load, resource
-from symphony_conformance.driver.journal import Journal
+from symphony_conformance.driver.journal import Journal, MAX_JOURNAL_BYTES
 from symphony_conformance.driver.tracker import Tracker
+from symphony_conformance.driver import tracker as driver
+from symphony_conformance.judge import judge, _provider
 
 CHILD_BUDGET = 6
 EXPIRY_BUDGET = 10
@@ -25,6 +31,7 @@ DIAGNOSTIC_TAIL = 2 * 1024
 DIAGNOSTIC_PHASES = 8
 DIAGNOSTIC_SCALAR = 128
 QUERY_DEPTH = 2048
+AGGREGATE_REQUESTS = 32
 ISSUE_SELECTION = "id identifier title state { name }"
 FILTER_QUERY = "query Pick($filter: IssueFilter!) { issues(first: 1, filter: $filter) { nodes { " + ISSUE_SELECTION + " } } }"
 OCAML_ISSUES_QUERY = """query SymphonyIssues($filter: IssueFilter!, $after: String, $pageSize: Int!) {
@@ -66,14 +73,10 @@ class TrackerTest(unittest.TestCase):
             "nodes { id identifier state { name } }",
             "nodes { id title state { name } }",
             "nodes { id identifier title state { id } }",
-            "nodes { id identifier title current: state { name } }",
-            "items: nodes { " + ISSUE_SELECTION + " }",
             "nodes @skip(if: true) { " + ISSUE_SELECTION + " }",
             "nodes { id identifier title state @skip(if: true) { name } }",
             "nodes { id identifier title state { name @include(if: false) } }",
-            "nodes { id identifier title state { value: name } }",
             "nodes { id: __typename identifier title state { name } }",
-            "nodes { id identifier: title title: identifier state { name } }",
             "nodes { id identifier title state: project { name: slugId } }",
             "nodes { ... on Issue { id identifier state { name } } }",
             "nodes { " + ISSUE_SELECTION + " unknown }",
@@ -146,6 +149,200 @@ class TrackerTest(unittest.TestCase):
             self.assertEqual(len(nodes), 1)
             self.assertEqual(nodes[0]["id"], corpus["issue_id"])
             self.assertEqual(nodes[0]["state"]["name"], corpus["terminal_state"])
+
+    def test_required_aliases(self):
+        corpus = load("corpus/lifecycle.json")
+        selections = [
+            ("items: nodes { key: id code: identifier caption: title current: state { value: name } }",
+             {"items": [{"key": corpus["issue_id"], "code": corpus["issue_identifier"],
+                          "caption": corpus["issue_title"],
+                          "current": {"value": corpus["terminal_state"]}}]}),
+            ("nodes { id identifier title current: state { name } }",
+             {"nodes": [{"id": corpus["issue_id"], "identifier": corpus["issue_identifier"],
+                          "title": corpus["issue_title"],
+                          "current": {"name": corpus["terminal_state"]}}]}),
+            ("nodes { id identifier title state { value: name } }",
+             {"nodes": [{"id": corpus["issue_id"], "identifier": corpus["issue_identifier"],
+                          "title": corpus["issue_title"],
+                          "state": {"value": corpus["terminal_state"]}}]}),
+            ("nodes { id identifier: title title: identifier state { name } }",
+             {"nodes": [{"id": corpus["issue_id"], "identifier": corpus["issue_title"],
+                          "title": corpus["issue_identifier"],
+                          "state": {"name": corpus["terminal_state"]}}]}),
+        ]
+        bodies = [{"query": "query Pick($filter: IssueFilter!) { chosen: issues(first: 1, filter: $filter) { "
+                             + selection + " } }",
+                   "variables": {"filter": {"id": {"in": [corpus["issue_id"]]}}}}
+                  for selection, _ in selections]
+        payloads = self.query_requests(bodies, HTTPStatus.OK, State.TERMINAL)
+        self.assertEqual(payloads, [{"data": {"chosen": expected}} for _, expected in selections])
+
+    def test_split_aliases(self):
+        selections = [
+            "one: nodes { id identifier } two: nodes { title state { name } }",
+            "one: nodes { id identifier title state { id } } two: nodes { state { name } }",
+            "items: nodes { key: id code: identifier caption: title current: state { value: name @skip(if: true) } }",
+            "items: nodes { key: __typename code: identifier caption: title current: state { value: name } }",
+            "items: nodes { key: id code: identifier caption: title current: project { value: slugId } }",
+        ]
+        bodies = [{"query": "{ issues(first: 1, filter: {}) { " + selection + " } }"}
+                  for selection in selections]
+        bodies.append({"query": "{ one: issues(first: 1, filter: {}) { nodes { id identifier } } "
+                                "two: issues(first: 1, filter: {id: {in: []}}) { nodes { title state { name } } } }"})
+        self.query_requests(bodies, HTTPStatus.BAD_REQUEST)
+
+    def test_alias_replay(self):
+        script = """
+import json
+import os
+from pathlib import Path
+import sys
+import urllib.request
+from symphony_conformance.assets import decode
+from symphony_conformance.control import Control, SELECTION, TRACKER_BODY_LIMIT, TRACKER_SECRET_NAME
+
+class AliasedControl(Control):
+    def _query(self, query, operation, variables):
+        query = query.replace("nodes {", "items: nodes {").replace(
+            SELECTION, "key: id code: identifier caption: title current: state { value: name }")
+        raw = json.dumps({"query": query, "operationName": operation, "variables": variables}).encode()
+        request = urllib.request.Request(self._plan["endpoint"], data=raw, method="POST",
+            headers={"Authorization": os.environ[TRACKER_SECRET_NAME], "Content-Type": "application/json"})
+        with self._opener.open(request, timeout=2) as response:
+            payload = decode(response.read(TRACKER_BODY_LIMIT + 1))
+        return [{"id": node["key"], "identifier": node["code"], "title": node["caption"],
+                 "state": {"name": node["current"]["value"]}}
+                for node in payload["data"]["chosen"]["items"]]
+
+path = Path(sys.argv[1])
+AliasedControl(decode(path.read_bytes()), path).run()
+"""
+        rows, report = self._run_candidate(script)
+        self.assertEqual(report["harness"], {"status": "pass", "errors": []})
+        self.assertEqual(report["case"]["status"], "pass")
+        responses = [row for row in rows if row["kind"] == "provider.response"]
+        self.assertTrue(responses)
+        for row in responses:
+            payload = json.loads(base64.b64decode(row["data"]["body"], validate=True))
+            projection = payload["data"]["chosen"]
+            self.assertIn("items", projection)
+            self.assertNotIn("nodes", projection)
+
+    def test_aggregate_body_budget(self):
+        script = """
+import http.client
+import json
+import os
+from pathlib import Path
+import ssl
+import sys
+from http import HTTPStatus
+from symphony_conformance.assets import decode
+from symphony_conformance.control import Control, SELECTION, TRACKER_SECRET_NAME
+from symphony_conformance.driver.tracker import MAX_BODY
+
+path = Path(sys.argv[1])
+plan = decode(path.read_bytes())
+Control(plan, path).run()
+body = {"query": "{ issues(first: 1, filter: {}) { nodes { " + SELECTION + " } } }", "padding": ""}
+body["padding"] = "x" * (MAX_BODY - len(json.dumps(body).encode()))
+raw = json.dumps(body).encode()
+assert len(raw) == MAX_BODY
+context = ssl.create_default_context(cafile=plan["ca"])
+counts = {"attempted": int(sys.argv[2]), "accepted": 0, "rejected": 0, "closed": 0}
+for _ in range(counts["attempted"]):
+    client = http.client.HTTPSConnection(plan["endpoint"].split("/")[2], timeout=2, context=context)
+    try:
+        client.request("POST", "/graphql", raw, {"Authorization": os.environ[TRACKER_SECRET_NAME]})
+        response = client.getresponse()
+        response.read()
+        if response.status == HTTPStatus.OK:
+            counts["accepted"] += 1
+        elif response.status == HTTPStatus.BAD_REQUEST:
+            counts["rejected"] += 1
+        else:
+            raise RuntimeError("Unexpected fixture status: " + str(response.status))
+    except (BrokenPipeError, ConnectionResetError, ssl.SSLEOFError, http.client.RemoteDisconnected):
+        # Header admission can close TLS before an eager body write completes.
+        counts["closed"] += 1
+    finally:
+        client.close()
+print(json.dumps({"event": "fixture_provider_budget", **counts}), flush=True)
+"""
+        rows, report = self._run_candidate(script, str(AGGREGATE_REQUESTS))
+        self.assertEqual(report["harness"], {"status": "pass", "errors": []})
+        self.assertEqual(report["case"]["status"], "fail")
+        limits = [row for row in rows if row["kind"] == "provider.evidence_limit"]
+        summaries = [row for row in rows if row["kind"] == "provider.evidence_summary"]
+        self.assertEqual(len(limits), 1)
+        self.assertEqual(len(summaries), 1)
+        omitted = summaries[0]["data"]["rejected_requests"]
+        self.assertIs(type(omitted), int)
+        self.assertGreater(omitted, 0)
+        from symphony_conformance.driver.tracker import MAX_BODY
+        bodies = [base64.b64decode(row["data"]["body"], validate=True)
+                  for row in rows if row["kind"] == "provider.request"]
+        retained = [body for body in bodies if len(body) == MAX_BODY]
+        self.assertEqual(len(retained) + omitted, AGGREGATE_REQUESTS)
+        self.assertTrue(retained)
+        probes = [row["data"] for row in rows if row["kind"] == "candidate.observation"
+                  and row["data"].get("event") == "fixture_provider_budget"]
+        self.assertEqual(len(probes), 1)
+        probe = probes[0]
+        self.assertEqual(set(probe), {"event", "attempted", "accepted", "rejected", "closed"})
+        self.assertTrue(all(type(probe[name]) is int and probe[name] >= 0
+                            for name in ("attempted", "accepted", "rejected", "closed")))
+        self.assertEqual(probe["attempted"], AGGREGATE_REQUESTS)
+        self.assertEqual(probe["accepted"] + probe["rejected"] + probe["closed"], AGGREGATE_REQUESTS)
+        self.assertEqual(probe["accepted"], len(retained))
+        self.assertEqual(probe["rejected"] + probe["closed"], omitted)
+        expected = {"query": "{ issues(first: 1, filter: {}) { nodes { " + ISSUE_SELECTION + " } } }",
+                    "padding": ""}
+        expected["padding"] = "x" * (MAX_BODY - len(json.dumps(expected).encode()))
+        self.assertEqual(retained, [json.dumps(expected).encode()] * len(retained))
+        failures = [item for item in report["case"]["assertions"] if item["status"] == "fail"]
+        self.assertTrue(any(limits[0]["seq"] in item["evidence_seq"] for item in failures), failures)
+
+    def _run_candidate(self, script, *arguments):
+        processes = []
+
+        class OwnedProcess(Process):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                processes.append(self)
+
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory) / "evidence"
+
+            def launch(_profile, _candidate, _workflow, _ca, plan):
+                optimized = ["-" + "O" * sys.flags.optimize] if sys.flags.optimize else []
+                return [sys.executable, *optimized, "-c", script, str(plan), *arguments]
+
+            with patch.object(runner.profiles, "launch", side_effect=launch), \
+                    patch.object(runner, "Process", OwnedProcess):
+                runner.run(bundle, "scripted")
+            manifest = json.loads((bundle / "manifest.json").read_text())
+            receipt = json.loads((bundle / "process.json").read_text())
+            rows = [json.loads(line) for line in (bundle / "events.jsonl").read_text().splitlines()]
+            snapshot = processes[0].snapshot()
+            self.assertTrue(manifest["completed"])
+            self.assertEqual(manifest["harness_errors"], [])
+            self.assertLessEqual((bundle / "events.jsonl").stat().st_size, MAX_JOURNAL_BYTES)
+            self.assertTrue(snapshot["closed"])
+            self.assertTrue(snapshot["reaped"])
+            self.assertEqual(snapshot["eof"], ("stderr", "stdout"))
+            self.assertTrue(receipt["closed"])
+            self.assertTrue(receipt["reaped"])
+            self.assertEqual(receipt["returncode"], 0,
+                             (bundle / "stderr.bin").read_bytes()[-DIAGNOSTIC_TAIL:].decode("utf-8", "replace"))
+            self.assertEqual(snapshot["failures"], ())
+            for pid in (snapshot["pid"], snapshot["guard_pid"]):
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(pid, 0)
+            closures = [row for row in rows if row["kind"] == "provider.closed"]
+            self.assertEqual(len(closures), 1)
+            self.assertEqual(closures[0]["data"], {"status": "ok", "errors": []})
+            return rows, judge(bundle)
 
     def test_linear_type_names(self):
         corpus = load("corpus/lifecycle.json")
@@ -356,7 +553,9 @@ class TrackerTest(unittest.TestCase):
             finally:
                 tracker.close()
                 journal.close()
-            self.assertEqual(len(journal.rows("provider.request")), FLOOD_REQUESTS + len(cases))
+            summaries = journal.rows("provider.evidence_summary")
+            omitted = summaries[0]["data"]["omitted_requests"] if summaries else 0
+            self.assertEqual(len(journal.rows("provider.request")) + omitted, FLOOD_REQUESTS + len(cases))
             self.assertEqual(journal.rows("provider.closed")[0]["data"]["status"], "ok")
 
     def test_bounded_recorder_errors(self):
@@ -390,6 +589,93 @@ class TrackerTest(unittest.TestCase):
                 tracker.close()
                 journal.close()
             self.assertEqual(journal.rows("provider.closed")[0]["data"]["status"], "error")
+
+    def test_closed_tls_client(self):
+        with tempfile.TemporaryDirectory() as directory:
+            corpus = load("corpus/lifecycle.json")
+            journal = Journal(Path(directory))
+            tracker = Tracker(corpus, journal, str(resource("tls/server.pem")),
+                              str(resource("tls/server.key")))
+            context = ssl.create_default_context(cafile=str(resource("tls/ca.pem")))
+            client = http.client.HTTPSConnection(tracker.endpoint.split("/")[2], timeout=2, context=context)
+            held, release, finished = (threading.Event() for _ in range(3))
+            original_select = driver.select
+            original_request = tracker._request
+
+            def select(raw):
+                selection = original_select(raw)
+                project = selection["project"]
+
+                def blocked(connection):
+                    held.set()
+                    if not release.wait(CHILD_BUDGET):
+                        raise TimeoutError("TLS regression projection was not released")
+                    return project(connection)
+
+                selection["project"] = blocked
+                return selection
+
+            def request(handler):
+                try:
+                    return original_request(handler)
+                finally:
+                    finished.set()
+
+            raw = json.dumps({"query": "{ issues(first: 1, filter: {}) { nodes { "
+                                      + ISSUE_SELECTION + " } } }"}).encode()
+            try:
+                with patch.object(driver, "select", select), patch.object(tracker, "_request", request):
+                    client.request("POST", "/graphql", raw, {"Authorization": corpus["fake_secret"]})
+                    self.assertTrue(held.wait(CHILD_BUDGET), "Tracker did not reach response projection")
+                    admitted = journal.rows("provider.request")
+                    self.assertEqual(len(admitted), 1)
+                    self.assertEqual(base64.b64decode(admitted[0]["data"]["body"], validate=True), raw)
+                    # Reset the actual TLS peer after admission and before response I/O.
+                    client.sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+                    client.sock.shutdown(socket.SHUT_RDWR)
+                    client.close()
+                    release.set()
+                    self.assertTrue(finished.wait(CHILD_BUDGET), "Tracker response handler did not finish")
+                self.assertEqual(tracker.errors(), [])
+            finally:
+                release.set()
+                client.close()
+                tracker.close()
+                journal.close()
+            disconnects = journal.rows("provider.disconnect")
+            self.assertEqual(len(disconnects), 1)
+            self.assertEqual(disconnects[0]["data"]["request_id"], admitted[0]["data"]["request_id"])
+            self.assertIn(disconnects[0]["data"]["error_type"],
+                          {"BrokenPipeError", "ConnectionResetError", "SSLEOFError"})
+            self.assertGreater(disconnects[0]["seq"], admitted[0]["seq"])
+            self.assertEqual(journal.rows("provider.response"), [])
+            self.assertEqual(journal.rows("provider.closed")[0]["data"], {"status": "ok", "errors": []})
+            rows = journal.rows()
+            requests, responses = _provider(rows)
+            self.assertEqual(set(requests), {admitted[0]["data"]["request_id"]})
+            self.assertEqual(responses, {})
+            for mutation in ("orphan", "duplicate", "unknown_error", "before_request", "after_closure", "response"):
+                with self.subTest(mutation=mutation):
+                    changed = json.loads(json.dumps(rows))
+                    disconnected = next(row for row in changed if row["kind"] == "provider.disconnect")
+                    if mutation == "orphan":
+                        disconnected["data"]["request_id"] += 1
+                    elif mutation == "duplicate":
+                        changed.append(json.loads(json.dumps(disconnected)))
+                    elif mutation == "unknown_error":
+                        disconnected["data"]["error_type"] = "TimeoutError"
+                    elif mutation == "before_request":
+                        disconnected["seq"] = admitted[0]["seq"]
+                    elif mutation == "after_closure":
+                        disconnected["seq"] = journal.rows("provider.closed")[0]["seq"] + 1
+                    else:
+                        payload = json.dumps({"data": {}}).encode()
+                        changed.append({"seq": disconnected["seq"], "kind": "provider.response", "data": {
+                            "request_id": disconnected["data"]["request_id"], "status": HTTPStatus.OK.value,
+                            "headers": [["Content-Type", "application/json"], ["Content-Length", str(len(payload))],
+                                        ["Connection", "close"]], "body": base64.b64encode(payload).decode("ascii")}})
+                    with self.assertRaises(ValueError):
+                        _provider(changed)
 
     def _child_note(self, error, phase, snapshot):
         try:

@@ -51,6 +51,7 @@ CONNECTION = "connection"
 TRANSFER_ENCODING = "transfer-encoding"
 JSON_MEDIA_TYPE = "application/json"
 CONNECTION_CLOSE = "close"
+_PROVIDER_CLOSURES = frozenset({"BrokenPipeError", "ConnectionResetError", "SSLEOFError"})
 
 # Coverage is deliberately partial: one happy lifecycle cannot prove every variant.
 COVERAGE = {
@@ -465,13 +466,21 @@ def _framing(headers, raw):
 def _provider(events):
     requests = {}
     responses = {}
+    disconnects = {}
     for event in events:
-        if event["kind"] not in {"provider.request", "provider.response"}:
+        if event["kind"] not in {"provider.request", "provider.response", "provider.disconnect"}:
             continue
         data = event["data"]
         item = data.get("request_id")
         if not isinstance(item, (str, int)) or isinstance(item, bool):
             raise ValueError("provider traffic lacks a request identity")
+        if event["kind"] == "provider.disconnect":
+            if set(data) != {"request_id", "error_type"} or data["error_type"] not in _PROVIDER_CLOSURES:
+                raise ValueError("invalid provider disconnect receipt")
+            if item in disconnects:
+                raise ValueError("duplicate provider disconnect identity")
+            disconnects[item] = event
+            continue
         raw = _base64(data.get("body"))
         collection = requests if event["kind"] == "provider.request" else responses
         if item in collection:
@@ -510,15 +519,47 @@ def _provider(events):
         raise ValueError("provider response has no admitted request")
     if any(event["seq"] <= requests[item][0]["seq"] for item, (event, _) in responses.items()):
         raise ValueError("provider response precedes its admitted request")
+    if disconnects:
+        closed = _of(events, "provider.closed")
+        if set(disconnects) - set(requests) or set(disconnects) & set(responses):
+            raise ValueError("provider disconnect has no unmatched admitted request")
+        if len(closed) != 1 or any(not requests[item][0]["seq"] < event["seq"] < closed[0]["seq"]
+                                   for item, event in disconnects.items()):
+            raise ValueError("provider disconnect is outside request ownership")
     return requests, responses
 
 
 def _tracker_check(events, corpus):
     requests, responses = _provider(events)
     terminal = _of(events, "control.terminal")
+    limits = _of(events, "provider.evidence_limit")
+    summaries = _of(events, "provider.evidence_summary")
     refresh = []
     result = []
     failures = []
+    if limits or summaries:
+        if len(limits) != 1 or len(summaries) != 1:
+            raise ValueError("missing or duplicate provider evidence bound receipt")
+        limit, summary = limits[0], summaries[0]
+        bounds = {"max_body_bytes", "max_requests", "max_record_bytes", "max_evidence_bytes", "max_evidence_events"}
+        if (set(limit["data"]) != bounds | {"request_id", "reason", "body_bytes_lower_bound"}
+                or any(not _integer(limit["data"].get(name)) for name in bounds | {"request_id", "body_bytes_lower_bound"})
+                or limit["data"]["request_id"] == 0
+                or limit["data"]["reason"] not in {"body_bytes", "requests", "record_bytes", "evidence_bytes", "evidence_events", "response_bytes"}):
+            raise ValueError("invalid provider evidence bound receipt")
+        counts = summary["data"]
+        if (set(counts) != {"requests", "admitted_requests", "omitted_requests", "rejected_requests"}
+                or any(not _integer(value) for value in counts.values())
+                or counts["admitted_requests"] != len(requests)
+                or counts["requests"] != counts["admitted_requests"] + counts["omitted_requests"]
+                or not counts["omitted_requests"] <= counts["rejected_requests"] <= counts["requests"]
+                or counts["requests"] < limit["data"]["request_id"]
+                or counts["rejected_requests"] == 0 or summary["seq"] <= limit["seq"]):
+            raise ValueError("invalid provider evidence omission summary")
+        closed = _of(events, "provider.closed")
+        if len(closed) != 1 or summary["seq"] >= closed[0]["seq"]:
+            raise ValueError("provider omission summary is outside owned closure")
+        failures.append("candidate provider traffic exceeded its evidence bound")
     for item, (event, body) in requests.items():
         data = event["data"]
         before = len(failures)
@@ -541,7 +582,10 @@ def _tracker_check(events, corpus):
         ids = selector.get("in")
         if item in responses and responses[item][0]["data"]["status"] == HTTPStatus.BAD_REQUEST:
             if len(failures) == before:
-                raise ValueError("fixture rejected a request without an observed candidate defect")
+                bounded = (limits and item == limits[0]["data"]["request_id"]
+                           and limits[0]["data"]["reason"] == "response_bytes")
+                if not bounded:
+                    raise ValueError("fixture rejected a request without an observed candidate defect")
             continue
         if ids != [corpus["issue_id"]] or not terminal or event["seq"] <= terminal[0]["seq"]:
             continue
@@ -550,18 +594,31 @@ def _tracker_check(events, corpus):
             continue
         response, payload = responses[item]
         projection = payload["data"].get(query["response_key"])
-        if not isinstance(projection, dict) or not isinstance(projection.get("nodes"), list):
-            raise ValueError("fixture response lacks the selected issue nodes")
-        nodes = projection["nodes"]
-        if any(not isinstance(node, dict) or not isinstance(node.get("id"), str)
-               or not isinstance(node.get("state"), dict) or not isinstance(node["state"].get("name"), str) for node in nodes):
-            raise ValueError("fixture emitted malformed issue nodes")
-        matches = [node for node in nodes if isinstance(node, dict) and node.get("id") == corpus["issue_id"]]
-        if any(node.get("state", {}).get("name") == corpus["terminal_state"] for node in matches):
+        if not isinstance(projection, dict):
+            raise ValueError("fixture response lacks the selected issue connection")
+        terminal_seen = False
+        for paths in query["response_paths"]:
+            nodes = projection.get(paths["nodes"][0])
+            if not isinstance(nodes, list):
+                raise ValueError("fixture response lacks the selected issue nodes")
+            for node in nodes:
+                identity, state = node, node
+                for key in paths["id"]:
+                    identity = identity.get(key) if isinstance(identity, dict) else None
+                for key in paths["state_name"]:
+                    state = state.get(key) if isinstance(state, dict) else None
+                if not isinstance(identity, str) or not isinstance(state, str):
+                    raise ValueError("fixture emitted malformed issue nodes")
+                if identity == corpus["issue_id"] and state == corpus["terminal_state"]:
+                    terminal_seen = True
+        if terminal_seen:
             result.append(response)
     if any(event["data"].get("issue_id") != corpus["issue_id"] for event in terminal):
         failures.append("terminal control changed the wrong issue")
-    return _check("tracker.terminal_refresh", [terminal, refresh, result], failures)
+    stages = [terminal, refresh, result]
+    if limits:
+        stages.append(limits)
+    return _check("tracker.terminal_refresh", stages, failures)
 
 
 def _interrupt_check(events, frames, corpus):

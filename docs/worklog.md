@@ -188,7 +188,30 @@ the fixed corpus and independent judge own expected behavior.
   pinned Elixir has 302 tests, zero failures and six skips, with all other gates.
   Logs: `ocaml/_build/conformance-admission-final-full-check.log`, external and
   reader receipts, and `conformance-admission-final-fuzz-serial.log`.
-  Current focus: publish, exact-head CI/review and merge. Numeric implementation waits.
+  Published 926d61e; fresh review requires four more corrections: malformed peer
+  readiness, aggregate tracker body evidence, GraphQL alias identity and pending
+  host cancellation during exception cleanup. Accepted before edits. Reproduce
+  each before correction; current head is superseded for merge qualification.
+  All four fresh findings reproduce in both modes. Peer readiness and all four
+  physical cancellation controls now pass in both modes; aliases pass real HTTPS
+  and replay. Provider quota preserves exact admitted bodies and omission counts;
+  the controlled 32-request flood counts expected quota transport closures.
+  Linux push/PR on 926d61e also fail on response-write BrokenPipe after candidate
+  SIGTERM/service_stopped and a final active poll. Retained evidence preserves all
+  other lifecycle assertions. Real TLS peer closure reproduces BrokenPipe fixture
+  failure in normal/optimized Python. Retain a bounded typed disconnect receipt;
+  genuine recorder/socket faults remain harness errors.
+  The corrected real TLS reset and six replay mutations pass both modes. All 23
+  tracker controls pass both modes; independent frozen source review has no
+  blocker. Pinned Elixir passes 302 tests, zero failures, six skips and all gates.
+  Frozen full gauntlet passes all 154 controls and eleven cases per mode, native,
+  service/status, capacity, codec 67/46, source, verification and release gates.
+  Serial 10,000-input fuzz and the isolated external wheel pass; all eleven
+  lifecycle/calibration cases pass per mode outside the checkout.
+  All 103 receipt-reader controls pass both modes on current receipts/raw logs.
+  Current qualification: publication, fresh review and exact new-head
+  Linux/macOS evidence before merge.
+  Current focus: fix, qualify, publish and merge. Numeric implementation waits.
 
 Missing or unobservable evidence blocks complete core conformance. The public
 OCaml event log omits numeric usage totals; the baseline cannot require the

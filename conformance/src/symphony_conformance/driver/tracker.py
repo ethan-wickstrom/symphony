@@ -4,12 +4,15 @@ import base64
 import json
 import ssl
 import threading
+from enum import Enum
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from graphql import GraphQLError
 
 from ..linear import matches, select
+from ..assets import encode
 from .errors import Failures
+from .journal import MAX_EVENTS, MAX_EVENT_BYTES, MAX_JOURNAL_BYTES
 from .server import Server
 
 MAX_BODY = 512 * 1024
@@ -17,6 +20,32 @@ MAX_REQUESTS = 256
 SOCKET_TIMEOUT = 5
 TLS_HANDSHAKE_TIMEOUT = 1
 JOIN_TIMEOUT = 6
+PROVIDER_SHARE = 4
+MAX_PROVIDER_BYTES = MAX_JOURNAL_BYTES // PROVIDER_SHARE
+MAX_PROVIDER_EVENTS = MAX_EVENTS // PROVIDER_SHARE
+ENVELOPE_RESERVE_BYTES = 1024
+FINAL_RECEIPT_BYTES = 64 * 1024
+FINAL_RECEIPT_EVENTS = 3
+_PEER_CLOSURES = (BrokenPipeError, ConnectionResetError, ssl.SSLEOFError)
+
+
+class _Limit(Enum):
+    BODY = "body_bytes"
+    REQUESTS = "requests"
+    RECORD = "record_bytes"
+    BYTES = "evidence_bytes"
+    EVENTS = "evidence_events"
+    RESPONSE = "response_bytes"
+
+
+class _Admission(Enum):
+    OMIT = "omit"
+    RETAIN = "retain"
+
+
+def _record_bytes(kind, data):
+    # Reserve fixed collector fields while charging exact encoded wire data.
+    return len(encode({"kind": kind, "origin": "provider", "data": data})) + ENVELOPE_RESERVE_BYTES
 
 
 def connection(nodes):
@@ -31,6 +60,12 @@ class Tracker:
         self._lock = threading.Lock()
         self._errors = Failures()
         self._requests = 0
+        self._admitted = 0
+        self._omitted = 0
+        self._rejected = 0
+        self._bytes = 0
+        self._events = 0
+        self._limited = False
         self._closed = False
         owner = self
 
@@ -76,6 +111,36 @@ class Tracker:
                 "labels": connection([]), "inverseRelations": connection([]),
                 "createdAt": "2026-01-01T00:00:00Z", "updatedAt": None}
 
+    def _limit(self, request_id, reason, size, admission):
+        self._rejected += 1
+        if admission is _Admission.OMIT:
+            self._omitted += 1
+        if self._limited:
+            return
+        self._limited = True
+        self._journal.emit("provider.evidence_limit", {
+            "request_id": request_id, "reason": reason.value, "body_bytes_lower_bound": size,
+            "max_body_bytes": MAX_BODY, "max_requests": MAX_REQUESTS,
+            "max_record_bytes": MAX_EVENT_BYTES, "max_evidence_bytes": MAX_PROVIDER_BYTES,
+            "max_evidence_events": MAX_PROVIDER_EVENTS}, "provider")
+
+    def _budget(self, request_id, data, size):
+        if self._limited:
+            return _Limit.BYTES
+        if request_id > MAX_REQUESTS:
+            return _Limit.REQUESTS
+        if size > MAX_BODY:
+            return _Limit.BODY
+        amount = _record_bytes("provider.request", data) + 4 * ((size + 2) // 3)
+        if amount > MAX_EVENT_BYTES:
+            return _Limit.RECORD
+        if self._events + 2 > MAX_PROVIDER_EVENTS - FINAL_RECEIPT_EVENTS:
+            return _Limit.EVENTS
+        # Reserve one maximal response before reading any candidate body.
+        if amount + MAX_EVENT_BYTES > MAX_PROVIDER_BYTES - FINAL_RECEIPT_BYTES - self._bytes:
+            return _Limit.BYTES
+        return None
+
     def _request(self, handler):
         handler.close_connection = True
         with self._lock:
@@ -84,24 +149,39 @@ class Tracker:
         try:
             raw = b""
             rejected = False
+            retained = False
+            size = 0
+            data = {"request_id": request_id, "method": handler.command,
+                    "target": handler.path, "headers": list(handler.headers.raw_items()), "body": ""}
             try:
                 lengths = handler.headers.get_all("Content-Length", [])
-                if len(lengths) != 1 or not lengths[0].isdigit():
+                if len(lengths) != 1 or not lengths[0].isascii() or not lengths[0].isdigit():
                     raise ValueError("Invalid fixture body framing")
-                size = int(lengths[0])
-                if size > MAX_BODY or request_id > MAX_REQUESTS:
-                    raise ValueError("Fixture budget exceeded")
-                raw = handler.rfile.read(size)
-                if len(raw) != size:
-                    raise ValueError("Truncated fixture request")
+                # Avoid converting an unbounded decimal header to an integer.
+                digits = lengths[0].lstrip("0") or "0"
+                size = MAX_BODY + 1 if len(digits) > len(str(MAX_BODY)) else int(digits)
             except (ValueError, OSError):
                 rejected = True
 
-            # Retain admitted wire bytes even when the candidate request fails.
-            self._journal.emit("provider.request", {
-                "request_id": request_id, "method": handler.command,
-                "target": handler.path, "headers": list(handler.headers.raw_items()),
-                "body": base64.b64encode(raw).decode("ascii")}, "provider")
+            limit = self._budget(request_id, data, size)
+            if limit is not None:
+                self._limit(request_id, limit, size, _Admission.OMIT)
+                rejected = True
+            else:
+                if not rejected:
+                    try:
+                        raw = handler.rfile.read(size)
+                        if len(raw) != size:
+                            raise ValueError("Truncated fixture request")
+                    except (ValueError, OSError):
+                        rejected = True
+                data["body"] = base64.b64encode(raw).decode("ascii")
+                retained = True
+                # Admitted request bytes survive later timeout or projection faults.
+                self._bytes += _record_bytes("provider.request", data)
+                self._events += 1
+                self._journal.emit("provider.request", data, "provider")
+                self._admitted += 1
             if self._server.aborted(handler.connection):
                 return
             try:
@@ -121,11 +201,29 @@ class Tracker:
             except (ValueError, TypeError, GraphQLError):
                 payload = {"errors": [{"message": "Fixture request rejected"}]}
                 status = HTTPStatus.BAD_REQUEST
+
+            body = json.dumps(payload, separators=(",", ":"), allow_nan=False).encode()
+            headers = [("Content-Type", "application/json"), ("Content-Length", str(len(body))),
+                       ("Connection", "close")]
+            response = {"request_id": request_id, "status": status.value, "headers": headers,
+                        "body": base64.b64encode(body).decode("ascii")}
+            if retained:
+                if _record_bytes("provider.response", response) > MAX_EVENT_BYTES:
+                    self._limit(request_id, _Limit.RESPONSE, size, _Admission.RETAIN)
+                    payload = {"errors": [{"message": "Fixture request rejected"}]}
+                    status = HTTPStatus.BAD_REQUEST
+                    body = json.dumps(payload, separators=(",", ":"), allow_nan=False).encode()
+                    headers[1] = ("Content-Length", str(len(body)))
+                    response = {"request_id": request_id, "status": status.value, "headers": headers,
+                                "body": base64.b64encode(body).decode("ascii")}
+                self._bytes += _record_bytes("provider.response", response)
+                self._events += 1
         except Exception as error:
             with self._lock:
                 self._errors.record(type(error).__name__ + ": " + str(error))
             payload = {"errors": [{"message": "Fixture request rejected"}]}
             status = HTTPStatus.BAD_REQUEST
+            retained = False
 
         if self._server.aborted(handler.connection):
             return
@@ -139,16 +237,26 @@ class Tracker:
             handler.end_headers()
             handler.wfile.write(body)
             handler.wfile.flush()
+        except _PEER_CLOSURES as error:
+            # Peer closure consumes the reserved response receipt, not fixture health.
+            if retained:
+                try:
+                    self._journal.emit("provider.disconnect", {
+                        "request_id": request_id, "error_type": type(error).__name__}, "provider")
+                except Exception as receipt_error:
+                    self._failure("disconnect receipt", receipt_error)
+            return
         except Exception as error:
             if not isinstance(error, OSError) or not self._server.aborted(handler.connection):
                 self._failure("response write", error)
             return
-        try:
-            self._journal.emit("provider.response", {"request_id": request_id,
-                               "status": status.value, "headers": headers,
-                               "body": base64.b64encode(body).decode("ascii")}, "provider")
-        except Exception as error:
-            self._failure("response receipt", error)
+        if retained:
+            try:
+                self._journal.emit("provider.response", {"request_id": request_id,
+                                   "status": status.value, "headers": headers,
+                                   "body": base64.b64encode(body).decode("ascii")}, "provider")
+            except Exception as error:
+                self._failure("response receipt", error)
 
     def terminal(self):
         with self._lock:
@@ -171,6 +279,18 @@ class Tracker:
         with self._lock:
             if self._thread.is_alive():
                 self._errors.record("Fixture thread did not join")
+        if self._limited:
+            try:
+                self._journal.emit("provider.evidence_summary", {
+                    "requests": self._requests, "admitted_requests": self._admitted,
+                    "omitted_requests": self._omitted, "rejected_requests": self._rejected}, "provider")
+            except BaseException as error:
+                self._failure("provider summary receipt", error)
+                if primary is None:
+                    primary = error
+                else:
+                    primary.add_note("Provider summary receipt failed: " + type(error).__name__)
+        with self._lock:
             errors = self._errors.samples()
         try:
             self._journal.emit("provider.closed", {"status": "error" if errors else "ok",

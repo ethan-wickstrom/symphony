@@ -116,8 +116,20 @@ def _execute(output, profile_id, candidate, fault, scope):
             journal.emit("workspace.removed", {"path": str(workspace)})
 
     def frames(kind):
-        return [(row, decode(base64.b64decode(row["data"]["frame"], validate=True)))
-                for row in rows(kind)]
+        result = []
+        for row in rows(kind):
+            raw = base64.b64decode(row["data"]["frame"], validate=True)
+            # Readiness skips invalid candidate frames; replay judges retained bytes.
+            try:
+                frame = decode(raw)
+            except ValueError:
+                if kind != "peer.client":
+                    raise
+                continue
+            if kind == "peer.client" and not isinstance(frame, dict):
+                continue
+            result.append((row, frame))
+        return result
 
     try:
         collector = journal.start()
@@ -142,7 +154,7 @@ def _execute(output, profile_id, candidate, fault, scope):
         def second_turn():
             workspace_state()
             starts = [(row, frame) for row, frame in frames("peer.client")
-                      if frame.get("method") == "turn/start"]
+                      if frame.get("method") == "turn/start" and "id" in frame]
             if len(starts) < 2:
                 return False
             request, frame = starts[1]
