@@ -82,6 +82,7 @@ class Process:
         self._recorder_error = None
         self._lifecycle = []
         self._failures = []
+        self._signals = set()
         self._capture = self._child = None
         self._observed = None
         self._guard = None
@@ -147,10 +148,13 @@ class Process:
                                     "class": type(error).__name__})
             raise
 
-    def _check(self):
+    def _health(self):
         self._cancellation.check()
         if self._recorder_error is not None:
             raise self._recorder_error
+
+    def _check(self):
+        self._health()
         if time.monotonic() >= self._deadline:
             raise subprocess.TimeoutExpired(self._argv, self._timeout)
 
@@ -216,11 +220,15 @@ class Process:
         if self._closed:
             raise ValueError("cannot signal a closed process")
         self._check()
+        self._signal(number)
+
+    def _signal(self, number):
         self._observe()
         if self._observed is not None:
             raise ProcessLookupError("candidate leader has exited")
         # Keep scenario interruption distinct from harness group cleanup.
         os.kill(self._child.pid, number)
+        self._signals.add(number)
         self._record("candidate.signal", {"pid": self._child.pid, "signal": int(number), "target": "leader"})
 
     def join(self, timeout):
@@ -228,8 +236,28 @@ class Process:
         if self._closed or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("join requires an open process and a positive finite timeout")
         end = min(self._deadline, time.monotonic() + timeout)
+        return self._join(end, timeout, self._check)
+
+    def recover(self):
+        """Stop and join the leader under cleanup bounds, retaining group custody."""
+        if self._closed:
+            raise ValueError("cannot recover a closed process")
+        self._health()
+        self._observe()
+        end = time.monotonic() + TERM_GRACE
+        if self._observed is None and signal.SIGTERM not in self._signals:
+            try:
+                self._signal(signal.SIGTERM)
+            except ProcessLookupError:
+                self._observe()
+                if self._observed is None:
+                    raise
+        # Runtime expiry cannot prevent cleanup, but cancellation and recorder errors can.
+        return self._join(end, TERM_GRACE, self._health)
+
+    def _join(self, end, timeout, check):
         while True:
-            self._check()
+            check()
             self._capture.pump(0)
             self._observe()
             if self._observed is not None and self._capture.eof() == ("stderr", "stdout"):

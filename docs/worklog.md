@@ -143,7 +143,15 @@ the fixed corpus and independent judge own expected behavior.
   codec 67/46, native, service/status, capacity, source and release gates pass.
   All 97 receipt-reader corruption controls pass per mode. Current evidence:
   `ocaml/_build/conformance-linear-final-full-check.log` and reader JSON receipts.
-- [ ] Review, publish, audit exact-head Linux/macOS evidence and merge.
+- [x] Correct four fresh review defects: nested GraphQL parser recursion,
+  recovery after the execution deadline, embedded fixture credentials and
+  verified exit before shutdown. Real HTTP/child regressions reproduce the
+  all four failure paths in both Python modes. Independent review found no
+  blocker; the full 129-control native/portable/release gauntlet passes.
+  Current log: `ocaml/_build/conformance-four-final-full-check-resumed.log`.
+  The installed external wheel passes eleven cases per mode; 97 receipt-reader
+  corruption controls pass per mode on the current receipts and raw logs.
+- [ ] Publish, audit exact-head Linux/macOS evidence and merge.
 
 Missing or unobservable evidence blocks complete core conformance. The public
 OCaml event log omits numeric usage totals; the baseline cannot require the

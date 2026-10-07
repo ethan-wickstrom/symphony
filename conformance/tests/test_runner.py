@@ -4,20 +4,23 @@ import json
 from enum import Enum
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
 from symphony_conformance import runner
 from symphony_conformance.assets import load
 from symphony_conformance.driver.journal import Journal
-from symphony_conformance.driver.process import Process, Stdin
+from symphony_conformance.driver.process import POLL_INTERVAL, Process, Stdin
 from symphony_conformance.driver.tracker import Tracker
 from symphony_conformance.judge import judge
 
 TERMINAL_PROBE_SECONDS = 1
+EXECUTION_TEST_BUDGET = 8
 
 
 class Cleanup(Enum):
@@ -41,7 +44,125 @@ class Output(Enum):
     BOTH = ("stdout", "stderr")
 
 
+class Recovery(Enum):
+    DEADLINE = "deadline"
+    EXIT = "exit"
+
+
 class RunnerTest(unittest.TestCase):
+    def test_deadline_recovery(self):
+        self._recovery(Recovery.DEADLINE)
+
+    def test_shutdown_exit_recovery(self):
+        self._recovery(Recovery.EXIT)
+
+    def _recovery(self, recovery):
+        processes = []
+        witnessed = []
+        corpus = load("corpus/lifecycle.json")
+        real_launch = runner.profiles.launch
+        script = """
+from pathlib import Path
+import sys
+from symphony_conformance.assets import decode
+from symphony_conformance.control import Control
+
+class ExitingControl(Control):
+    def _idle(self, child):
+        if sys.stdin.buffer.read(1) != b"!":
+            raise RuntimeError("Early exit release was not delivered")
+
+path = Path(sys.argv[1])
+ExitingControl(decode(path.read_bytes()), path).run()
+"""
+
+        def launch(profile, candidate, workflow, ca, plan):
+            if recovery is Recovery.DEADLINE:
+                return real_launch(profile, candidate, workflow, ca, plan)
+            optimization = ["-" + "O" * sys.flags.optimize] if sys.flags.optimize else []
+            return [sys.executable, *optimization, "-c", script, str(plan)]
+
+        class RecoveryProcess(Process):
+            def __init__(self, *args, **kwargs):
+                self._waits = 0
+                if recovery is Recovery.DEADLINE:
+                    self._expires = time.monotonic() + EXECUTION_TEST_BUDGET
+                    kwargs["deadline"] = self._expires
+                else:
+                    kwargs.update(stdin=Stdin.PIPE, stdin_limit=1)
+                super().__init__(*args, **kwargs)
+                processes.append(self)
+
+            def wait_for(self, predicate, timeout):
+                result = super().wait_for(predicate, timeout)
+                self._waits += 1
+                if self._waits != 3:
+                    return result
+                # All real scenario waits finish before the shutdown boundary.
+                if recovery is Recovery.DEADLINE:
+                    threading.Event().wait(max(0, self._expires - time.monotonic()))
+                    return result
+                self.write(b"!")
+                end = time.monotonic() + timeout
+                while self.snapshot()["returncode"] is None:
+                    remaining = end - time.monotonic()
+                    if remaining <= 0:
+                        raise RuntimeError("Released child did not exit before shutdown")
+                    self.pump(min(POLL_INTERVAL, remaining))
+                return result
+
+            def signal(self, number):
+                try:
+                    return super().signal(number)
+                except (subprocess.TimeoutExpired, ProcessLookupError) as error:
+                    witnessed.append((type(error).__name__, self.snapshot()["returncode"]))
+                    raise
+
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory) / "evidence"
+            with patch.object(runner.profiles, "launch", side_effect=launch), patch.object(runner, "Process", RecoveryProcess):
+                runner.run(bundle, "scripted")
+
+            snapshot = processes[0].snapshot()
+            manifest = json.loads((bundle / "manifest.json").read_text())
+            receipt = json.loads((bundle / "process.json").read_text())
+            rows = [json.loads(line) for line in (bundle / "events.jsonl").read_text().splitlines()]
+            self.assertEqual(processes[0]._waits, 3, "Fixture did not reach workspace reconciliation")
+            self.assertTrue(any(row["kind"] == "candidate.observation"
+                                and row["data"].get("event") == "ready" for row in rows))
+            self.assertTrue(any(row["kind"] == "candidate.observation"
+                                and row["data"].get("event") == "turn_started"
+                                and row["data"].get("turn_id") == corpus["turn_ids"][1] for row in rows))
+            self.assertEqual(sum(row["kind"] == "workspace.removed" for row in rows), 1)
+            expected = "TimeoutExpired" if recovery is Recovery.DEADLINE else "ProcessLookupError"
+            self.assertTrue(any(kind == expected for kind, _ in witnessed), witnessed)
+            if recovery is Recovery.EXIT:
+                self.assertTrue(all(status == 0 for kind, status in witnessed if kind == expected))
+            self.assertTrue(snapshot["closed"])
+            self.assertTrue(snapshot["reaped"])
+            self.assertTrue(receipt["closed"])
+            self.assertTrue(receipt["reaped"])
+            self.assertEqual(snapshot["returncode"], 0)
+            self.assertEqual(snapshot["eof"], ("stderr", "stdout"))
+            self.assertEqual(snapshot["failures"], ())
+            for pid in (snapshot["pid"], snapshot["guard_pid"]):
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(pid, 0)
+            for stream in ("stdout", "stderr"):
+                self.assertEqual((bundle / (stream + ".bin")).read_bytes(), snapshot[stream])
+            failures = [row["data"] for row in rows if row["kind"] == "candidate.execution_failure"]
+            self.assertEqual([failure["error_type"] for failure in failures], [expected])
+            for phase in ("observe", "join", "reap"):
+                self.assertEqual(sum(row["kind"] == "candidate.wait"
+                                     and row["data"].get("operation") == phase for row in rows), 1)
+            self.assertTrue(manifest["completed"])
+            self.assertEqual(manifest["harness_errors"], [])
+            report = judge(bundle)
+            self.assertEqual(report["harness"], {"status": "pass", "errors": []})
+            self.assertEqual(report["case"]["status"], "fail")
+            shutdown = next(value for value in report["case"]["assertions"] if value["id"] == "shutdown.joined")
+            self.assertEqual(shutdown["status"], "fail")
+
     def test_stdout_overflow(self):
         self._overflow(Output.STDOUT)
 

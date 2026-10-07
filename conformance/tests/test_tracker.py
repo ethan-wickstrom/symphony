@@ -24,6 +24,7 @@ DIAGNOSTIC_LIMIT = 16 * 1024
 DIAGNOSTIC_TAIL = 2 * 1024
 DIAGNOSTIC_PHASES = 8
 DIAGNOSTIC_SCALAR = 128
+QUERY_DEPTH = 2048
 ISSUE_SELECTION = "id identifier title state { name }"
 FILTER_QUERY = "query Pick($filter: IssueFilter!) { issues(first: 1, filter: $filter) { nodes { " + ISSUE_SELECTION + " } } }"
 OCAML_ISSUES_QUERY = """query SymphonyIssues($filter: IssueFilter!, $after: String, $pageSize: Int!) {
@@ -216,6 +217,14 @@ class TrackerTest(unittest.TestCase):
         ]
         self.filter_requests(filters, HTTPStatus.BAD_REQUEST)
 
+    def test_deep_query(self):
+        from symphony_conformance.driver.tracker import MAX_BODY
+
+        query = "{ issues(first: 1, filter: {}) { nodes { " + "state { " * QUERY_DEPTH
+        body = {"query": query + "name" + " }" * QUERY_DEPTH + " } } }"}
+        self.assertLess(len(json.dumps(body).encode()), MAX_BODY)
+        self.query_requests([body], HTTPStatus.BAD_REQUEST)
+
     def test_hidden_filter_errors(self):
         corpus = load("corpus/lifecycle.json")
         hit = {"id": {"eq": corpus["issue_id"]}}
@@ -273,6 +282,7 @@ class TrackerTest(unittest.TestCase):
             context = ssl.create_default_context(cafile=str(resource("tls/ca.pem")))
             payloads = []
             statuses = []
+            wire_responses = []
             try:
                 if state is State.TERMINAL:
                     tracker.terminal()
@@ -284,7 +294,9 @@ class TrackerTest(unittest.TestCase):
                             client.request("POST", "/graphql", body,
                                            {"Authorization": corpus["fake_secret"], "Content-Type": "application/json"})
                             response = client.getresponse()
-                            payload = json.loads(response.read())
+                            raw_response = response.read()
+                            wire_responses.append(raw_response)
+                            payload = json.loads(raw_response)
                             payloads.append(payload)
                             statuses.append(response.status)
                             self.assertEqual(response.status, status)
@@ -307,6 +319,8 @@ class TrackerTest(unittest.TestCase):
             self.assertEqual([base64.b64decode(row["data"]["body"], validate=True)
                               for row in requests], [json.dumps(body).encode() for body in bodies])
             self.assertEqual([row["data"]["status"] for row in responses], statuses)
+            self.assertEqual([base64.b64decode(row["data"]["body"], validate=True)
+                              for row in responses], wire_responses)
             return payloads
 
     def test_bounded_rejections(self):

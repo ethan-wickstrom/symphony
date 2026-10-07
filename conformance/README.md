@@ -16,9 +16,15 @@ returns its exit code while preserving an already completed candidate receipt.
 Output above either 1 MiB stream bound fails the candidate. The harness retains
 the bounded prefix, drains to EOF and grades owned cleanup separately.
 
+An execution deadline leaves bounded recovery available. Premature observed exits
+fail the candidate; joined exit and capture receipts still determine cleanup health.
+Peer environment receipts replace embedded fixture credentials with a canonical
+fake marker and redact unrelated credentials.
+
 The tracker validates its supported GraphQL schema and returns selected fields.
 This case requires effective `nodes.id`, `identifier`, `title` and `state.name`.
 Fragments, directives and aliases preserve GraphQL selection semantics.
+Queries beyond parser recursion limits receive a healthy fixture rejection.
 Supported type names follow [Linear's SDL](https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql).
 
 This is partial evidence. The catalog retains all 106 requirements from SPEC

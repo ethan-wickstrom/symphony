@@ -42,14 +42,14 @@ def _require(condition, message):
 
 
 def _env(plan):
-    # Only named ambient fields and the known fake secret enter evidence.
+    # The canonical fake is a safe detection marker, not the enclosing environment value.
     names = plan["profile"]["ambient_environment"]
     result = {name: os.environ[name] for name in names if name in os.environ}
     fake = plan["corpus"]["fake_secret"]
-    result.update({name: value for name, value in os.environ.items() if value == fake})
+    result.update({name: fake for name, value in os.environ.items() if fake in value})
     if TRACKER_SECRET_NAME in os.environ:
         result[TRACKER_SECRET_NAME] = (
-            fake if os.environ[TRACKER_SECRET_NAME] == fake else "<redacted>"
+            fake if fake in os.environ[TRACKER_SECRET_NAME] else "<redacted>"
         )
     return result
 

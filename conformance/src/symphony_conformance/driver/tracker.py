@@ -109,7 +109,10 @@ class Tracker:
                     raise ValueError("Invalid fixture request")
                 if handler.headers.get("Authorization") != self._corpus["fake_secret"]:
                     raise ValueError("Invalid fake tracker credential")
-                query = select(raw)
+                try:
+                    query = select(raw)
+                except RecursionError as error:
+                    raise ValueError("Fixture query exceeds parser recursion") from error
                 with self._lock:
                     issue = self._issue()
                     nodes = [issue] if matches(issue, query["filter"]) else []

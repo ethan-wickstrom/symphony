@@ -196,15 +196,15 @@ def _execute(output, profile_id, candidate, fault, scope):
         failed_snapshot = getattr(error, "_process_snapshot", None)
         if not isinstance(error, Exception):
             cancellation = error
-        if process is not None and isinstance(error, (subprocess.CalledProcessError, subprocess.TimeoutExpired, OutputLimit)):
+        exited = (process is not None and isinstance(error, ProcessLookupError)
+                  and process.snapshot()["returncode"] is not None)
+        if process is not None and (exited or isinstance(error, (subprocess.CalledProcessError, subprocess.TimeoutExpired, OutputLimit))):
             # A candidate verdict is separate from ownership and recorder health.
             try:
                 journal.emit("candidate.execution_failure", {"error_type": type(error).__name__,
                               "returncode": process.snapshot()["returncode"]})
-                if process.snapshot()["returncode"] is None:
-                    process.signal(signal.SIGTERM)
                 if not any(row["data"].get("operation") == "join" for row in rows("candidate.wait")):
-                    process.join(corpus["deadline_seconds"])
+                    process.recover()
                 completed = True
             except BaseException as cleanup:
                 failure("candidate failure cleanup", cleanup)
