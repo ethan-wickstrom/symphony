@@ -151,6 +151,22 @@ the fixed corpus and independent judge own expected behavior.
   Current log: `ocaml/_build/conformance-four-final-full-check-resumed.log`.
   The installed external wheel passes eleven cases per mode; 97 receipt-reader
   corruption controls pass per mode on the current receipts and raw logs.
+- [x] Correct ignored-SIGTERM recovery and oversized malformed diagnostics.
+  Actual timeout/overflow and 900 KiB observation regressions fail before fixes
+  and pass in both Python modes. Forced cleanup records actual reap/EOF proof
+  before its join; canonical cleanup errors and cancellation retain priority.
+  Raw capture supplies malformed records without oversized diagnostic copies.
+  Independent source reviews found no blocker. All 132 portable controls and
+  eleven lifecycle/calibration cases pass per mode in the fresh full-gate run.
+  The first full run stopped on an existing tracker body-expiry child timeout.
+  Isolated runs pass at 5.74 seconds; bounded stage diagnostics preserve deadlines.
+  The fresh full run passes that control in both modes. No root cause is claimed
+  for the earlier timeout; its failed log and exit receipt remain retained.
+  Full gauntlet: `ocaml/_build/conformance-forced-final-full-check-retry.log`.
+  The new external wheel passes all eleven cases per mode; both modes reject
+  all 97 receipt-reader corruptions using current receipts and raw logs.
+  Seeded 10,000-input boundaries pass. Pinned Elixir: 302 tests, zero failures,
+  six skips; formatting/lint/coverage/Dialyzer and PR body validation pass.
 - [ ] Publish, audit exact-head Linux/macOS evidence and merge.
 
 Missing or unobservable evidence blocks complete core conformance. The public

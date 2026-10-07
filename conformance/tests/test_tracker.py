@@ -472,9 +472,16 @@ import threading
 import time
 from http import HTTPStatus
 from pathlib import Path
+
+started = time.monotonic()
+def _note(stage):
+    print('Tracker drip: ' + stage + ' elapsed=' + format(time.monotonic() - started, '.3f'), flush=True)
+
+_note('imports.begin')
 from symphony_conformance.assets import load, resource
 from symphony_conformance.driver.journal import Journal
 from symphony_conformance.driver import tracker as driver
+_note('imports.end')
 
 CLOSE_BUDGET = 1
 JOIN_BUDGET = 2
@@ -483,7 +490,9 @@ stage = STAGE_VALUE
 action = ACTION_VALUE
 corpus = load('corpus/lifecycle.json')
 journal = Journal(Path.cwd())
+_note('tracker.begin')
 tracker = driver.Tracker(corpus, journal, str(resource('tls/server.pem')), str(resource('tls/server.key')))
+_note('tracker.end')
 admitted = threading.Event()
 admitted_at = [None]
 stop = threading.Event()
@@ -504,7 +513,9 @@ else:
     tracker._server.get_request = request
 port = int(tracker.endpoint.split(':')[2].split('/')[0])
 context = ssl.create_default_context(cafile=str(resource('tls/ca.pem')))
+_note('client.begin')
 client = context.wrap_socket(socket.create_connection(('127.0.0.1', port), timeout=1), server_hostname='127.0.0.1')
+_note('client.end')
 if stage == 'body':
     client.sendall(('POST /graphql HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\nAuthorization: '
                     + corpus['fake_secret'] + '\\r\\nContent-Length: ' + str(driver.MAX_BODY)
@@ -523,15 +534,19 @@ failures = []
 
 def close():
     try:
+        _note('close.begin')
         tracker.close()
+        _note('close.end')
     except BaseException as error:
         failures.append(type(error).__name__)
 
 writer = threading.Thread(target=drip, daemon=True)
 closer = threading.Thread(target=close, daemon=True)
 try:
+    _note('admission.begin')
     if not admitted.wait(CLOSE_BUDGET):
         raise RuntimeError('HTTP connection was not admitted')
+    _note('admission.end')
     if action == 'close':
         writer.start()
         closer.start()
@@ -560,18 +575,21 @@ try:
         if expired is None:
             raise RuntimeError('Tracker drip traffic renewed the total connection deadline after '
                                + str(elapsed) + ' s')
+        _note('expiry.observed')
         # Admission follows TLS negotiation; allow its existing bounded budget.
         if elapsed < driver.SOCKET_TIMEOUT - CLOSE_BUDGET:
             raise RuntimeError('Tracker disconnected before its deadline after '
                                + str(elapsed) + ' s: ' + expired)
         fresh = http.client.HTTPSConnection('127.0.0.1', port, context=context, timeout=CLOSE_BUDGET)
         try:
+            _note('probe.begin')
             fresh.request('POST', '/graphql', json.dumps({'query': '{issues(first:1,filter:{}){nodes{id identifier title state{name}}}}'}),
                           {'Authorization': corpus['fake_secret']})
             response = fresh.getresponse()
             response.read()
             if response.status != HTTPStatus.OK:
                 raise RuntimeError('Tracker did not admit a healthy request after expiry')
+            _note('probe.end')
         except Exception as error:
             raise RuntimeError('Tracker healthy probe failed after expiry at '
                                + str(elapsed) + ' s: ' + expired) from error
@@ -590,8 +608,12 @@ finally:
     if closer.ident is not None:
         closer.join(JOIN_BUDGET)
     else:
+        _note('close.begin')
         tracker.close()
+        _note('close.end')
+    _note('journal.begin')
     journal.close()
+    _note('journal.end')
 
 if closer.is_alive() or writer.is_alive():
     raise RuntimeError('Tracker regression cleanup did not join its threads')

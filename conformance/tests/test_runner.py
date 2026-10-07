@@ -4,6 +4,7 @@ import json
 from enum import Enum
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
@@ -49,7 +50,130 @@ class Recovery(Enum):
     EXIT = "exit"
 
 
+class Ignored(Enum):
+    TIMEOUT = "timeout"
+    OVERFLOW = "overflow"
+
+
 class RunnerTest(unittest.TestCase):
+    def test_ignored_term_timeout(self):
+        self._ignored_term(Ignored.TIMEOUT)
+
+    def test_ignored_term_overflow(self):
+        self._ignored_term(Ignored.OVERFLOW)
+
+    def _ignored_term(self, fault):
+        processes = []
+        corpus = load("corpus/lifecycle.json")
+        marker = b'{"event":"term_ignored"}\n'
+        script = """
+import os
+from pathlib import Path
+import signal
+import sys
+import threading
+from symphony_conformance.assets import decode
+from symphony_conformance.control import Control
+
+class IgnoringControl(Control):
+    def _idle(self, child):
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        os.write(sys.stdout.fileno(), sys.argv[3].encode())
+        if os.read(sys.stdin.fileno(), 1) != b"!":
+            raise RuntimeError("Overflow release was not delivered")
+        payload = b"X" * int(sys.argv[2])
+        while payload:
+            payload = payload[os.write(sys.stdout.fileno(), payload):]
+        threading.Event().wait()
+
+path = Path(sys.argv[1])
+IgnoringControl(decode(path.read_bytes()), path).run()
+"""
+
+        def launch(_profile, _candidate, _workflow, _ca, plan):
+            optimization = ["-" + "O" * sys.flags.optimize] if sys.flags.optimize else []
+            return [sys.executable, *optimization, "-c", script, str(plan),
+                    str(runner.OUTPUT_LIMIT + 1), marker.decode()]
+
+        class IgnoringProcess(Process):
+            def __init__(self, *args, **kwargs):
+                self._waits = 0
+                if fault is Ignored.TIMEOUT:
+                    self._expires = time.monotonic() + EXECUTION_TEST_BUDGET
+                    kwargs["deadline"] = self._expires
+                super().__init__(*args, **kwargs, stdin=Stdin.PIPE, stdin_limit=1)
+                processes.append(self)
+
+            def wait_for(self, predicate, timeout):
+                result = super().wait_for(predicate, timeout)
+                self._waits += 1
+                if self._waits != 3:
+                    return result
+                # The real fixture installs SIG_IGN after completing the full scenario.
+                super().wait_for(lambda: marker in self.snapshot()["stdout"], timeout)
+                if fault is Ignored.OVERFLOW:
+                    self.write(b"!")
+                    return super().wait_for(lambda: False, timeout)
+                threading.Event().wait(max(0, self._expires - time.monotonic()))
+                return result
+
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory) / "evidence"
+            with patch.object(runner.profiles, "launch", side_effect=launch), patch.object(runner, "Process", IgnoringProcess):
+                runner.run(bundle, "scripted")
+
+            snapshot = processes[0].snapshot()
+            manifest = json.loads((bundle / "manifest.json").read_text())
+            receipt = json.loads((bundle / "process.json").read_text())
+            rows = [json.loads(line) for line in (bundle / "events.jsonl").read_text().splitlines()]
+            self.assertEqual(processes[0]._waits, 3)
+            self.assertIn(marker, snapshot["stdout"])
+            self.assertTrue(any(row["kind"] == "candidate.observation"
+                                and row["data"].get("event") == "turn_started"
+                                and row["data"].get("turn_id") == corpus["turn_ids"][1] for row in rows))
+            self.assertEqual(sum(row["kind"] == "workspace.removed" for row in rows), 1)
+            self.assertEqual(snapshot["returncode"], -signal.SIGKILL)
+            self.assertTrue(snapshot["closed"])
+            self.assertTrue(snapshot["reaped"])
+            self.assertTrue(receipt["closed"])
+            self.assertTrue(receipt["reaped"])
+            self.assertEqual(snapshot["eof"], ("stderr", "stdout"))
+            self.assertEqual(snapshot["failures"], ())
+            for pid in (snapshot["pid"], snapshot["guard_pid"]):
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(pid, 0)
+            for stream in ("stdout", "stderr"):
+                retained = (bundle / (stream + ".bin")).read_bytes()
+                self.assertEqual(retained, snapshot[stream])
+                self.assertEqual(manifest["files"][stream + ".bin"],
+                                 {"bytes": len(retained), "sha256": hashlib.sha256(retained).hexdigest()})
+            if fault is Ignored.OVERFLOW:
+                self.assertEqual(len(snapshot["stdout"]), runner.OUTPUT_LIMIT)
+                self.assertEqual(sum(row["kind"] == "capture.overflow" for row in rows), 1)
+            failure = "TimeoutExpired" if fault is Ignored.TIMEOUT else "OutputLimit"
+            failures = [row["data"] for row in rows if row["kind"] == "candidate.execution_failure"]
+            self.assertEqual([value["error_type"] for value in failures], [failure])
+            self.assertTrue(manifest["completed"])
+            self.assertEqual(manifest["harness_errors"], [])
+            joins = [row for row in rows if row["kind"] == "candidate.wait"
+                     and row["data"].get("operation") == "join"]
+            self.assertEqual(len(joins), 1)
+            self.assertTrue(joins[0]["data"]["forced"])
+            self.assertTrue(joins[0]["data"]["reaped"])
+            self.assertEqual(joins[0]["data"]["status"], -signal.SIGKILL)
+            reaps = [row for row in rows if row["kind"] == "candidate.wait"
+                     and row["data"].get("operation") == "reap"]
+            self.assertEqual(len(reaps), 1)
+            self.assertLess(reaps[0]["seq"], joins[0]["seq"])
+            terms = [row for row in rows if row["data"].get("signal") == signal.SIGTERM
+                     and row["kind"] in {"candidate.signal", "group.cleanup"}]
+            self.assertEqual(len(terms), 1, "Recovery repeated TERM or its grace period")
+            report = judge(bundle)
+            self.assertEqual(report["harness"], {"status": "pass", "errors": []})
+            self.assertEqual(report["case"]["status"], "fail")
+            shutdown = next(value for value in report["case"]["assertions"] if value["id"] == "shutdown.joined")
+            self.assertEqual(shutdown["status"], "fail")
+
     def test_deadline_recovery(self):
         self._recovery(Recovery.DEADLINE)
 

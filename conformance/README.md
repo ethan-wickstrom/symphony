@@ -18,6 +18,9 @@ the bounded prefix, drains to EOF and grades owned cleanup separately.
 
 An execution deadline leaves bounded recovery available. Premature observed exits
 fail the candidate; joined exit and capture receipts still determine cleanup health.
+Ignored SIGTERM uses bounded forced cleanup and records a join after actual reap
+and both capture EOFs. Malformed observation diagnostics retain finite metadata;
+the raw capture retains the complete bounded record.
 Peer environment receipts replace embedded fixture credentials with a canonical
 fake marker and redact unrelated credentials.
 

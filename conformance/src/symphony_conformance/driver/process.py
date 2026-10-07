@@ -239,7 +239,7 @@ class Process:
         return self._join(end, timeout, self._check)
 
     def recover(self):
-        """Stop and join the leader under cleanup bounds, retaining group custody."""
+        """Join under cleanup bounds, forcing canonical closure if TERM expires."""
         if self._closed:
             raise ValueError("cannot recover a closed process")
         self._health()
@@ -253,7 +253,22 @@ class Process:
                 if self._observed is None:
                     raise
         # Runtime expiry cannot prevent cleanup, but cancellation and recorder errors can.
-        return self._join(end, TERM_GRACE, self._health)
+        try:
+            return self._join(end, TERM_GRACE, self._health)
+        except subprocess.TimeoutExpired:
+            self._health()
+            if time.monotonic() < end:
+                raise
+            # Force the existing owner cleanup once, independently of the active verdict.
+            self._close(None, Cleanup.KILL)
+            self._health()
+            status = self._child.returncode
+            if status is None or self._capture.eof() != ("stderr", "stdout"):
+                raise RuntimeError("Forced recovery did not prove reap and capture EOF")
+            self._record("candidate.wait", {"operation": "join", "status": status,
+                                             "pid": self._child.pid, "reaped": True, "forced": True,
+                                             "closure_scope": CLOSURE_SCOPE})
+            return status
 
     def _join(self, end, timeout, check):
         while True:
@@ -404,13 +419,15 @@ class Process:
             self._capture.pump(min(POLL_INTERVAL, remaining))
 
     def close(self):
+        self._close(sys.exc_info()[1], self._cleanup)
+
+    def _close(self, primary, cleanup):
         if self._closed:
             return
-        primary = sys.exc_info()[1]
         errors = []
         if self._child is not None:
             self._attempt("observe", self._observe, errors)
-            if self._observed is None and self._cleanup is Cleanup.GRACEFUL:
+            if self._observed is None and cleanup is Cleanup.GRACEFUL:
                 self._attempt("term", lambda: self._cleanup_signal(signal.SIGTERM), errors)
                 if self._capture is not None:
                     self._attempt("term-grace", self._grace, errors)
@@ -420,6 +437,12 @@ class Process:
             end = time.monotonic() + CLEANUP_TIMEOUT
             status = self._attempt("reap", lambda: self._child.wait(timeout=CLEANUP_TIMEOUT), errors)
             if status is not None:
+                if self._observed is None:
+                    # Forced reap supplies a real exit observation after custody release.
+                    self._observed = status
+                    self._attempt("observe-record", lambda: self._record("candidate.wait", {
+                        "operation": "observe", "status": status, "reaped": True, "pid": self._child.pid,
+                    }), errors)
                 self._attempt("reap-record", lambda: self._record("candidate.wait", {
                     "operation": "reap", "status": status, "reaped": True, "pid": self._child.pid,
                 }), errors)

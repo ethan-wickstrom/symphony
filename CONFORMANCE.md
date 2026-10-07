@@ -288,7 +288,7 @@ All 106 SPEC checklist rows and 12 supplemental clauses remain in each report.
 The first public OCaml lifecycle completed with twelve assertions passing and
 numeric usage unobservable in the public log. The independent scripted profile
 passed thirteen assertions. This is partial scope: complete core conformance
-remains incomplete. All 129 controls and nine fault calibrations pass in normal
+remains incomplete. All 132 controls and nine fault calibrations pass in normal
 and optimized Python. The external wheel passes every case in both modes; 97
 receipt-reader corruption controls pass per mode. Hosted review remains before
 merge. Trusted fixture instrumentation

@@ -115,8 +115,9 @@ def _execute(output, profile_id, candidate, fault, scope):
             try:
                 value = profiles.observation(profile, line)
             except (UnicodeError, ValueError, TypeError) as error:
+                # Raw capture retains the record; keep its diagnostic bounded.
                 journal.emit("candidate.observation_error", {"stream": stream,
-                             "error_type": type(error).__name__, "line_b64": base64.b64encode(line).decode("ascii")})
+                             "error_type": type(error).__name__})
                 continue
             if value is not None:
                 journal.emit("candidate.observation", value, "profile:" + profile_id)
