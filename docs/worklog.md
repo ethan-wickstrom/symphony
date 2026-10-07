@@ -62,40 +62,56 @@ capacity. Operator API, doctor/dry-run, module laws and adapter profiles ship.
 
 ## Current focus and next action
 
-Branch ethan/status-api adds fresh owner queries, checked immutable snapshots,
-JSON/HTML routes and an optional scoped loopback HTTP server. Status reads must
-not reload configuration, mutate scheduling state or reconnect to another run.
-Each new run has a single-use scoped source. Request cancellation retires only
-its own waiter; shutdown closes sources before physical drainage.
+[PR #13](https://github.com/ethan-wickstrom/symphony/pull/13) merged as
+806bbc8 on 2026-10-07 UTC. The reviewed c73a037 and merge have identical trees.
+The scoped status service, browser authority checks and startup listener settings
+passed local and Linux/macOS hosted gates. Fresh Codex review had no findings.
+Devin's retry arithmetic suggestion was declined against SPEC 1553–1569 and the
+retry lifecycle: these fields describe the current retry series, not historical
+worker launches. Browser inspection is complete. Receipts:
+`ocaml/_build/status-api-merge-receipt.json` and hosted audit evidence.
 
-- [x] Merge the reviewed live-dispatch checkpoint and verify tree identity.
-- [x] Audit reference routes and the missing owner-query boundary.
-- [x] Implement checked snapshots and one-sample owner projection.
-- [x] Implement bounded per-run query/refresh lifecycle and migrate callers.
-- [x] Implement pure JSON/HTML routes and joined native HTTP transport.
-- [x] Compose optional port/configuration into the actual CLI.
-- [x] Verify lifecycle, real HTTP behavior, formatting and configured gates.
-- [ ] Review, publish, audit exact-head hosted evidence and merge.
+Branch `ethan/conformance-harness` builds the accepted portable black-box layer.
+Its first case must use the public CLI, fake HTTPS tracker and schema-valid
+stdio peer through same-thread continuation, terminal reconciliation, all four
+hooks, workspace removal and joined shutdown. Sealed raw observations must replay
+without executing a candidate. Profiles translate public operations and logs;
+the fixed corpus and independent judge own expected behavior.
 
-The complete configured gate passes in status-review-full-check.log:
-47 service/83 orchestration/272 boundary cases, 58 native lifecycle cases, 417 sources/39
-controls, 17 rejected clients/80 CMIs per mode, codec67/42, capacity1/10/100/1000,
-release checks. Parser10000 passed before the review fixes. Both modes pass
-service25 and status23 scenarios; native source inventory274. Fresh pinned
-Elixir302/0/6 passes in status-review-elixir-all.log. Status CLI receipts
-are in _build/status-cli-AE0HA4. Bounded regressions failed before owner cancellation,
-unsolicited cancellation, failure precedence, diagnostic UTF-8 and malformed-body
-authority fixes. Review regressions first failed for browser authority and
-valid/invalid listener reloads. The corrected executable dispatches through
-listener-only edits while preserving the original listener; rejected browser
-requests grant zero handler authority. Native framing corpus256 passes.
-PR13 is published; corrected-head review and Linux/macOS push/PR audit are next.
+- [x] Prepare all 106 spec rows plus 12 supplemental rows; no portable pass claims.
+- [x] Regenerate and hash all 314 stable Codex 0.159.2 schema files.
+- [x] Extract canonical bounded process/capture ownership; initial nine controls
+  pass in normal and optimized Python.
+- [x] Implement offline inventory, protocol, lifecycle and report controls.
+- [x] Verify the public CLI lifecycle: twelve assertions pass; numeric usage is
+  unobservable. Scripted calibration passes all thirteen.
+- [x] Correct reproduced TLS admission, recorder closure, cancellation, nullable
+  schema formats, retained asset custody and quiet descendant verdict defects.
+  Final 90 controls pass normally and with assertions disabled, including
+  request/fixture grading, wire integrity, bounded inventory and marker races.
+- [x] Transfer shared schemas/TLS/lock and native/capacity/service ownership.
+- [x] Complete all nine independent fault calibrations in both Python modes.
+  Public lifecycle and scripted calibration replay identically from sealed bytes.
+- [x] Complete current receipt-reader controls and final wheel qualification.
+  Both modes reject 97 corrupted receipts, including raw unit-log corruption.
+  The final external wheel passes all eleven lifecycle/calibration cases per mode.
+- [x] Correct final review defects: absolute HTTP connection custody/deadlines
+  for tracker and collector; correlate replies by outstanding request occurrence.
+  All 90 controls and eleven cases per mode pass in conformance-dkmsfl.
+  The single-owner TLS probe rejects the old fixture after continued drip input.
+  Pinned Elixir and native custody/admission gates pass. Configured native,
+  capacity, codec, lifecycle, source, verification, release and seeded fuzz gates
+  pass through combined logs; the original full-check command stopped at defects
+  subsequently reproduced and corrected.
+- [x] Verify installed-wheel execution outside the checkout in both modes.
+  All eleven lifecycle/calibration cases per mode pass from the external env.
+- [ ] Review, publish, audit exact-head Linux/macOS evidence and merge.
 
-Root owns Core projection/composition and serializes executable gates. Independent
-agents own pure rendering, owner queries and native HTTP transport. Native Codex
-acceptance and release qualification remain separate boundaries. In-app Browser
-control restoration was rejected by automatic approval review under the browser
-restriction; browser inspection remains unverified pending authorization.
+Missing or unobservable evidence blocks complete core conformance. The public
+OCaml event log omits numeric usage totals; the baseline cannot require the
+optional HTTP extension. Native provider acceptance, release qualification and
+historical physical identity remain separate evidence boundaries. Root serializes
+all executable gates; independent agents own source-only modules and reviews.
 
 ## Remaining boundaries
 
@@ -114,11 +130,12 @@ service-retrospective,release-evidence,static-release-plan}.md.
 ## Steering and open questions
 
 Repeated acceptance authorizes recommendations, signatures, implementation,
-publication and green merges. The latest steer accepts all recommendations and continues with the status API
-after the merged live-dispatch checkpoint. Architectural debt,
+publication and green merges. The latest "Continue" resumes final portable
+harness qualification and publication. The next accepted slice exposes exact
+numeric usage in public CLI logs; implementation waits for this checkpoint merge.
+Architectural debt,
 module boundaries and risky failure modes remain ahead of polish. No decision is
-pending for implementation. Devin's hidden security finding requires its text or
-authorized in-app Browser inspection before merge; real provider trials require
+pending for implementation. PR13 review is complete; real provider trials require
 their own fixture scope.
 
 Only origin ethan-wickstrom/symphony is configured. Upstream links retain spec

@@ -363,7 +363,7 @@ def check_stopping(binary, base):
                     decoded["running"]["session_id"] == session,
                     "stopping scope lost canonical session while Source remains active")
             persist(root / "stopping-http.json", response)
-            process.child.send_signal(signal.SIGTERM)
+            process.signal(signal.SIGTERM)
             process.wait(lambda: bool(process.event("shutdown_requested")), "host shutdown accepted")
             deadline = time.monotonic() + SERVICE.WAIT_SECONDS
             while True:
@@ -463,13 +463,13 @@ def check_partial(binary, base):
 
 
 def run(binary, base):
-    inputs = (Path(__file__).resolve(), FIXTURE_PATH, SERVICE.PEER, SERVICE.CA,
-              SERVICE.FIXTURES / "tls" / "server.pem", SERVICE.FIXTURES / "tls" / "server.key")
+    inputs = (Path(__file__).resolve(), FIXTURE_PATH, SERVICE.PEER)
     manifest = {
         "schema": 1, "binary": {"path": str(binary), "sha256": digest(binary)},
-        "python": {"executable": str(Path(sys.executable).resolve()), "optimize": sys.flags.optimize,
+        "python": {"executable": sys.executable, "resolved": str(Path(sys.executable).resolve()),
+                   "optimize": sys.flags.optimize,
                    "peer_argv": SERVICE.PYTHON},
-        "sources": {str(path.relative_to(Path(__file__).resolve().parents[1])): digest(path) for path in inputs},
+        "sources": SERVICE.source_hashes(inputs),
         "cases": [], "boundary": "physical loopback HTTP over local HTTPS/JSONL fixtures; binary hashes are context, not build attestation",
     }
     persist(base / "manifest.json", manifest)
@@ -484,7 +484,7 @@ def run(binary, base):
     record(manifest, base, "partial-client-shutdown", lambda: check_partial(binary, base))
     require(digest(binary) == manifest["binary"]["sha256"], "runtime binary changed during status acceptance")
     for relative, before in manifest["sources"].items():
-        require(digest(Path(__file__).resolve().parents[1] / relative) == before,
+        require(digest(SERVICE.input_path(relative)) == before,
                 "status acceptance input changed: " + relative)
     manifest["inputs_unchanged"] = True
     persist(base / "manifest.json", manifest)

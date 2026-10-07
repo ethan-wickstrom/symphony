@@ -2,9 +2,9 @@ name: OCaml boundaries
 
 on:
   push:
-    paths: ["ocaml/**", "vendor/**", "docs/**", "CONFORMANCE.md", ".github/workflows/ocaml.yml"]
+    paths: ["conformance/**", "ocaml/**", "vendor/**", "docs/**", "CONFORMANCE.md", ".github/workflows/ocaml.yml"]
   pull_request:
-    paths: ["ocaml/**", "vendor/**", "docs/**", "CONFORMANCE.md", ".github/workflows/ocaml.yml"]
+    paths: ["conformance/**", "ocaml/**", "vendor/**", "docs/**", "CONFORMANCE.md", ".github/workflows/ocaml.yml"]
 
 permissions:
   contents: read
@@ -22,6 +22,15 @@ jobs:
         working-directory: ocaml
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Install portable harness outside checkout
+        run: |
+          python3 -m venv "$RUNNER_TEMP/symphony-harness-env"
+          "$RUNNER_TEMP/symphony-harness-env/bin/python" -m pip install --require-hashes --only-binary=:all: --no-cache-dir --disable-pip-version-check -r ../conformance/requirements.lock
+          "$RUNNER_TEMP/symphony-harness-env/bin/python" -m pip install --no-build-isolation --no-deps --disable-pip-version-check ../conformance
+          printf '%s\n' "$RUNNER_TEMP/symphony-harness-env/bin" >> "$GITHUB_PATH"
       - name: Check immutable release inputs and physical verifier
         env:
           SYMPHONY_REQUIRE_NATIVE: ${{ matrix.os == 'macos-latest' && '1' || '0' }}
@@ -55,6 +64,12 @@ jobs:
         with:
           # macOS waitid(WNOWAIT) requires Python 3.13 or newer.
           python-version: "3.14"
+      - name: Install portable harness outside checkout
+        run: |
+          python3 -m venv "$RUNNER_TEMP/symphony-harness-env"
+          "$RUNNER_TEMP/symphony-harness-env/bin/python" -m pip install --require-hashes --only-binary=:all: --no-cache-dir --disable-pip-version-check -r ../conformance/requirements.lock
+          "$RUNNER_TEMP/symphony-harness-env/bin/python" -m pip install --no-build-isolation --no-deps --disable-pip-version-check ../conformance
+          printf '%s\n' "$RUNNER_TEMP/symphony-harness-env/bin" >> "$GITHUB_PATH"
       - name: Pin audited boundaries and install locked dependencies
         run: |
           opam pin add yaml.3.2.0 ../vendor/yaml --no-action --yes
@@ -67,11 +82,9 @@ jobs:
       - run: opam exec -- dune runtest
       - name: Validate actual Codex codec fixtures
         run: |
-          python3 -m venv _build/codec-venv
-          _build/codec-venv/bin/python -m pip install --require-hashes --only-binary=:all: --no-cache-dir --disable-pip-version-check -r tools/protocol_codec_requirements.lock
           opam exec -- dune exec test/protocol_fixtures.exe > _build/codec-fixtures.jsonl
-          _build/codec-venv/bin/python tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir "$RUNNER_TEMP/symphony-codec/normal"
-          _build/codec-venv/bin/python -O tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir "$RUNNER_TEMP/symphony-codec/optimized"
+          python3 tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir "$RUNNER_TEMP/symphony-codec/normal"
+          python3 -O tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir "$RUNNER_TEMP/symphony-codec/optimized"
       - name: Bounded native service capacity
         run: |
           python3 test/capacity_check_test.py
@@ -101,6 +114,8 @@ jobs:
           PYTHONOPTIMIZE=1 python3 test/tracker_cli_check.py _build/default/bin/main.exe
       - name: Live dispatch executable acceptance
         run: |
+          python3 test/service_process_test.py -v
+          python3 -O test/service_process_test.py -v
           python3 test/service_cli_check.py _build/default/bin/main.exe --out "$RUNNER_TEMP/symphony-service-cli/normal"
           PYTHONOPTIMIZE=1 python3 test/service_cli_check.py _build/default/bin/main.exe --out "$RUNNER_TEMP/symphony-service-cli/optimized"
       - name: Operator HTTP executable acceptance
@@ -118,6 +133,12 @@ jobs:
           python3 ../vendor/eio/symphony_tests/run.py --switch "$GITHUB_WORKSPACE" --campaigns 1 --out "$RUNNER_TEMP/symphony-custody"
           python3 ../vendor/eio/symphony_tests/thread_failure.py --switch "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/symphony-admission"
           PYTHONOPTIMIZE=1 python3 ../vendor/eio/symphony_tests/thread_failure.py --switch "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/symphony-admission-optimized"
+      - name: Portable installed lifecycle and calibration
+        run: |
+          python3 -m unittest discover -s ../conformance/tests -v
+          python3 -O -m unittest discover -s ../conformance/tests -v
+          python3 ../conformance/tests/acceptance.py --candidate "$PWD/_build/default/bin/main.exe" --out "$RUNNER_TEMP/symphony-conformance/normal"
+          python3 -O ../conformance/tests/acceptance.py --candidate "$PWD/_build/default/bin/main.exe" --out "$RUNNER_TEMP/symphony-conformance/optimized"
       - name: Retain native evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -137,3 +158,4 @@ jobs:
             ${{ runner.temp }}/symphony-codec/
             ${{ runner.temp }}/symphony-service-cli/
             ${{ runner.temp }}/symphony-status-cli/
+            ${{ runner.temp }}/symphony-conformance/

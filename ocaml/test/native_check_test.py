@@ -11,7 +11,6 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 import native_check
@@ -21,7 +20,6 @@ READY_TIMEOUT = 5
 INTERRUPT_TIMEOUT = 8
 GATE_TIMEOUT = 1
 GATE_OUTER_TIMEOUT = 12
-ADMISSION_DELAY = GATE_TIMEOUT * 2
 AGENT_UNITS = (
     "app_server", "codex_runner", "protocol_codec", "protocol_envelope",
     "protocol_frame", "protocol_id",
@@ -35,7 +33,7 @@ LIFECYCLE_UNITS = (
     "native_shutdown_test", "native_output_test", "native_status_test",
     "native_scope_test", "host_lifecycle_main",
 )
-AGENT_ENV_NAMES = ("SYMPHONY_TEST_PYTHON", "SYMPHONY_TEST_AGENT_SERVER")
+NATIVE_ENV_NAMES = (native_check.PYTHON_ENV, native_check.SERVER_ENV, native_check.TLS_ENV)
 
 
 class Stage(Enum):
@@ -71,6 +69,7 @@ def group_fixture(base, finish, *, admission):
         "child = os.fork()\n"
         "if child == 0:\n"
         "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "    for fd in (0, 1, 2): os.close(fd)\n"
         "    ready.write_text('ready')\n"
         f"    time.sleep({FIXTURE_LIFETIME})\n"
         "    os._exit(0)\n"
@@ -110,7 +109,7 @@ def exit_target(base, name):
         f"#!{sys.executable}\n"
         "from pathlib import Path\n"
         "import json, os, sys\n"
-        f"names = {AGENT_ENV_NAMES!r}\n"
+        f"names = {NATIVE_ENV_NAMES!r}\n"
         "Path('environment.json').write_text(json.dumps({name: os.environ.get(name) for name in names}))\n"
         "sys.exit(0 if Path.cwd() == Path(__file__).parent else 2)\n"
     )
@@ -126,14 +125,16 @@ def gate_command():
 class NativeWatchdogTest(unittest.TestCase):
     def agent_evidence(self, evidence):
         expected_env = {
-            "SYMPHONY_TEST_PYTHON": sys.executable,
-            "SYMPHONY_TEST_AGENT_SERVER": str(native_check.AGENT_FIXTURE),
+            native_check.PYTHON_ENV: sys.executable,
+            native_check.SERVER_ENV: str(native_check.AGENT_FIXTURE),
+            native_check.TLS_ENV: native_check.TLS_DIRECTORY,
         }
         self.assertEqual({"kernel", "host", "http", "agent", "lifecycle"}, set(evidence["results"]))
         self.assertEqual(set(evidence["results"]), set(evidence["binaries"]))
         self.assertEqual(expected_env, evidence["binaries"]["agent"]["environment"])
         for name in ("kernel", "host", "http", "lifecycle"):
-            self.assertNotIn("environment", evidence["binaries"][name])
+            self.assertEqual({native_check.TLS_ENV: native_check.TLS_DIRECTORY},
+                             evidence["binaries"][name]["environment"])
         self.assertEqual(len(evidence["sources"]), evidence["source_count"])
         for area, units in (("agent", AGENT_UNITS), ("orchestration", ORCHESTRATION_UNITS)):
             expected = {f"lib/{area}/{unit}{suffix}" for unit in units for suffix in (".ml", ".mli")}
@@ -144,13 +145,26 @@ class NativeWatchdogTest(unittest.TestCase):
         required = (
             "dune", "dune-project", "test/dune", "test/native_agent_test.ml",
             "test/native_agent_test.mli", "test/fixtures/agent/native_server.py",
-            "protocol/0.159.2/ThreadStartParams.json", "protocol/0.159.2/TurnStartParams.json",
             "protocol/0.159.2/policies.json", "protocol/0.159.2/manifest.json",
-            "protocol/0.159.2/codec/manifest.json", "protocol/0.159.2/codec/ClientRequest.json",
+            "protocol/0.159.2/codec/manifest.json",
         )
         for name in required:
             expected = hashlib.sha256((root / name).read_bytes()).hexdigest()
             self.assertEqual(expected, evidence["sources"].get(name), f"missing or stale hash: {name}")
+        lock = root.parent / "conformance/requirements.lock"
+        self.assertEqual(hashlib.sha256(lock.read_bytes()).hexdigest(),
+                         evidence["sources"].get("conformance/requirements.lock"))
+        for name in native_check.TLS_FILES:
+            resource = "tls/" + name
+            self.assertEqual(native_check.assets.digest(resource),
+                             evidence["sources"].get("package/" + resource))
+        self.assertEqual(native_check.assets.digest("protocol/manifest.json"),
+                         evidence["sources"].get("package/protocol/manifest.json"))
+        schemas = native_check.assets.load("protocol/manifest.json")["files"]
+        expected_schemas = {"package/protocol/schemas/" + name: digest for name, digest in schemas.items()}
+        actual_schemas = {name: digest for name, digest in evidence["sources"].items()
+                          if name.startswith("package/protocol/schemas/")}
+        self.assertEqual(expected_schemas, actual_schemas)
         for unit in LIFECYCLE_UNITS:
             for suffix in (".ml", ".mli"):
                 name = f"test/{unit}{suffix}"
@@ -166,6 +180,10 @@ class NativeWatchdogTest(unittest.TestCase):
         self.assertEqual(sys.flags.optimize, evidence["python"]["optimize"])
         self.assertEqual(sys.flags.optimize, evidence["watchdog"]["optimize"])
         self.assertEqual(min(sys.flags.optimize, 2), evidence["helper"]["optimize"])
+        for source in (Path(native_check.capture.__file__), Path(native_check.process.__file__),
+                       native_check.SENTINEL):
+            self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),
+                             evidence["driver"]["sources"][source.name])
         self.assertEqual(str(native_check.AGENT_FIXTURE), evidence["agent_fixture"]["path"])
         self.assertEqual(evidence["sources"]["test/fixtures/agent/native_server.py"],
                          evidence["agent_fixture"]["sha256"])
@@ -218,8 +236,8 @@ class NativeWatchdogTest(unittest.TestCase):
                 self.assertEqual(0, evidence["results"]["lifecycle"]["status"])
                 self.assertIn("test/native_http_test.ml", evidence["sources"])
                 self.assertIn("test/native_http_test.mli", evidence["sources"])
-                self.assertIn("test/fixtures/tls/ca.pem", evidence["sources"])
-                self.assertIn("test/fixtures/tls/server.key", evidence["sources"])
+                self.assertIn("package/tls/ca.pem", evidence["sources"])
+                self.assertIn("package/tls/server.key", evidence["sources"])
                 self.assertTrue(receipt.is_file(), "HTTP target never became ready")
                 for text in receipt.read_text().split():
                     self.assertFalse(running(int(text)), "HTTP gate leaked its group")
@@ -238,7 +256,7 @@ class NativeWatchdogTest(unittest.TestCase):
             finish = (
                 "import json\n"
                 f"Path({str(environment)!r}).write_text(json.dumps("
-                f"{{name: os.environ.get(name) for name in {AGENT_ENV_NAMES!r}}}))\n"
+                f"{{name: os.environ.get(name) for name in {NATIVE_ENV_NAMES!r}}}))\n"
                 f"time.sleep({FIXTURE_LIFETIME})"
             )
             helper, receipt = group_fixture(directory, finish, admission=0)
@@ -446,6 +464,15 @@ class NativeWatchdogTest(unittest.TestCase):
                 primary = "KeyboardInterrupt" if requested == signal.SIGINT else "Terminated"
                 self.assertIn(primary, stdout + stderr,
                               "runner lost its primary interruption")
+                ownership_path = (base / "run.log").with_suffix(".ownership.json")
+                self.assertTrue(ownership_path.is_file(),
+                                "interruption lost the persisted ownership receipt")
+                ownership = json.loads(ownership_path.read_text())
+                self.assertTrue(ownership["reaped"], "persisted receipt lacks leader reap")
+                self.assertTrue(ownership["closed"], "persisted receipt lacks owner closure")
+                for stream in ("stdout", "stderr"):
+                    self.assertEqual(hashlib.sha256(b"").hexdigest(),
+                                     ownership[stream + "_sha256"])
                 if stage is Stage.ADMISSION:
                     self.assertTrue(signals.is_file(), "pending signal skipped admitted cleanup")
                     trace = [json.loads(line) for line in signals.read_text().splitlines()]
@@ -478,30 +505,10 @@ class NativeWatchdogTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="symphony-watchdog-") as base:
             base = Path(base)
             helper, receipt = group_fixture(
-                base, f"time.sleep({FIXTURE_LIFETIME})", admission=ADMISSION_DELAY
+                base, f"time.sleep({FIXTURE_LIFETIME})", admission=0
             )
-            wait_exit = native_check.wait_exit
-
-            def ready_wait(child, timeout, observe):
-                # Admission is bounded separately; timeout tests an owned child
-                # whose TERM-ignore disposition and PID receipt already exist.
-                deadline = time.monotonic() + READY_TIMEOUT
-                while not receipt.is_file():
-                    observe()
-                    exited = os.waitid(
-                        os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT
-                    )
-                    if exited is not None:
-                        return wait_exit(child, timeout, observe)
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        raise subprocess.TimeoutExpired(child.args, READY_TIMEOUT)
-                    time.sleep(min(native_check.POLL_INTERVAL, remaining))
-                return wait_exit(child, timeout, observe)
-
             try:
-                with patch.object(native_check, "wait_exit", ready_wait):
-                    outcome = native_check.execute(helper, base / "run.log", GATE_TIMEOUT)
+                outcome = native_check.execute(helper, base / "run.log", GATE_TIMEOUT)
                 self.assertEqual("timeout", outcome["status"])
                 self.assertTrue(receipt.is_file(), "helper did not publish its child")
                 for text in receipt.read_text().split():

@@ -1,6 +1,7 @@
 """Watchdog and retained evidence for actual native workspace boundaries."""
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -10,147 +11,99 @@ import signal
 import subprocess
 import sys
 import time
+from symphony_conformance.driver import capture, process
+from symphony_conformance.driver.process import Process
+from symphony_conformance import assets
 
 
-TERM_GRACE = 2
-POLL_INTERVAL = 0.01
-HANDLED_SIGNALS = (signal.SIGINT, signal.SIGTERM)
 SIGNAL_EXIT_BASE = 128
+OUTPUT_LIMIT = 16 * 1024 * 1024
 WATCHDOG = Path(__file__).resolve()
-SENTINEL = WATCHDOG.with_name("native_sentinel.py")
+SENTINEL = process.SENTINEL
 AGENT_FIXTURE = WATCHDOG.parent / "fixtures/agent/native_server.py"
 PYTHON_ENV = "SYMPHONY_TEST_PYTHON"
 SERVER_ENV = "SYMPHONY_TEST_AGENT_SERVER"
+TLS_ENV = "SYMPHONY_TEST_TLS_DIRECTORY"
+TLS_DIRECTORY = str(assets.resource("tls"))
+TLS_FILES = ("manifest.json", "ca.pem", "server.pem", "server.key")
 
 
 class Terminated(SystemExit):
     """A graceful SIGTERM unwinds owned resources before exiting."""
 
 
-def require_waitid():
-    flags = ("P_PID", "WEXITED", "WNOHANG", "WNOWAIT")
-    if not callable(getattr(os, "waitid", None)) or any(
-        not hasattr(os, name) for name in flags
-    ):
-        raise RuntimeError("native watchdog requires POSIX waitid with WNOWAIT")
-
-
-def signal_group(child, requested):
-    try:
-        os.killpg(child.pid, requested)
-    except ProcessLookupError:
-        pass
-
-
-def term_grace(child):
-    deadline = time.monotonic() + TERM_GRACE
-    while time.monotonic() < deadline:
-        # Observe exit without reaping: PID reservation fences the final kill.
-        exited = os.waitid(
-            os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT
-        )
-        remaining = max(0, deadline - time.monotonic())
-        if exited is not None:
-            time.sleep(remaining)
-            return
-        time.sleep(min(POLL_INTERVAL, remaining))
-
-
-def wait_exit(child, timeout, observe):
-    deadline = time.monotonic() + timeout
-    while True:
-        observe()
-        exited = os.waitid(os.P_PID, child.pid,
-                           os.WEXITED | os.WNOHANG | os.WNOWAIT)
-        if exited is not None:
-            return
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise subprocess.TimeoutExpired(child.args, timeout)
-        time.sleep(min(POLL_INTERVAL, remaining))
-
-
-def interrupted(signum, _frame):
-    if signum == signal.SIGINT:
-        raise KeyboardInterrupt
-    raise Terminated(SIGNAL_EXIT_BASE + signal.SIGTERM)
-
-
-def stop_group(child):
-    signal_group(child, signal.SIGTERM)
-    term_grace(child)
-
-
-def close_group(child, before):
-    previous = {
-        signum: signal.signal(signum, signal.SIG_IGN)
-        for signum in HANDLED_SIGNALS
-    }
-    try:
-        try:
-            before()
-        finally:
-            # Retain the root PID until the last signal to its group.
-            try:
-                signal_group(child, signal.SIGKILL)
-            finally:
-                status = child.wait()
-        return status
-    finally:
-        for signum, handler in previous.items():
-            signal.signal(signum, handler)
+def _persist_receipt(log, receipt):
+    if receipt is None:
+        raise RuntimeError("native watchdog lacks a terminal ownership receipt")
+    retained = {key: value for key, value in receipt.items() if key not in ("stdout", "stderr")}
+    retained.update({name + "_sha256": hashlib.sha256(receipt[name]).hexdigest()
+                     for name in ("stdout", "stderr")})
+    path = log.with_suffix(".ownership.json")
+    rendered = (json.dumps(retained, indent=2, allow_nan=False) + "\n").encode()
+    if path.write_bytes(rendered) != len(rendered):
+        raise OSError("native ownership receipt write was incomplete")
+    return {"path": path.name, "sha256": hashlib.sha256(rendered).hexdigest(),
+            "reaped": receipt["reaped"], "failure_count": len(receipt["failures"])}
 
 
 def execute(binary, log, timeout, *, env=None):
-    require_waitid()
     binary = binary.resolve()
-    flags = ["-I"]
-    if sys.flags.optimize:
-        flags.append("-O" if sys.flags.optimize == 1 else "-OO")
     started = time.monotonic()
-    with log.open("wb") as output:
-        pending = None
+    owner = None
+    receipt = None
+    errors = []
+    output = log.open("wb")
 
-        def collect(signum, _frame):
-            nonlocal pending
-            if pending is None:
-                pending = signum
+    def record(kind, fields):
+        if kind in ("capture.stdout", "capture.stderr"):
+            data = base64.b64decode(fields["data_b64"], validate=True)
+            if output.write(data) != len(data):
+                raise OSError("native capture file write was incomplete")
 
-        def observe():
-            if pending is not None:
-                interrupted(pending, None)
-
-        previous = {
-            signum: signal.signal(signum, collect)
-            for signum in HANDLED_SIGNALS
-        }
+    def attempt(stage, action):
         try:
-            # Main-thread handlers only collect signals, including through
-            # Popen admission and mask setup. Delivery uses owned safe points.
-            child = subprocess.Popen(
-                [sys.executable, *flags, str(SENTINEL), str(binary)], stdout=output,
-                stderr=subprocess.STDOUT, start_new_session=True, cwd=binary.parent,
-                env=None if env is None else {**os.environ, **env},
-            )
-            try:
-                wait_exit(child, timeout, observe)
-            except subprocess.TimeoutExpired:
-                close_group(child, lambda: stop_group(child))
-                return {"status": "timeout", "seconds": time.monotonic() - started}
-            except BaseException:
-                try:
-                    close_group(child, lambda: stop_group(child))
-                except BaseException:
-                    # A secondary cleanup defect cannot replace the primary.
-                    pass
-                raise
-            else:
-                status = close_group(child, lambda: None)
-                observe()
-                return {"status": status, "seconds": time.monotonic() - started}
-        finally:
-            for signum, handler in previous.items():
-                signal.signal(signum, handler)
+            return action()
+        except BaseException as error:
+            errors.append((stage, error, error.__traceback__))
+            return None
+
+    try:
+        with Process([str(binary), "--color=never"], binary.parent,
+                     {**os.environ, TLS_ENV: TLS_DIRECTORY, **(env or {})}, OUTPUT_LIMIT,
+                     started + timeout, record) as owner:
+            status = owner.join(timeout)
+    except subprocess.TimeoutExpired as error:
+        receipt = error._process_snapshot
+        status = "timeout"
+    except SystemExit as error:
+        if error.code != SIGNAL_EXIT_BASE + signal.SIGTERM:
+            raise
+        terminated = Terminated(error.code)
+        for note in getattr(error, "__notes__", ()):
+            terminated.add_note(note)
+        terminated._process_snapshot = getattr(error, "_process_snapshot", None)
+        raise terminated from error
+    finally:
+        primary = sys.exc_info()[1]
+        receipt = receipt or getattr(primary, "_process_snapshot", None)
+        if owner is not None:
+            current = attempt("ownership-snapshot", owner.snapshot)
+            if current is not None:
+                receipt = current
+        # Persist after owner and log closure, including failed admission receipts.
+        attempt("capture-log-close", output.close)
+        ownership = attempt("ownership-receipt", lambda: _persist_receipt(log, receipt))
+        failure = primary or (errors[0][1] if errors else None)
+        if failure is not None:
+            if receipt is not None:
+                failure._process_snapshot = receipt
+            for stage, error, _ in errors:
+                failure.add_note(f"Native evidence failed: stage={stage} class={type(error).__name__}")
+            if primary is None:
+                raise failure.with_traceback(errors[0][2])
+
+    return {"status": status, "seconds": time.monotonic() - started,
+            "ownership": ownership}
 
 
 def main():
@@ -192,6 +145,15 @@ def main():
         for path in sources
         if path.is_file()
     }
+    lock = root.parent / "conformance/requirements.lock"
+    hashes["conformance/requirements.lock"] = hashlib.sha256(lock.read_bytes()).hexdigest()
+    for name in TLS_FILES:
+        resource = "tls/" + name
+        hashes["package/" + resource] = assets.digest(resource)
+    hashes["package/protocol/manifest.json"] = assets.digest("protocol/manifest.json")
+    for name in assets.load("protocol/manifest.json")["files"]:
+        resource = "protocol/schemas/" + name
+        hashes["package/" + resource] = assets.digest(resource)
     helper = {
         "path": str(SENTINEL),
         "sha256": hashlib.sha256(SENTINEL.read_bytes()).hexdigest(),
@@ -233,9 +195,10 @@ def main():
             "path": str(binary),
             "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
         }
-        env = agent_env if name == "agent" else None
-        if env is not None:
-            binaries[name]["environment"] = env
+        env = {TLS_ENV: TLS_DIRECTORY}
+        if name == "agent":
+            env.update(agent_env)
+        binaries[name]["environment"] = env
         results[name] = execute(binary, args.out / f"{name}.log", args.timeout, env=env)
 
     manifest = {
@@ -246,12 +209,14 @@ def main():
         "source_count": len(hashes),
         "binaries": binaries,
         "helper": helper,
+        "driver": {"sources": {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                                for path in (Path(capture.__file__), Path(process.__file__), SENTINEL)}},
         "watchdog": watchdog,
         "agent_fixture": agent_fixture,
         "results": results,
         "provenance": (
             "Hashes record current source files, binaries, Python interpreter and "
-            "agent fixture before launch; agent environment records explicit "
+            "agent fixture and installed protocol/TLS assets before launch; binary environments record explicit "
             "overrides of inherited watchdog bindings; "
             "no source-to-binary attestation"
         ),

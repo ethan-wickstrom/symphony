@@ -7,8 +7,8 @@ typed lifecycle transitions and the scoped Eio owner are implemented. Native
 fake-session capacity is measured. The executable composes authenticated Linear
 polling, native workspaces and closed Codex app-server attempts. Local acceptance
 uses actual TLS and subprocesses with fake providers; authenticated Codex
-acceptance remains pending. The optional status API passes local verification;
-hosted review is pending.
+acceptance remains pending. The optional status API passed local and Linux/macOS
+hosted verification and merged in PR #13.
 
 ## Build
 
@@ -124,7 +124,7 @@ resource closure; see the [lifecycle contract](../docs/design/live-dispatch.md).
 
 ## Status API
 
-Local acceptance passes 23 executable scenarios in both modes; hosted review is pending.
+Local and Linux/macOS hosted acceptance passed 23 scenarios per mode in PR #13.
 Enable the loopback listener with a CLI port:
 
 ```sh
@@ -201,3 +201,15 @@ command execution and deterministic service simulation pass the independent
 event model. Native capacity holds 1000 scoped fake sessions through measured
 polling and joined shutdown. The executable now uses the same owner with the
 closed native runner; live Codex provider acceptance remains separate.
+
+## Portable lifecycle evidence
+
+The [installed conformance package](../conformance/README.md) owns shared capture,
+process custody, fake TLS and generated schemas. `just conformance` runs normal
+and optimized controls, the public CLI lifecycle and a scripted calibration
+profile from an external cwd, retaining sealed evidence and independent reports.
+
+The fixed catalog retains all 106 requirements and 12 supplemental clauses.
+The first lifecycle is partial evidence. Numeric usage is unobservable in the
+public OCaml log; full core conformance remains incomplete. Fake peers and
+retained hashes do not establish authenticated provider or release acceptance.
