@@ -1,15 +1,67 @@
-"""Parse the fixture adapter's GraphQL selection without query spelling rules."""
+"""Validate and project queries against the fixed lifecycle tracker schema.
 
-from graphql import get_operation_ast, parse, value_from_ast_untyped
-from graphql.language import FieldNode, OperationType
+Effective nodes.id, identifier, title and state.name paths must select their
+actual fields. GraphQL handles fragments, directives, aliases and field merging.
+The fixture exposes one issue connection and retains a closed filter contract.
+"""
+
+from graphql import (build_schema, default_field_resolver, execute_sync,
+                     get_operation_ast, parse, validate, value_from_ast_untyped)
+from graphql.language import OperationType
 
 from .assets import decode
 
 
 _LOGICAL_FIELDS = frozenset({"or", "and"})
 _FILTER_FIELDS = frozenset({"id", "project", "state"})
-_RELATION_FIELDS = frozenset({"name", "slugId", "id"})
+_RELATION_FIELDS = {"project": frozenset({"name", "slugId", "id"}),
+                    "state": frozenset({"name", "id"})}
 _TEXT_OPERATORS = frozenset({"eq", "eqIgnoreCase"})
+_ID_OPERATORS = frozenset({"eq"})
+_REQUIRED_FIELDS = {
+    ("nodes",): ("IssueConnection", "nodes"),
+    ("nodes", 0, "id"): ("Issue", "id"),
+    ("nodes", 0, "identifier"): ("Issue", "identifier"),
+    ("nodes", 0, "title"): ("Issue", "title"),
+    ("nodes", 0, "state"): ("Issue", "state"),
+    ("nodes", 0, "state", "name"): ("WorkflowState", "name"),
+}
+_SCHEMA = build_schema("""
+    type Query {
+        issues(filter: IssueFilter!, first: Int!, after: String,
+               orderBy: PaginationOrderBy = createdAt,
+               includeArchived: Boolean = false): IssueConnection!
+    }
+    enum PaginationOrderBy { createdAt updatedAt }
+    input IssueFilter {
+        id: IssueIDComparator, project: NullableProjectFilter, state: WorkflowStateFilter,
+        or: [IssueFilter!], and: [IssueFilter!]
+    }
+    input NullableProjectFilter {
+        id: EntityIdentifierIDComparator, name: StringComparator, slugId: StringComparator
+    }
+    input WorkflowStateFilter { id: IDComparator, name: StringComparator }
+    input IssueIDComparator { eq: ID, in: [ID!] }
+    input EntityIdentifierIDComparator { eq: ID, in: [ID!] }
+    input IDComparator { eq: ID, in: [ID!] }
+    input StringComparator { eq: String, eqIgnoreCase: String, in: [String!] }
+    type IssueConnection { nodes: [Issue!]!, pageInfo: PageInfo! }
+    type PageInfo { hasNextPage: Boolean!, endCursor: String }
+    type Issue {
+        id: ID!, identifier: String!, title: String!, state: WorkflowState!,
+        description: String, priority: Int, branchName: String, url: String,
+        createdAt: String, updatedAt: String, assignee: User, project: Project,
+        labels(first: Int): IssueLabelConnection!,
+        inverseRelations(first: Int): IssueRelationConnection!
+    }
+    type WorkflowState { id: ID, name: String! }
+    type User { id: ID }
+    type Project { id: ID, slugId: String }
+    type IssueLabelConnection { nodes: [IssueLabel!]!, pageInfo: PageInfo! }
+    type IssueLabel { id: ID, name: String }
+    type IssueRelationConnection { nodes: [IssueRelation!]!, pageInfo: PageInfo! }
+    type IssueRelation { id: ID, type: String, issue: Issue, relatedIssue: Issue }
+""")
 
 
 def select(raw):
@@ -21,9 +73,15 @@ def select(raw):
     if not isinstance(variables, dict):
         raise ValueError("Invalid GraphQL variables")
 
-    operation = get_operation_ast(parse(body["query"]), body.get("operationName"))
+    operation_name = body.get("operationName")
+    if operation_name is not None and not isinstance(operation_name, str):
+        raise ValueError("Invalid GraphQL operation name")
+    document = parse(body["query"])
+    operation = get_operation_ast(document, operation_name)
     if operation is None or operation.operation != OperationType.QUERY:
         raise ValueError("Fixture requires one selected query")
+    if validate(_SCHEMA, document):
+        raise ValueError("Invalid fixture GraphQL document")
 
     values = dict(variables)
     for definition in operation.variable_definitions or ():
@@ -31,22 +89,55 @@ def select(raw):
         if name not in values and definition.default_value is not None:
             values[name] = value_from_ast_untyped(definition.default_value)
 
-    fields = operation.selection_set.selections
-    if len(fields) != 1 or not isinstance(fields[0], FieldNode):
-        raise ValueError("Fixture supports one issues field")
-    field = fields[0]
-    if field.name.value != "issues":
-        raise ValueError("Unknown fixture field")
+    selected = []
+    observed = set()
+    empty = {"nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
+    probe = {"nodes": [{"id": "probe-id", "identifier": "probe-identifier",
+                        "title": "probe-title", "state": {"name": "probe-state"},
+                        "labels": empty, "inverseRelations": empty}],
+             "pageInfo": empty["pageInfo"]}
 
-    arguments = {}
-    for argument in field.arguments:
-        name = argument.name.value
-        if name in arguments:
-            raise ValueError("Duplicate field argument")
-        arguments[name] = value_from_ast_untyped(argument.value, values)
+    def choose(info, **_coerced):
+        if selected:
+            raise ValueError("Fixture supports one effective issues field")
+        # Preserve strict raw input shapes before GraphQL's ID/list coercion.
+        arguments = {argument.name.value: value_from_ast_untyped(argument.value, values)
+                     for argument in info.field_nodes[0].arguments}
+        selection = _arguments(arguments)
+        selection["response_key"] = info.path.key
+        selected.append(selection)
+        return probe
 
-    if set(arguments) - {"filter", "first", "after", "orderBy", "includeArchived"}:
-        raise ValueError("Unsupported fixture argument")
+    def observe(source, info, **arguments):
+        path = tuple(info.path.as_list()[1:])
+        identity = (info.parent_type.name, info.field_name)
+        if _REQUIRED_FIELDS.get(path) == identity:
+            observed.add(path)
+        return default_field_resolver(source, info, **arguments)
+
+    result = execute_sync(_SCHEMA, document, root_value={"issues": choose},
+                          variable_values=variables, operation_name=operation_name,
+                          field_resolver=observe, check_sync=True)
+    if result.errors or len(selected) != 1 or not _REQUIRED_FIELDS.keys() <= observed:
+        raise ValueError("Missing effective fixture projection")
+    selection = selected[0]
+    if set(result.data) != {selection["response_key"]}:
+        raise ValueError("Fixture supports one effective root field")
+
+    def project(connection):
+        response = execute_sync(_SCHEMA, document,
+                                root_value={"issues": lambda _info, **_args: connection},
+                                variable_values=variables, operation_name=operation_name,
+                                check_sync=True)
+        if response.errors:
+            raise RuntimeError("Fixture response projection failed")
+        return {"data": response.data}
+
+    selection["project"] = project
+    return selection
+
+
+def _arguments(arguments):
     if arguments.get("orderBy", "createdAt") not in {"createdAt", "updatedAt"}:
         raise ValueError("Unsupported fixture ordering")
     if type(arguments.get("includeArchived", False)) is not bool:
@@ -59,8 +150,7 @@ def select(raw):
     _check_filter(arguments["filter"])
     return {"filter": arguments["filter"], "first": count, "after": None,
             "orderBy": arguments.get("orderBy", "createdAt"),
-            "includeArchived": arguments.get("includeArchived", False),
-            "response_key": field.alias.value if field.alias else field.name.value}
+            "includeArchived": arguments.get("includeArchived", False)}
 
 
 def _check_filter(query):
@@ -76,21 +166,22 @@ def _check_filter(query):
         if name not in _FILTER_FIELDS:
             raise ValueError("Unknown fixture filter")
         if name == "id":
-            _check_comparison(value)
+            _check_comparison(value, _ID_OPERATORS)
             continue
         if not isinstance(value, dict):
             raise ValueError("Invalid fixture relation filter")
         for field, conditions in value.items():
-            if field not in _RELATION_FIELDS:
+            if field not in _RELATION_FIELDS[name]:
                 raise ValueError("Unknown fixture relation field")
-            _check_comparison(conditions)
+            operators = _ID_OPERATORS if field == "id" else _TEXT_OPERATORS
+            _check_comparison(conditions, operators)
 
 
-def _check_comparison(conditions):
+def _check_comparison(conditions, operators):
     if not isinstance(conditions, dict) or not conditions:
         raise ValueError("Invalid fixture comparison")
     for operator, expected in conditions.items():
-        if operator in _TEXT_OPERATORS:
+        if operator in operators:
             if not isinstance(expected, str):
                 raise ValueError("Invalid fixture text comparison")
             continue

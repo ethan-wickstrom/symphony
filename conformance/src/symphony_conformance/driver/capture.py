@@ -104,6 +104,7 @@ class Capture:
         self._limits = dict(limits)
         self._buffers = {name: bytearray() for name in self._pipes}
         self._eof = set()
+        self._overflow = set()
         self._selector = None
         self._emit = emit
 
@@ -130,13 +131,17 @@ class Capture:
             buffer = self._buffers[name]
             available = self._limits[name] - len(buffer)
             try:
-                data = os.read(key.fd, min(READ_CHUNK, available + 1))
+                size = READ_CHUNK if name in self._overflow else min(READ_CHUNK, available + 1)
+                data = os.read(key.fd, size)
             except BlockingIOError:
                 continue
             if not data:
                 self._selector.unregister(key.fileobj)
                 self._eof.add(name)
                 self._record("capture.closed", {"stream": name, "stage": "eof", "status": "ok"})
+                continue
+            if name in self._overflow:
+                # Keep draining after the retained prefix reaches its bound.
                 continue
 
             # A one-byte probe separates exact-bound EOF from overflow.
@@ -148,9 +153,12 @@ class Capture:
                     "bytes": len(accepted),
                 })
             if len(data) > available:
-                self._record("capture.closed", {"stream": name, "stage": "overflow", "result": "failed",
-                                                 "status": "error", "limit": self._limits[name]})
-                raise OutputLimit(f"{name} exceeds {self._limits[name]}-byte bound")
+                first = not self._overflow
+                self._overflow.add(name)
+                self._record("capture.overflow", {"stream": name, "stage": "overflow", "result": "failed",
+                                                   "limit": self._limits[name]})
+                if first:
+                    raise OutputLimit(f"{name} exceeds {self._limits[name]}-byte bound")
 
     def _record(self, kind, fields):
         if self._emit is not None:

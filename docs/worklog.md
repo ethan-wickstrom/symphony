@@ -134,6 +134,15 @@ the fixed corpus and independent judge own expected behavior.
   All 108 controls and eleven lifecycle/calibration cases pass in both modes.
   Full configured checks, external-wheel cases and 97 receipt-reader corruption
   controls per mode also pass on the final source.
+- [x] Correct fresh review findings: classify output overflow as candidate failure,
+  enforce effective GraphQL selections and cover all seven schema numeric formats.
+  Output/numeric/projection controls pass in both modes; the failed verdict cites
+  its exact journal events. Linear's supported types/shapes follow its published
+  SDL; typed-variable and fragment regressions failed before correction.
+  The full 123-control gate and all eleven external-wheel cases pass per mode;
+  codec 67/46, native, service/status, capacity, source and release gates pass.
+  All 97 receipt-reader corruption controls pass per mode. Current evidence:
+  `ocaml/_build/conformance-linear-final-full-check.log` and reader JSON receipts.
 - [ ] Review, publish, audit exact-head Linux/macOS evidence and merge.
 
 Missing or unobservable evidence blocks complete core conformance. The public

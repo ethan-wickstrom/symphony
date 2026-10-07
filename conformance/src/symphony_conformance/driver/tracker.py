@@ -113,7 +113,7 @@ class Tracker:
                 with self._lock:
                     issue = self._issue()
                     nodes = [issue] if matches(issue, query["filter"]) else []
-                payload = {"data": {query["response_key"]: connection(nodes)}}
+                payload = query["project"](connection(nodes))
                 status = HTTPStatus.OK
             except (ValueError, TypeError, GraphQLError):
                 payload = {"errors": [{"message": "Fixture request rejected"}]}

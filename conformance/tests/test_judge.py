@@ -16,6 +16,8 @@ from symphony_conformance.judge import _interrupt_check, _inventory, _shutdown_c
 from symphony_conformance.report import build
 from symphony_conformance.schema import Schema
 
+CAPTURE_BOUND = 1024 * 1024
+
 
 def event(kind, data):
     return {"origin": "control-test", "kind": kind, "data": data}
@@ -195,6 +197,42 @@ class JudgeTest(unittest.TestCase):
         observations[-1]["data"]["status"] = "failed"
         self.write(observations)
         self.assert_bad_bundle()
+
+    def test_execution_failure_verdict(self):
+        observations = cleanup()
+        observations.insert(5, event("peer.closed", {"peer_id": "fixture-peer"}))
+        self.write(observations)
+        baseline = judge(self.bundle)
+        check = next(row for row in baseline["case"]["assertions"] if row["id"] == "shutdown.joined")
+        self.assertEqual(check["status"], "pass")
+
+        observations.insert(0, event("candidate.execution_failure", {"error_type": "OutputLimit", "returncode": 0}))
+        self.write(observations)
+        report = judge(self.bundle)
+        self.assertEqual(report["harness"]["status"], "pass")
+        self.assertEqual(report["case"]["status"], "fail")
+        check = next(row for row in report["case"]["assertions"] if row["id"] == "shutdown.joined")
+        self.assertEqual(check["status"], "fail")
+        self.assertIn(1, check["evidence_seq"])
+
+    def test_overflow_verdict(self):
+        raw = b"x" * CAPTURE_BOUND
+        observations = cleanup()
+        observations.insert(5, event("peer.closed", {"peer_id": "fixture-peer"}))
+        observations[:0] = [
+            event("capture.stdout", {"bytes": len(raw), "data_b64": base64.b64encode(raw).decode("ascii")}),
+            event("capture.overflow", {"stream": "stdout", "limit": CAPTURE_BOUND}),
+        ]
+        self.write(observations)
+        (self.bundle / "stdout.bin").write_bytes(raw)
+        self.alter_manifest(lambda manifest: manifest["files"].update({
+            "stdout.bin": {"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}}))
+        report = judge(self.bundle)
+        self.assertEqual(report["harness"]["status"], "pass")
+        self.assertEqual(report["case"]["status"], "fail")
+        check = next(row for row in report["case"]["assertions"] if row["id"] == "shutdown.joined")
+        self.assertEqual(check["status"], "fail")
+        self.assertIn(2, check["evidence_seq"])
 
     def test_missing_cleanup(self):
         self.write(cleanup()[:-1])
@@ -423,13 +461,14 @@ class JudgeTest(unittest.TestCase):
     def tracker_trace(self, body=None):
         corpus = load("corpus/lifecycle.json")
         if body is None:
-            body = json.dumps({"query": "query Fixture($filter: IssueFilter!) { issues(first: 1, filter: $filter) { nodes { id state { name } } } }",
+            body = json.dumps({"query": "query Fixture($filter: IssueFilter!) { issues(first: 1, filter: $filter) { nodes { id identifier title state { name } } } }",
                 "variables": {"filter": {"id": {"in": [corpus["issue_id"]]}}}}).encode()
         request = {"request_id": "raw-request-1", "method": corpus["tracker_method"],
             "target": corpus["tracker_target"], "headers": [[corpus["tracker_auth_header"], corpus["fake_secret"]],
                 ["Content-Type", "application/json"], ["Content-Length", str(len(body))]],
             "body": base64.b64encode(body).decode()}
         payload = json.dumps({"data": {"issues": {"nodes": [{"id": corpus["issue_id"],
+            "identifier": corpus["issue_identifier"], "title": corpus["issue_title"],
             "state": {"name": corpus["terminal_state"]}}]}}}).encode()
         response = {"request_id": request["request_id"], "status": HTTPStatus.OK,
             "headers": [["Content-Type", "application/json"], ["Content-Length", str(len(payload))],

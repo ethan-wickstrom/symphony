@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from .assets import decode, digest, load, resource
-from .driver.capture import SignalScope
+from .driver.capture import OutputLimit, SignalScope
 from .driver.errors import Failures
 from .driver.journal import Journal, seal
 from .driver.process import Process
@@ -196,7 +196,7 @@ def _execute(output, profile_id, candidate, fault, scope):
         failed_snapshot = getattr(error, "_process_snapshot", None)
         if not isinstance(error, Exception):
             cancellation = error
-        if process is not None and isinstance(error, (subprocess.CalledProcessError, subprocess.TimeoutExpired)):
+        if process is not None and isinstance(error, (subprocess.CalledProcessError, subprocess.TimeoutExpired, OutputLimit)):
             # A candidate verdict is separate from ownership and recorder health.
             try:
                 journal.emit("candidate.execution_failure", {"error_type": type(error).__name__,

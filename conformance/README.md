@@ -13,6 +13,14 @@ that observation; wire evidence independently determines the verdict.
 Cancellation remains collected through evidence sealing. A late host signal
 returns its exit code while preserving an already completed candidate receipt.
 
+Output above either 1 MiB stream bound fails the candidate. The harness retains
+the bounded prefix, drains to EOF and grades owned cleanup separately.
+
+The tracker validates its supported GraphQL schema and returns selected fields.
+This case requires effective `nodes.id`, `identifier`, `title` and `state.name`.
+Fragments, directives and aliases preserve GraphQL selection semantics.
+Supported type names follow [Linear's SDL](https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql).
+
 This is partial evidence. The catalog retains all 106 requirements from SPEC
 sections 17 and 18 plus 12 supplemental rows. One lifecycle never marks core
 conformance complete. The OCaml public log exposes no numeric usage totals;

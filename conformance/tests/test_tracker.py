@@ -1,3 +1,4 @@
+import base64
 import os
 import http.client
 import json
@@ -23,7 +24,22 @@ DIAGNOSTIC_LIMIT = 16 * 1024
 DIAGNOSTIC_TAIL = 2 * 1024
 DIAGNOSTIC_PHASES = 8
 DIAGNOSTIC_SCALAR = 128
-FILTER_QUERY = "query Pick($filter: IssueFilter!) { issues(first: 1, filter: $filter) { nodes { id } } }"
+ISSUE_SELECTION = "id identifier title state { name }"
+FILTER_QUERY = "query Pick($filter: IssueFilter!) { issues(first: 1, filter: $filter) { nodes { " + ISSUE_SELECTION + " } } }"
+OCAML_ISSUES_QUERY = """query SymphonyIssues($filter: IssueFilter!, $after: String, $pageSize: Int!) {
+  issues(filter: $filter, after: $after, first: $pageSize, orderBy: createdAt, includeArchived: false) {
+    nodes {
+      id identifier title description priority branchName url createdAt updatedAt
+      state { name } assignee { id } project { id slugId }
+      labels(first: $pageSize) { nodes { id name } pageInfo { hasNextPage endCursor } }
+      inverseRelations(first: $pageSize) {
+        nodes { id type issue { id identifier state { name } } relatedIssue { id } }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}"""
 
 
 class Input(Enum):
@@ -36,7 +52,162 @@ class Action(Enum):
     EXPIRE = "expire"
 
 
+class State(Enum):
+    ACTIVE = "active"
+    TERMINAL = "terminal"
+
+
 class TrackerTest(unittest.TestCase):
+    def test_terminal_projection(self):
+        corpus = load("corpus/lifecycle.json")
+        selections = [
+            "nodes { id }",
+            "nodes { id identifier state { name } }",
+            "nodes { id title state { name } }",
+            "nodes { id identifier title state { id } }",
+            "nodes { id identifier title current: state { name } }",
+            "items: nodes { " + ISSUE_SELECTION + " }",
+            "nodes @skip(if: true) { " + ISSUE_SELECTION + " }",
+            "nodes { id identifier title state @skip(if: true) { name } }",
+            "nodes { id identifier title state { name @include(if: false) } }",
+            "nodes { id identifier title state { value: name } }",
+            "nodes { id: __typename identifier title state { name } }",
+            "nodes { id identifier: title title: identifier state { name } }",
+            "nodes { id identifier title state: project { name: slugId } }",
+            "nodes { ... on Issue { id identifier state { name } } }",
+            "nodes { " + ISSUE_SELECTION + " unknown }",
+            "nodes { id identifier title state { name unknown } }",
+            "nodes { " + ISSUE_SELECTION + " project }",
+            "nodes { " + ISSUE_SELECTION + " description { name } }",
+            "nodes { " + ISSUE_SELECTION + " unknown @skip(if: true) }",
+        ]
+        bodies = [{"query": "query Pick($filter: IssueFilter!) { issues(first: 1, filter: $filter) { " + selection + " } }",
+                   "variables": {"filter": {"id": {"in": [corpus["issue_id"]]}}}}
+                  for selection in selections]
+        bodies.extend([
+            {"query": "query Pick($filter: IssueFilter!) { issues(first: 1, filter: $filter) @skip(if: true) { nodes { " + ISSUE_SELECTION + " } } }",
+             "variables": bodies[0]["variables"]},
+            {"query": "query Pick($filter: IssueFilter!) { issues(first: 1, filter: $filter) { nodes { ...Selected } } } fragment Selected on Issue { id identifier state { name } }",
+             "variables": bodies[0]["variables"]},
+            {"query": "query Pick($filter: IssueFilter!, $visible: Boolean!) { issues(first: 1, filter: $filter) { nodes { id identifier title state @include(if: $visible) { name } } } }",
+             "variables": {**bodies[0]["variables"], "visible": False}},
+        ])
+        self.query_requests(bodies, HTTPStatus.BAD_REQUEST, State.TERMINAL)
+
+    def test_effective_projection(self):
+        corpus = load("corpus/lifecycle.json")
+        expected = {"id": corpus["issue_id"], "identifier": corpus["issue_identifier"],
+                    "title": corpus["issue_title"], "state": {"name": corpus["terminal_state"]}}
+        selections = [
+            ("nodes { " + ISSUE_SELECTION + " }", "", expected),
+            ("nodes { ...Selected }", "fragment Selected on Issue { " + ISSUE_SELECTION + " }", expected),
+            ("nodes { ... on Issue { " + ISSUE_SELECTION + " } }", "", expected),
+            ("nodes @include(if: true) { " + ISSUE_SELECTION + " }", "", expected),
+            ("nodes { id identifier title state @skip(if: false) { name } }", "", expected),
+            ("nodes { id identifier title state @include(if: $visible) { name } }", "", expected),
+            ("nodes { id id identifier title state { name } state { name } }", "", expected),
+            ("nodes: nodes { id: id identifier title state: state { name: name } }", "", expected),
+            ("nodes { " + ISSUE_SELECTION + " renamed: description }", "", {**expected, "renamed": None}),
+            ("nodes { " + ISSUE_SELECTION + " workspace: project { slugId } }", "",
+             {**expected, "workspace": {"slugId": corpus["project"]}}),
+        ]
+        bodies = [{"query": "query Pick($filter: IssueFilter!" + (", $visible: Boolean = true" if "$visible" in selection else "")
+                             + ") { issues(first: 1, filter: $filter) { " + selection + " } } " + fragment,
+                   "variables": {"filter": {"id": {"in": [corpus["issue_id"]]}}}}
+                  for selection, fragment, _ in selections]
+        bodies.extend([
+            {"query": "query Pick($filter: IssueFilter!) { ...Selected } fragment Selected on Query { issues(first: 1, filter: $filter) { nodes { " + ISSUE_SELECTION + " } } }",
+             "variables": bodies[0]["variables"]},
+            {"query": "query Pick($filter: IssueFilter!) { ... on Query { issues(first: 1, filter: $filter) { nodes { " + ISSUE_SELECTION + " } } } }",
+             "variables": bodies[0]["variables"]},
+        ])
+        # Valid GraphQL modifiers may expose required paths; syntax alone is not a defect.
+        payloads = self.query_requests(bodies, HTTPStatus.OK, State.TERMINAL)
+        nodes = [value for _, _, value in selections] + [expected, expected]
+        for body, payload, node in zip(bodies, payloads, nodes, strict=True):
+            with self.subTest(query=body["query"]):
+                self.assertEqual(payload, {"data": {"issues": {"nodes": [node]}}})
+
+    def test_supported_projection(self):
+        from symphony_conformance.control import CANDIDATES_QUERY, IDS_QUERY
+
+        corpus = load("corpus/lifecycle.json")
+        bodies = [
+            {"query": CANDIDATES_QUERY, "variables": {
+                "scope": {"project": {"slugId": {"eq": corpus["project"]}}}, "pageWindow": 2}},
+            {"query": IDS_QUERY, "variables": {"opaqueKeys": [corpus["issue_id"]], "pageWindow": 2}},
+            {"query": OCAML_ISSUES_QUERY, "variables": {
+                "filter": {"id": {"in": [corpus["issue_id"]]}}, "after": None, "pageSize": 2}},
+        ]
+        payloads = self.query_requests(bodies, HTTPStatus.OK, State.TERMINAL)
+        for payload, key in zip(payloads, ("chosen", "chosen", "issues"), strict=True):
+            nodes = payload["data"][key]["nodes"]
+            self.assertEqual(len(nodes), 1)
+            self.assertEqual(nodes[0]["id"], corpus["issue_id"])
+            self.assertEqual(nodes[0]["state"]["name"], corpus["terminal_state"])
+
+    def test_linear_type_names(self):
+        corpus = load("corpus/lifecycle.json")
+        expected = {"id": corpus["issue_id"], "identifier": corpus["issue_identifier"],
+                    "title": corpus["issue_title"], "state": {"name": corpus["terminal_state"]}}
+        operands = [
+            ("IssueIDComparator!", "id: $operand", {"in": [corpus["issue_id"]]}, [expected]),
+            ("IDComparator!", "state: {id: $operand}", {"in": []}, []),
+            ("EntityIdentifierIDComparator!", "project: {id: $operand}", {"in": []}, []),
+            ("StringComparator!", "state: {name: $operand}",
+             {"eqIgnoreCase": corpus["terminal_state"].lower()}, [expected]),
+            ("NullableProjectFilter!", "project: $operand",
+             {"slugId": {"eq": corpus["project"]}}, [expected]),
+            ("WorkflowStateFilter!", "state: $operand",
+             {"name": {"in": [corpus["terminal_state"]]}}, [expected]),
+        ]
+        bodies = [{"query": "query Pick($operand: " + name + ") { issues(first: 1, filter: {"
+                             + predicate + "}) { nodes { " + ISSUE_SELECTION + " } } }",
+                   "variables": {"operand": value}} for name, predicate, value, _ in operands]
+        bodies.extend([
+            {"query": "query Pick($order: PaginationOrderBy!) { issues(first: 1, filter: {}, orderBy: $order) { nodes { " + ISSUE_SELECTION + " } } }",
+             "variables": {"order": "updatedAt"}},
+            {"query": "query Pick($order: PaginationOrderBy = createdAt) { issues(first: 1, filter: {}, orderBy: $order) { nodes { " + ISSUE_SELECTION + " } } }"},
+        ])
+        # Named operands must use Linear's types, even within the closed subset.
+        payloads = self.query_requests(bodies, HTTPStatus.OK, State.TERMINAL)
+        nodes = [value for _, _, _, value in operands] + [[expected], [expected]]
+        for body, payload, result in zip(bodies, payloads, nodes, strict=True):
+            with self.subTest(query=body["query"]):
+                self.assertEqual(payload, {"data": {"issues": {"nodes": result}}})
+        self.filter_requests([
+            {"id": {"eqIgnoreCase": corpus["issue_id"]}},
+            {"project": {"id": {"eqIgnoreCase": "missing-project"}}},
+            {"state": {"id": {"eqIgnoreCase": "missing-state"}}},
+            {"state": {"slugId": {"eq": "missing-state"}}},
+        ], HTTPStatus.BAD_REQUEST)
+
+    def test_linear_fragment_names(self):
+        corpus = load("corpus/lifecycle.json")
+        body = {"query": """query Pick($filter: IssueFilter!) {
+            issues(first: 1, filter: $filter) { ...Issues }
+        }
+        fragment Issues on IssueConnection { nodes { ...Selected } }
+        fragment Selected on Issue {
+            id identifier title state { ...State } assignee { ...Assigned }
+            project { ...ProjectFields } labels { ...Labels }
+            inverseRelations { ...Relations }
+        }
+        fragment State on WorkflowState { name }
+        fragment Assigned on User { id }
+        fragment ProjectFields on Project { slugId }
+        fragment Labels on IssueLabelConnection { nodes { ...LabelFields } }
+        fragment LabelFields on IssueLabel { id name }
+        fragment Relations on IssueRelationConnection { nodes { ...RelationFields } }
+        fragment RelationFields on IssueRelation { id type }
+        """, "variables": {"filter": {"id": {"in": [corpus["issue_id"]]}}}}
+        payloads = self.query_requests([body], HTTPStatus.OK, State.TERMINAL)
+        expected = {"id": corpus["issue_id"], "identifier": corpus["issue_identifier"],
+                    "title": corpus["issue_title"], "state": {"name": corpus["terminal_state"]},
+                    "assignee": None, "project": {"slugId": corpus["project"]},
+                    "labels": {"nodes": []}, "inverseRelations": {"nodes": []}}
+        self.assertEqual(payloads, [{"data": {"issues": {"nodes": [expected]}}}])
+
     def test_bad_logical_values(self):
         filters = [
             {"or": [None]}, {"and": [[]]}, {"or": [5]}, {"and": ["bad"]},
@@ -89,6 +260,10 @@ class TrackerTest(unittest.TestCase):
                               [corpus["issue_id"]], [corpus["issue_id"]], [corpus["issue_id"]]])
 
     def filter_requests(self, filters, status):
+        bodies = [{"query": FILTER_QUERY, "variables": {"filter": query}} for query in filters]
+        return self.query_requests(bodies, status)
+
+    def query_requests(self, bodies, status, state=State.ACTIVE):
         with tempfile.TemporaryDirectory() as directory:
             corpus = load("corpus/lifecycle.json")
             journal = Journal(Path(directory))
@@ -97,21 +272,25 @@ class TrackerTest(unittest.TestCase):
             authority = tracker.endpoint.split("/")[2]
             context = ssl.create_default_context(cafile=str(resource("tls/ca.pem")))
             payloads = []
+            statuses = []
             try:
-                # Reject malformed predicates even when issue evaluation could skip them.
-                for query in filters:
-                    with self.subTest(filter=query):
+                if state is State.TERMINAL:
+                    tracker.terminal()
+                for request in bodies:
+                    with self.subTest(request=request):
                         client = http.client.HTTPSConnection(authority, timeout=2, context=context)
                         try:
-                            body = json.dumps({"query": FILTER_QUERY, "variables": {"filter": query}})
+                            body = json.dumps(request)
                             client.request("POST", "/graphql", body,
                                            {"Authorization": corpus["fake_secret"], "Content-Type": "application/json"})
                             response = client.getresponse()
                             payload = json.loads(response.read())
                             payloads.append(payload)
+                            statuses.append(response.status)
                             self.assertEqual(response.status, status)
                             if status == HTTPStatus.BAD_REQUEST:
                                 self.assertTrue(payload.get("errors"))
+                                self.assertNotIn("data", payload)
                         finally:
                             client.close()
                 with self.subTest(stage="fixture-health"):
@@ -121,8 +300,13 @@ class TrackerTest(unittest.TestCase):
                 journal.close()
             with self.subTest(stage="fixture-closure"):
                 self.assertEqual(journal.rows("provider.closed")[0]["data"]["status"], "ok")
-            self.assertEqual(len(journal.rows("provider.request")), len(filters))
-            self.assertEqual(len(journal.rows("provider.response")), len(filters))
+            requests = journal.rows("provider.request")
+            responses = journal.rows("provider.response")
+            self.assertEqual(len(requests), len(bodies))
+            self.assertEqual(len(responses), len(bodies))
+            self.assertEqual([base64.b64decode(row["data"]["body"], validate=True)
+                              for row in requests], [json.dumps(body).encode() for body in bodies])
+            self.assertEqual([row["data"]["status"] for row in responses], statuses)
             return payloads
 
     def test_bounded_rejections(self):
@@ -368,7 +552,7 @@ try:
                                + str(elapsed) + ' s: ' + expired)
         fresh = http.client.HTTPSConnection('127.0.0.1', port, context=context, timeout=CLOSE_BUDGET)
         try:
-            fresh.request('POST', '/graphql', json.dumps({'query': '{issues(first:1,filter:{}){nodes{id}}}'}),
+            fresh.request('POST', '/graphql', json.dumps({'query': '{issues(first:1,filter:{}){nodes{id identifier title state{name}}}}'}),
                           {'Authorization': corpus['fake_secret']})
             response = fresh.getresponse()
             response.read()

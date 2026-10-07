@@ -654,7 +654,10 @@ def _shutdown_check(events):
     peer = _of(events, "peer.closed")
     descendants = _of(events, "descendant.observed")
     admitted = _of(events, "control.descendant.started")
+    violations = _of(events, "candidate.execution_failure") + _of(events, "capture.overflow")
     wrong = []
+    if violations:
+        wrong.append("candidate execution failed or exceeded an output bound")
     if any(event["data"].get("status") != 0 for event in waits + reaped):
         wrong.append("candidate did not exit successfully")
     for collection in (capture, owner, provider, group):
@@ -672,6 +675,8 @@ def _shutdown_check(events):
         wrong.append("final guard signal, leader reap, and owner closure are out of order")
     streams = [[event for event in capture if event["data"].get("stream") == stream] for stream in STREAMS]
     stages = [waits, *streams, provider, group, peer, reaped, owner]
+    if violations:
+        stages.append(violations)
     for declaration in admitted:
         pid = declaration["data"].get("pid")
         observations = [event for event in descendants if event["data"].get("pid") == pid]

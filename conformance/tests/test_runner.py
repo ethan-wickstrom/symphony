@@ -1,7 +1,10 @@
 import base64
+import hashlib
 import json
 from enum import Enum
+import os
 from pathlib import Path
+import sys
 import tempfile
 import threading
 import unittest
@@ -10,8 +13,9 @@ from unittest.mock import patch
 from symphony_conformance import runner
 from symphony_conformance.assets import load
 from symphony_conformance.driver.journal import Journal
-from symphony_conformance.driver.process import Process
+from symphony_conformance.driver.process import Process, Stdin
 from symphony_conformance.driver.tracker import Tracker
+from symphony_conformance.judge import judge
 
 TERMINAL_PROBE_SECONDS = 1
 
@@ -31,7 +35,116 @@ class Barrier(Enum):
     READINESS = "readiness"
 
 
+class Output(Enum):
+    STDOUT = ("stdout",)
+    STDERR = ("stderr",)
+    BOTH = ("stdout", "stderr")
+
+
 class RunnerTest(unittest.TestCase):
+    def test_stdout_overflow(self):
+        self._overflow(Output.STDOUT)
+
+    def test_stderr_overflow(self):
+        self._overflow(Output.STDERR)
+
+    def test_both_streams_overflow(self):
+        self._overflow(Output.BOTH)
+
+    def _overflow(self, output):
+        ready = b'{"event":"ready"}\n'
+        processes = []
+        script = """
+import os
+import signal
+import sys
+import threading
+
+stopping = threading.Event()
+
+def stop(_number, _frame):
+    stopping.set()
+
+signal.signal(signal.SIGTERM, stop)
+os.write(sys.stdout.fileno(), sys.argv[3].encode())
+if os.read(sys.stdin.fileno(), 1) != b"!":
+    raise RuntimeError("Overflow release was not delivered")
+for stream in sys.argv[1].split(","):
+    descriptor = getattr(sys, stream).fileno()
+    payload = b"X" * int(sys.argv[2])
+    while payload:
+        payload = payload[os.write(descriptor, payload):]
+stopping.wait()
+"""
+
+        class OverflowProcess(Process):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs, stdin=Stdin.PIPE, stdin_limit=1)
+                self._released = False
+                processes.append(self)
+
+            def wait_for(self, predicate, timeout):
+                result = super().wait_for(predicate, timeout)
+                if not self._released:
+                    # Admission and public readiness precede the real child flood.
+                    self._released = True
+                    self.write(b"!")
+                return result
+
+        optimization = ["-" + "O" * sys.flags.optimize] if sys.flags.optimize else []
+        argv = [sys.executable, "-I", *optimization, "-c", script, ",".join(output.value),
+                str(runner.OUTPUT_LIMIT + 1), ready.decode()]
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory) / "evidence"
+            with patch.object(runner.profiles, "launch", return_value=argv), patch.object(runner, "Process", OverflowProcess):
+                runner.run(bundle, "scripted")
+
+            manifest = json.loads((bundle / "manifest.json").read_text())
+            snapshot = processes[0].snapshot()
+            receipt = json.loads((bundle / "process.json").read_text())
+            rows = [json.loads(line) for line in (bundle / "events.jsonl").read_text().splitlines()]
+            self.assertTrue(snapshot["closed"])
+            self.assertTrue(snapshot["reaped"])
+            self.assertTrue(receipt["closed"])
+            self.assertTrue(receipt["reaped"])
+            for pid in (snapshot["pid"], snapshot["guard_pid"]):
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(pid, 0)
+
+            for stream in ("stdout", "stderr"):
+                initial = ready if stream == "stdout" else b""
+                expected = (initial + b"X" * (runner.OUTPUT_LIMIT - len(initial))
+                            if stream in output.value else initial)
+                retained = (bundle / (stream + ".bin")).read_bytes()
+                with self.subTest(stream=stream):
+                    self.assertEqual(retained, expected)
+                    self.assertEqual(snapshot[stream], retained)
+                    self.assertEqual(manifest["files"][stream + ".bin"],
+                                     {"bytes": len(retained), "sha256": hashlib.sha256(retained).hexdigest()})
+                    chunks = [base64.b64decode(row["data"]["data_b64"], validate=True)
+                              for row in rows if row["kind"] == "capture." + stream]
+                    self.assertEqual(b"".join(chunks), retained)
+
+            failures = [row["data"] for row in rows if row["kind"] == "candidate.execution_failure"]
+            self.assertEqual([value["error_type"] for value in failures], ["OutputLimit"])
+            overflows = [row["data"] for row in rows if row["kind"] == "capture.overflow"]
+            self.assertEqual(sorted(value["stream"] for value in overflows), sorted(output.value))
+            self.assertTrue(all(value["limit"] == runner.OUTPUT_LIMIT for value in overflows))
+            self.assertEqual(snapshot["eof"], ("stderr", "stdout"))
+            self.assertEqual(snapshot["failures"], ())
+            for operation in ("observe", "join", "reap"):
+                self.assertEqual(sum(row["kind"] == "candidate.wait"
+                                     and row["data"].get("operation") == operation for row in rows), 1)
+            closures = [row["data"] for row in rows if row["kind"] == "capture.closed"]
+            self.assertEqual(len(closures), 3)
+            self.assertTrue(all(value["status"] == "ok" for value in closures))
+            self.assertTrue(manifest["completed"])
+            self.assertEqual(manifest["harness_errors"], [])
+            report = judge(bundle)
+            self.assertEqual(report["harness"], {"status": "pass", "errors": []})
+            self.assertNotEqual(report["case"]["status"], "pass")
+            self.assertFalse(report["core_summary"]["complete"])
+
     def test_terminal_waits_for_ack(self):
         self._terminal_barrier(Barrier.ACK)
 
