@@ -75,7 +75,8 @@
   service_failure
   service_failure_test
   service_scenario
-  service_sim_test)
+  service_sim_test
+  service_query_test)
  (libraries
   symphony_service
   symphony_io
@@ -132,6 +133,7 @@
   core_test
   core_coverage_test
   core_property_test
+  status_test
   agent_observation_model
   agent_observation_test)
  (libraries
@@ -166,7 +168,12 @@
 
 (executable
  (name host_lifecycle_main)
- (modules host_lifecycle_main native_shutdown_test native_output_test)
+ (modules
+  host_lifecycle_main
+  native_shutdown_test
+  native_output_test
+  native_status_test
+  native_scope_test)
  (libraries symphony_native symphony_io alcotest eio_posix eio.mock mtime))
 
 (executable

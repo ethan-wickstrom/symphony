@@ -15,6 +15,11 @@ module Assembly = Service_assembly.Compose (struct
 end)
 
 module Host = Assembly.Host
+module Status = Status_surface.Make (Host.Source)
+module Http = Native_status.Make (Clock_posix)
+
+let query_timeout = Result.get_ok (Milliseconds.parse "1000")
+
 module Output = Native_output.Make (Clock_posix)
 
 let issue_fields issue =
@@ -292,8 +297,8 @@ let hook_fields = function
   | Workspace_hooks.Finished Workspace_hooks.Cancelled ->
       [ ("phase", "finished"); ("outcome", "canceled") ]
 
-let serve ~fs ~net ~clock ~runtime ~cwd ~ca_bundle ~io ~env ~document output
-    signal =
+let serve ~fs ~net ~clock ~runtime ~cwd ~ca_bundle ~port ~io ~env ~document
+    output signal =
   let report diagnostic =
     Output.emit output ~event:"host_cleanup_failure"
       [ ("diagnostic", Diagnostic.render diagnostic) ]
@@ -306,8 +311,8 @@ let serve ~fs ~net ~clock ~runtime ~cwd ~ca_bundle ~io ~env ~document output
     with
     | Error error -> Error (Tracker_error.diagnostic error)
     | Ok registry -> (
-        match Config.resolve registry ~env ~document with
-        | Ok config -> Ok (registry, config)
+        match Config.resolve_startup registry ~env ~document with
+        | Ok startup -> Ok (registry, startup)
         | Error error ->
             Error
               (Diagnostic.make
@@ -330,7 +335,8 @@ let serve ~fs ~net ~clock ~runtime ~cwd ~ca_bundle ~io ~env ~document output
            [ ("diagnostic", Diagnostic.render diagnostic) ]
        with _ -> ());
       Error diagnostic
-  | Ok (registry, config) -> (
+  | Ok (registry, startup) -> (
+      let config = Config.runtime startup in
       let host =
         Native.create ~fs ~clock
           ~emit:(fun reference hook event ->
@@ -352,8 +358,9 @@ let serve ~fs ~net ~clock ~runtime ~cwd ~ca_bundle ~io ~env ~document output
           ~file:io ~registry ~env ~report:(fault output) ~report_host ~observe
       in
       let execute () =
-        Eio.Switch.run (fun sw ->
+        Native_scope.with_scope (fun sw ->
             let controls = Eio.Stream.create 1 in
+            let run = Host.create_run ~sw service ~query_timeout in
             Eio.Fiber.fork_daemon ~sw (fun () ->
                 let received = Eio.Promise.await signal in
                 Output.emit output ~event:"shutdown_requested"
@@ -365,9 +372,25 @@ let serve ~fs ~net ~clock ~runtime ~cwd ~ca_bundle ~io ~env ~document output
                   ];
                 Eio.Stream.add controls Host.Shutdown;
                 `Stop_daemon);
-            Output.emit output ~event:"service_started"
-              [ ("workflow", Workflow_path.display (Config.file config)) ];
-            Host.run ~sw service ~controls config)
+            let dispatch () =
+              Output.emit output ~event:"service_started"
+                [ ("workflow", Workflow_path.display (Config.file config)) ];
+              Host.run run ~controls config
+            in
+            let port =
+              match port with
+              | Some _ -> port
+              | None -> Config.listener_port startup
+            in
+            match port with
+            | None -> dispatch ()
+            | Some port ->
+                Http.with_server ~net ~clock ~port
+                  ~ready:(fun port ->
+                    Output.emit output ~event:"status_listening"
+                      [ ("port", string_of_int port) ])
+                  ~handler:(Status.handle (Host.source run))
+                  dispatch)
       in
       let result = execute () in
       match result with
@@ -383,7 +406,8 @@ let serve ~fs ~net ~clock ~runtime ~cwd ~ca_bundle ~io ~env ~document output
 
 type setup = Signal_setup | Output_setup | Entered_output
 
-let run ~fs ~net ~sink ~clock ~runtime ~cwd ~ca_bundle ~io ~env ~document =
+let run ~fs ~net ~sink ~clock ~runtime ~cwd ~ca_bundle ~port ~io ~env ~document
+    =
   (* Signal custody covers output drainage as well as service closure. *)
   let closed = ref None in
   let setup = ref Signal_setup in
@@ -398,8 +422,8 @@ let run ~fs ~net ~sink ~clock ~runtime ~cwd ~ca_bundle ~io ~env ~document =
         Output.with_output ~clock ~sink (fun output ->
             setup := Entered_output;
             try
-              serve ~fs ~net ~clock ~runtime ~cwd ~ca_bundle ~io ~env ~document
-                output signal
+              serve ~fs ~net ~clock ~runtime ~cwd ~ca_bundle ~port ~io ~env
+                ~document output signal
             with error ->
               let trace = Printexc.get_raw_backtrace () in
               (try Output.emit output ~event:"host_failure" [] with _ -> ());

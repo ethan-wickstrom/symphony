@@ -60,6 +60,7 @@ module Make
     Orchestrator.S
       with type config = Config.t
        and type instant = Clock.Pure.instant
+       and type clock_sample = Clock.Pure.sample
        and type tracker_request = Tracker.Contract.request
        and type tracker_reply = Tracker.Contract.reply
        and type agent_request = Agent.request
@@ -68,6 +69,10 @@ module Make
        and type workspace_cleanup = Workspace.Contract.cleanup
 
   type t
+  type run
+
+  module Source : Status_source.S
+
   type control = Refresh | Shutdown
 
   type transition = {
@@ -135,9 +140,24 @@ module Make
       own failure cannot replace a captured primary or skip remaining drainage;
       do not recursively report a failed reporter through itself. *)
 
+  val create_run : sw:Eio.Switch.t -> t -> query_timeout:Milliseconds.t -> run
+  (** Allocate one run under the caller's scope. The dependency bundle [t] is
+      reusable. This handle can start once; its source never attaches to another
+      run, and scope release closes an unused handle. All callers share the
+      owner's Eio domain. *)
+
+  val source : run -> Source.t
+  (** Before startup and after closure, requests return Shutting_down without
+      reading a clock. Each active request has one fixed deadline, including
+      FIFO admission bounded to 64 accepted requests, including the request
+      currently answered. Caller cancellation retracts only that request.
+      Snapshots read the current owner state with one fresh clock sample;
+      refresh receipts describe admitted owner work. Coalesced includes an
+      active startup or scope-replacement cycle that already covers refresh. A
+      caller abandoned before admission cannot create scheduling work. *)
+
   val run :
-    sw:Eio.Switch.t ->
-    t ->
+    run ->
     controls:control Eio.Stream.t ->
     Config.t ->
     (unit, Diagnostic.t) result

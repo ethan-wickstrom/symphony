@@ -178,7 +178,8 @@ def main():
     sources += sorted((root / "test/native_host").glob("*.ml*"))
     sources += sorted((root / "test").glob("native_http_test.ml*"))
     sources += sorted((root / "test").glob("native_agent_test.ml*"))
-    for unit in ("native_shutdown_test", "native_output_test", "host_lifecycle_main"):
+    for unit in ("native_shutdown_test", "native_output_test", "native_status_test",
+                 "native_scope_test", "host_lifecycle_main"):
         sources += sorted((root / "test").glob(unit + ".ml*"))
     sources += sorted((root / "test").glob("tracker_runtime_test.ml*"))
     sources += sorted((root / "bin").glob("tracker_runtime.ml*"))

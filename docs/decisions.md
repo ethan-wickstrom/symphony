@@ -569,6 +569,26 @@ joins. Example, property and replay executables have separate entry points, so
 help and selected examples cannot silently run a campaign. No new dependency is
 needed. See [the retrospective](design/service-retrospective.md).
 
+## Status query and HTTP presentation
+
+The API uses one fresh paired owner sample and no snapshot cache. Snapshot
+construction checks disjoint identities and display text; a rejected projection
+returns fixed 503 rather than failing the scheduling owner. Nullable wall times
+are honest range failures, not substituted timestamps. Session data exists only
+after acquisition; workspace display is retained only from an accepted acquired
+path. Cleanup is a visible current owner, with no completed-owner history.
+
+`Http_message` is a neutral domain boundary so the native driver never imports
+the orchestrator renderer. `Status_surface` consumes `Status_source.S`, whose only
+operations are a bounded owner query and coalesced poll/reconciliation trigger.
+No HTTP fiber reads configuration or invokes the reducer. Detail unavailability
+is 503, correcting the reference presenter's false 404. A 405 carries the route's
+exact `Allow` method; malformed/nonempty refresh bodies return 400 before queuing.
+JSON has the existing
+one MiB composition bound; escaped HTML has a four MiB bound. Refresh omits an
+unsampled `requested_at` rather than inventing wall time. Listener settings are
+restart-required. Limits and pending evidence are in [the status design](design/status-api.md).
+
 ## Native release foundation
 
 The first macOS profile is arm64, minimum 26.0, SDK 26.5, Apple M1 CPU baseline.

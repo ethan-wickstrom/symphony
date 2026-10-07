@@ -1,5 +1,5 @@
 (library
  (name symphony_service)
  (wrapped false)
- (private_modules service_inbox service_failure)
+ (private_modules service_inbox service_failure service_query)
  (libraries symphony_orchestration symphony_io eio))

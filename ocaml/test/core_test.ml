@@ -1469,8 +1469,117 @@ let deferred_retry_deadline () =
        loading.commands);
   no_command "Due retry waits for its own fresh read" worker loading
 
+let operator_snapshot () =
+  let harness = cycle ~issues:[ issue_a ] (startup F.A) in
+  let request = run "opaque-a" harness in
+  let wall = checked (Utc.parse "2030-01-01T00:00:10Z") in
+  let sample = { Clock.Pure.monotonic = F.instant 5000; wall } in
+  let read harness = checked (C.snapshot ~sample harness.state) in
+  let row snapshot =
+    match (Snapshot.data snapshot).Snapshot.running with
+    | [ row ] -> row
+    | _ -> Alcotest.fail "one canonical worker expected"
+  in
+  let initial = row (read harness) in
+  Alcotest.(check bool)
+    "pre-acquisition workspace is absent" true
+    (Option.is_none initial.Snapshot.workspace);
+  Alcotest.(check bool)
+    "initial worker has no session" true
+    (initial.Snapshot.phase = Snapshot.Awaiting);
+  let harness = session harness request in
+  let before = projection harness in
+  let snapshot = read harness in
+  let current = row snapshot in
+  Alcotest.(check (pair int int))
+    "derived counts" (1, 0) (Snapshot.counts snapshot);
+  Alcotest.(check string)
+    "fresh elapsed interval" "5"
+    (Seconds.decimal current.Snapshot.seconds_running);
+  let expected_start = checked (Utc.parse "2030-01-01T00:00:05Z") in
+  Alcotest.(check (option int))
+    "start uses the same affine sample" (Some 0)
+    (Option.map
+       (fun value -> Utc.compare value expected_start)
+       current.Snapshot.started_at);
+  F.with_path (F.Agent.workspace request) (fun path ->
+      Alcotest.(check (option string))
+        "only accepted acquired workspace"
+        (Some (F.Path.display path))
+        current.Snapshot.workspace);
+  (match current.Snapshot.phase with
+  | Snapshot.Streaming session ->
+      Alcotest.(check string)
+        "canonical session"
+        (Session_id.text first_session)
+        (Session_id.text session.Snapshot.id);
+      Alcotest.(check (option int))
+        "event uses the same sample" (Some 0)
+        (Option.map
+           (fun value -> Utc.compare value expected_start)
+           session.Snapshot.last_event_at)
+  | Snapshot.Awaiting
+  | Snapshot.Preparing
+  | Snapshot.Workspace_ready
+  | Snapshot.Rendering
+  | Snapshot.Starting
+  | Snapshot.Between_turns _
+  | Snapshot.Stopping_before_session
+  | Snapshot.Stopping_session _ ->
+      Alcotest.fail "acquired session must be streaming");
+  ignore (read harness);
+  Alcotest.(check bool)
+    "queries cannot change reducer facts" true
+    (before = projection harness);
+  let finished =
+    close_worker ~now:1000 harness request Agent_runner.Succeeded
+  in
+  let snapshot = read finished in
+  Alcotest.(check (pair int int))
+    "closed worker becomes retry" (0, 1) (Snapshot.counts snapshot);
+  Alcotest.(check string)
+    "ended interval retained once" "1"
+    (Seconds.decimal (Snapshot.data snapshot).Snapshot.seconds_running);
+  (match (Snapshot.data snapshot).Snapshot.retrying with
+  | [ { Snapshot.phase = Snapshot.Waiting (Some due); error = None; _ } ] ->
+      Alcotest.(check int)
+        "retry deadline projects from this sample" 0
+        (Utc.compare due (checked (Utc.parse "2030-01-01T00:00:07Z")))
+  | [] | _ :: _ :: _
+  | [ { Snapshot.phase = Snapshot.Waiting None; _ } ]
+  | [ { Snapshot.phase = Snapshot.Refreshing | Snapshot.Parked; _ } ]
+  | [ { Snapshot.phase = Snapshot.Waiting (Some _); error = Some _; _ } ] ->
+      Alcotest.fail "continuation has one waiting retry without an error");
+  let halted = send finished C.Shutdown in
+  Alcotest.(check bool)
+    "released issue is absent" true
+    (Option.is_none (Snapshot.find (read halted) (Issue.identifier issue_a)))
+
+let snapshot_read_failure () =
+  let second =
+    F.issue ~state:"Doing" ~id:"another-id" ~identifier:"CORE-1" ()
+  in
+  let harness = cycle ~issues:[ issue_a; second ] (startup F.A) in
+  let before = projection harness in
+  let sample =
+    {
+      Clock.Pure.monotonic = F.instant 10;
+      wall = checked (Utc.parse "2030-01-01T00:00:00Z");
+    }
+  in
+  Alcotest.(check bool)
+    "ambiguous route projection is rejected" true
+    (Result.is_error (C.snapshot ~sample harness.state));
+  Alcotest.(check bool)
+    "projection rejection leaves scheduling intact" true
+    (before = projection harness)
+
 let tests =
   [
+    Alcotest.test_case "fresh operator snapshot derives canonical lifecycle"
+      `Quick operator_snapshot;
+    Alcotest.test_case "read projection failure preserves scheduling" `Quick
+      snapshot_read_failure;
     Alcotest.test_case "startup cleanup closure barrier" `Quick startup_barrier;
     Alcotest.test_case "sorted admission and pure rejection" `Quick admission;
     Alcotest.test_case "exact retry and retired worker fencing" `Quick retry_due;

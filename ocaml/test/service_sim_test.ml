@@ -13,6 +13,11 @@ let capture work =
   | value -> Returned value
   | exception error -> Raised (error, Printexc.get_raw_backtrace ())
 
+let query_timeout =
+  match Milliseconds.parse "15000" with
+  | Ok value -> value
+  | Error _ -> failwith "invalid service query fixture timeout"
+
 let contains text needle =
   let rec loop index =
     if index + String.length needle > String.length text then false
@@ -416,7 +421,10 @@ struct
                   in
                   let outcome =
                     capture (fun () ->
-                        Host.run ~sw:child host ~controls:t.controls config)
+                        let run =
+                          Host.create_run ~sw:child host ~query_timeout
+                        in
+                        Host.run run ~controls:t.controls config)
                   in
                   Eio.Promise.resolve signal_result outcome;
                   S.notify Controller.value))

@@ -7,7 +7,9 @@
   native_lifetime
   native_shutdown
   native_output
+  native_scope
   native_http
+  native_status
   workspace_flock
   workspace_directory
   workspace_path_posix

@@ -12,6 +12,7 @@ test: build
     python3 test/tracker_cli_check.py _build/default/bin/main.exe
     PYTHONOPTIMIZE=1 python3 test/tracker_cli_check.py _build/default/bin/main.exe
     just service-cli
+    just status-cli
 
 service-cli: build
     #!/usr/bin/env bash
@@ -19,6 +20,14 @@ service-cli: build
     evidence="$(mktemp -d "$PWD/_build/service-cli-XXXXXX")"
     python3 test/service_cli_check.py _build/default/bin/main.exe --out "$evidence/normal"
     PYTHONOPTIMIZE=1 python3 test/service_cli_check.py _build/default/bin/main.exe --out "$evidence/optimized"
+    printf '%s\n' "$evidence"
+
+status-cli: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    evidence="$(mktemp -d "$PWD/_build/status-cli-XXXXXX")"
+    python3 test/status_cli_check.py _build/default/bin/main.exe --out "$evidence/normal"
+    PYTHONOPTIMIZE=1 python3 test/status_cli_check.py _build/default/bin/main.exe --out "$evidence/optimized"
     printf '%s\n' "$evidence"
 
 format:

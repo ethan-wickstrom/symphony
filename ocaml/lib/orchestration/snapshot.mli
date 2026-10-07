@@ -66,8 +66,8 @@ type t
 val make : data -> (t, string) result
 (** Reject duplicate or overlapping issue IDs/identifiers, duplicate run/retry
     generations and invalid UTF-8 display strings, including rendered
-    diagnostics. [data t = d] when
-    [make d = Ok t]; rejection cannot alter d. Counts are not stored twice. *)
+    diagnostics. [data t = d] when [make d = Ok t]; rejection cannot alter d.
+    Counts are not stored twice. *)
 
 val data : t -> data
 

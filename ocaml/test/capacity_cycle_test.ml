@@ -3,6 +3,11 @@ module S = Service_test_support.Service_scenario
 module Cycle = Capacity_cycle
 module Workload = Capacity_fixture
 
+let query_timeout =
+  match Milliseconds.parse "15000" with
+  | Ok value -> value
+  | Error _ -> failwith "invalid capacity query fixture timeout"
+
 let checked = function
   | Ok value -> value
   | Error diagnostic -> Alcotest.fail (Diagnostic.render diagnostic)
@@ -155,7 +160,8 @@ let scoped_cycle_close () =
                       ~report_host:(fun _ -> incr host_reports)
                       ~observe
                   in
-                  Host.run ~sw:child host ~controls Workload.config)
+                  let run = Host.create_run ~sw:child host ~query_timeout in
+                  Host.run run ~controls Workload.config)
             with
             | value -> Ok value
             | exception error -> Error error

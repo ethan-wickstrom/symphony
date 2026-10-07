@@ -28,9 +28,13 @@ AGENT_UNITS = (
 )
 ORCHESTRATION_UNITS = (
     "agent_observation", "agent_plan", "agent_runner", "backoff", "dispatch_order",
-    "issue_lifecycle", "orchestrator", "ownership", "run_plan", "stop_reason", "usage",
+    "issue_lifecycle", "orchestrator", "ownership", "run_plan", "snapshot",
+    "status_source", "status_surface", "stop_reason", "usage",
 )
-LIFECYCLE_UNITS = ("native_shutdown_test", "native_output_test", "host_lifecycle_main")
+LIFECYCLE_UNITS = (
+    "native_shutdown_test", "native_output_test", "native_status_test",
+    "native_scope_test", "host_lifecycle_main",
+)
 AGENT_ENV_NAMES = ("SYMPHONY_TEST_PYTHON", "SYMPHONY_TEST_AGENT_SERVER")
 
 

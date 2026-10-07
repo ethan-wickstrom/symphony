@@ -7,7 +7,8 @@ typed lifecycle transitions and the scoped Eio owner are implemented. Native
 fake-session capacity is measured. The executable composes authenticated Linear
 polling, native workspaces and closed Codex app-server attempts. Local acceptance
 uses actual TLS and subprocesses with fake providers; authenticated Codex
-acceptance remains pending.
+acceptance remains pending. The optional status API passes local verification;
+hosted review is pending.
 
 ## Build
 
@@ -121,6 +122,32 @@ Raw agent output and provider
 payloads are excluded. A blocked or failed output sink fails the host after
 resource closure; see the [lifecycle contract](../docs/design/live-dispatch.md).
 
+## Status API
+
+Local acceptance passes 23 executable scenarios in both modes; hosted review is pending.
+Enable the loopback listener with a CLI port:
+
+```sh
+_build/default/bin/main.exe run /path/to/WORKFLOW.md --port 8080
+xh -I GET http://127.0.0.1:8080/api/v1/state
+xh -I POST http://127.0.0.1:8080/api/v1/refresh
+```
+
+Alternatively set `server.port` in workflow front matter. `--port` overrides the
+checked configured value; zero requests an ephemeral port. Listener changes
+require restart; listener-only edits do not affect dispatch. Requests require the
+bound loopback Host and, when supplied, matching Origin and same-origin metadata.
+Rejected requests return 403 before reaching the handler. Open `/` for escaped
+HTML; `/api/v1/<issue_identifier>` shows a
+current running/retry/cleanup owner. Released issues return 404; unavailable
+queries return 503. Reads ask the owner for a fresh paired clock sample and never
+reload settings or change scheduling. Refresh queues the existing coalesced
+poll/reconciliation trigger; its body must be empty/whitespace or `{}`. Other
+bodies return 400, and unsupported methods return 405 with the route's `Allow`.
+Session/path data appears only after actual
+acquisition, and unrepresentable wall projections remain null. Counts, tokens and
+runtime use exact values. [Contract, limits and evidence](../docs/design/status-api.md).
+
 ## Check
 
 `just check` runs builds, examples/model properties, CLI integration, formatting,
@@ -135,7 +162,7 @@ modes in `_build/service-cli-JWgykX`; its independent receipt audit verifies act
 child modes, input/runtime context hashes and causal controls. These digests are
 not build attestation. Configured local coverage
 passes through the combined retained runs; exact replacement-head hosted evidence
-is pending. Earlier 24-case receipts remain historical. `just fuzz` runs the seeded Crowbar
+passed before PR #12 merged as `40d6b63`. Earlier 24-case receipts remain historical. `just fuzz` runs the seeded Crowbar
 campaign. Without `just`, use the commands in [justfile](justfile).
 
 The [native capacity gate](../docs/design/service-capacity.md) runs the same

@@ -58,6 +58,8 @@ module Make
 struct
   module Failure = Service_failure
   open Failure
+  module Query = Service_query.Make (Clock)
+  module Source = Query.Source
 
   module Core =
     Orchestrator.Make (Tracker.Contract) (Clock.Pure) (Workspace.Contract)
@@ -213,10 +215,36 @@ struct
     inbox : message Service_inbox.t;
     mutable handles : handle Registry.t;
     mutable control : control_fact;
+    mutable owner_cancel : Eio.Cancel.t option;
+    query : Query.t;
+    mutable query_turn : bool;
     failure : effect_key Failure.t;
   }
 
   exception Broken_contract of string
+
+  type run = { sw : Eio.Switch.t; service : t; runtime : runtime }
+
+  let create_run ~sw t ~query_timeout =
+    Eio.Switch.check sw;
+    let changed = Eio.Condition.create () in
+    let query = Query.create ~clock:t.clock ~changed ~timeout:query_timeout in
+    let runtime =
+      {
+        changed;
+        query;
+        query_turn = true;
+        inbox = Service_inbox.create ~changed;
+        handles = Registry.empty;
+        control = No_control;
+        owner_cancel = None;
+        failure = Failure.create ();
+      }
+    in
+    Eio.Switch.on_release sw (fun () -> Query.close query);
+    { sw; service = t; runtime }
+
+  let source run = run.runtime.query
 
   let key_text = function
     | Owner -> "owner"
@@ -600,7 +628,9 @@ struct
         end;
       Eio.Condition.broadcast runtime.changed;
       match control with
-      | Shutdown -> Controls_stopped
+      | Shutdown ->
+          Query.close runtime.query;
+          Controls_stopped
       | Refresh ->
           Eio.Fiber.yield ();
           forward ()
@@ -711,72 +741,156 @@ struct
         interpret t runtime ~sw commands;
         Ok state
 
+  let snapshot t runtime state reply =
+    match Clock.sample t.clock with
+    | Error _ ->
+        Query.reply runtime.query reply (Error Status_source.Clock_unavailable)
+    | Ok sample -> begin
+        match Core.snapshot ~sample state with
+        | Error _ ->
+            Query.reply runtime.query reply
+              (Error Status_source.Projection_unavailable)
+        | Ok value -> Query.reply runtime.query reply (Ok value)
+      end
+
+  let refresh t runtime state reply =
+    match runtime.control with
+    | Shutdown_pending ->
+        Query.close runtime.query;
+        None
+    | Refresh_pending ->
+        Query.reply runtime.query reply (Ok Status_source.Coalesced);
+        None
+    | No_control -> begin
+        match Clock.now t.clock with
+        | Error _ ->
+            Query.reply runtime.query reply
+              (Error Status_source.Clock_unavailable);
+            None
+        | Ok _ when not (Query.pending reply) -> None
+        | Ok now ->
+            let projection = Core.project ~now state in
+            begin match
+              (runtime.control, projection.Core.mode, projection.Core.cycle)
+            with
+            | Shutdown_pending, _, _ | _, Core.Shutting_down, _ ->
+                Query.close runtime.query;
+                None
+            | No_control, Core.Serving, Core.Idle ->
+                Query.reply runtime.query reply (Ok Status_source.Queued);
+                Some Core.Refresh_requested
+            | Refresh_pending, _, _
+            | No_control, (Core.Startup | Core.Draining_scope), _
+            | No_control, Core.Serving, Core.Busy ->
+                Query.reply runtime.query reply (Ok Status_source.Coalesced);
+                None
+            end
+      end
+
+  let answer t runtime state = function
+    | Query.Snapshot reply ->
+        snapshot t runtime state reply;
+        None
+    | Query.Refresh reply -> refresh t runtime state reply
+
   let rec loop t (runtime : runtime) ~sw state =
-    if not (Failure.failed runtime.failure) then
+    if Failure.failed runtime.failure then Query.close runtime.query
+    else
       match runtime.control with
       | Shutdown_pending ->
           runtime.control <- No_control;
           continue t runtime ~sw state Core.Shutdown
       | No_control | Refresh_pending -> (
-          match take runtime with
-          | Some (Entered key) ->
-              emit t (Child_entered key);
-              begin match key with
-              | Worker (issue, run) ->
-                  emit t (Delivered (key, Entry));
-                  continue t runtime ~sw state
-                    (Core.Worker_started (issue, run))
-              | Owner
-              | Controls
-              | Workflow _
-              | Tracker _
-              | Cleanup _
-              | Poll _
-              | Retry _ ->
-                  emit t (Delivered (key, Entry));
-                  loop t runtime ~sw state
-              end
-          | Some (Closed (key, result)) ->
-              emit t (Outer_closed key);
-              let delivery =
-                match result.outcome with
-                | Returned (Semantic _) -> Terminal
-                | Returned (Canceled | Controls_stopped | Clock_error _)
-                | Raised _ -> Private_close
-              in
-              emit t (Delivered (key, delivery));
-              emit t (Retired key);
-              if not (Failure.failed runtime.failure) then
-                flush_secondary t runtime;
-              begin match result.outcome with
-              | Returned (Semantic input) -> continue t runtime ~sw state input
-              | Returned (Canceled | Controls_stopped) ->
-                  loop t runtime ~sw state
-              | Returned (Clock_error _) | Raised _ -> ()
-              end
-          | Some (Update (key, input, _)) -> (
-              match transition t runtime ~sw state input with
-              | Error () -> ()
-              | Ok state ->
-                  acknowledge_update runtime key;
-                  loop t runtime ~sw state)
-          | None ->
-              if Core.quiescent state then begin
-                cancel_key runtime Controls
-                  (Agent_runner.Cancel Agent_runner.Host_shutdown);
-                if not (Registry.is_empty runtime.handles) then
-                  wait t runtime ~sw state
-              end
-              else begin
-                match runtime.control with
-                | Refresh_pending ->
-                    runtime.control <- No_control;
-                    continue t runtime ~sw state Core.Refresh_requested
-                | No_control -> wait t runtime ~sw state
-                | Shutdown_pending -> loop t runtime ~sw state
-              end)
+          let query =
+            if runtime.query_turn then Query.take runtime.query else None
+          in
+          match query with
+          | Some request -> queried t runtime ~sw state request
+          | None -> effects t runtime ~sw state)
+
+  and effects t (runtime : runtime) ~sw state =
+    runtime.query_turn <- true;
+    match take runtime with
+    | Some (Entered key) ->
+        emit t (Child_entered key);
+        begin match key with
+        | Worker (issue, run) ->
+            emit t (Delivered (key, Entry));
+            continue t runtime ~sw state (Core.Worker_started (issue, run))
+        | Owner
+        | Controls
+        | Workflow _
+        | Tracker _
+        | Cleanup _
+        | Poll _
+        | Retry _ ->
+            emit t (Delivered (key, Entry));
+            loop t runtime ~sw state
+        end
+    | Some (Closed (key, result)) ->
+        emit t (Outer_closed key);
+        let delivery =
+          match result.outcome with
+          | Returned (Semantic _) -> Terminal
+          | Returned (Canceled | Controls_stopped | Clock_error _) | Raised _ ->
+              Private_close
+        in
+        emit t (Delivered (key, delivery));
+        emit t (Retired key);
+        if not (Failure.failed runtime.failure) then flush_secondary t runtime;
+        begin match result.outcome with
+        | Returned (Semantic input) -> continue t runtime ~sw state input
+        | Returned (Canceled | Controls_stopped) -> loop t runtime ~sw state
+        | Returned (Clock_error _) | Raised _ -> ()
+        end
+    | Some (Update (key, input, _)) -> (
+        match transition t runtime ~sw state input with
+        | Error () -> ()
+        | Ok state ->
+            acknowledge_update runtime key;
+            loop t runtime ~sw state)
+    | None -> (
+        match Query.take runtime.query with
+        | Some request -> queried t runtime ~sw state request
+        | None -> idle t runtime ~sw state)
+
+  and queried t (runtime : runtime) ~sw state request =
+    runtime.query_turn <- false;
+    match answer t runtime state request with
+    | None -> loop t runtime ~sw state
+    | Some input -> continue t runtime ~sw state input
+
+  and idle t (runtime : runtime) ~sw state =
+    if Core.quiescent state then begin
+      cancel_key runtime Controls
+        (Agent_runner.Cancel Agent_runner.Host_shutdown);
+      if not (Registry.is_empty runtime.handles) then wait t runtime ~sw state
+    end
+    else begin
+      match runtime.control with
+      | Refresh_pending ->
+          runtime.control <- No_control;
+          continue t runtime ~sw state Core.Refresh_requested
+      | No_control -> wait t runtime ~sw state
+      | Shutdown_pending -> loop t runtime ~sw state
+    end
 
   and continue t (runtime : runtime) ~sw state input =
+    begin match input with
+    | Core.Shutdown -> Query.close runtime.query
+    | Core.Poll_due _
+    | Core.Refresh_requested
+    | Core.Workflow_changed
+    | Core.Workflow_loaded _
+    | Core.Tracker_completed _
+    | Core.Worker_started _
+    | Core.Worker_progress _
+    | Core.Worker_continue _
+    | Core.Worker_finished _
+    | Core.Request_canceled _
+    | Core.Retry_due _
+    | Core.Workspace_removed _ -> ()
+    end;
     match transition t runtime ~sw state input with
     | Error () -> ()
     | Ok state -> loop t runtime ~sw state
@@ -808,6 +922,7 @@ struct
                         loop t runtime ~sw state;
                         Ok ())
               in
+              Query.close runtime.query;
               Failure.record runtime.failure Owner observed;
               (* The first failure is committed before this protected drain can
                suspend. No clock, reducer or user sink participates in drain. *)
@@ -816,6 +931,7 @@ struct
                   drain runtime);
               Ok ()))
     in
+    Query.close runtime.query;
     Failure.record runtime.failure Owner actual;
     if not (Failure.failed runtime.failure) then begin
       let notified =
@@ -832,31 +948,40 @@ struct
     end;
     flush_secondary t runtime
 
-  let run ~sw t ~controls config =
+  let run run ~controls config =
+    let { sw; service = t; runtime } = run in
     Eio.Switch.check sw;
-    let changed = Eio.Condition.create () in
-    let runtime =
-      {
-        changed;
-        inbox = Service_inbox.create ~changed;
-        handles = Registry.empty;
-        control = No_control;
-        failure = Failure.create ();
-      }
-    in
+    if not (Query.activate runtime.query) then
+      raise (Broken_contract "service run is single-use");
     let completed =
       Eio.Fiber.fork_promise ~sw (fun () ->
           Failure.record runtime.failure Owner
             (capture (fun () ->
-                 owner t runtime controls config;
-                 Ok ())))
+                 Eio.Cancel.sub (fun cancel ->
+                     runtime.owner_cancel <- Some cancel;
+                     Fun.protect
+                       ~finally:(fun () -> runtime.owner_cancel <- None)
+                       (fun () ->
+                         (* A canceled caller may precede owner entry. *)
+                         if not (Failure.failed runtime.failure) then
+                           owner t runtime controls config;
+                         Ok ())))))
     in
     match Eio.Promise.await_exn completed with
     | () -> Failure.finish runtime.failure
     | exception error ->
         let backtrace = Printexc.get_raw_backtrace () in
+        Query.close runtime.query;
         Failure.record runtime.failure Owner (Raised (error, backtrace));
-        Eio.Condition.broadcast changed;
+        Eio.Condition.broadcast runtime.changed;
+        begin match runtime.owner_cancel with
+        | None -> ()
+        | Some cancel ->
+            Failure.record runtime.failure Owner
+              (capture (fun () ->
+                   Eio.Cancel.cancel cancel error;
+                   Ok ()))
+        end;
         Eio.Cancel.protect (fun () ->
             let joined =
               capture (fun () ->

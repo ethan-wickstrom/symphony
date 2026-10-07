@@ -38,97 +38,68 @@ capacity. Operator API, doctor/dry-run, module laws and adapter profiles ship.
 
 ## Current evidence
 
-- PR #11 reviewed head 2cbd893 and merged main have identical trees. Twelve
-  checks pass; Sourcery skipped the oversized diff. Four raw Linux/macOS PR/push
-  boundary logs and all 16 capacity manifests passed independent audits.
-  Receipts: ocaml/_build/runner-ci-2cbd893-audit.json and runner-merge-receipt.json.
-- Agent: 146 examples; native fake-server cases run normally and optimized.
-  Core: 65 examples/29 property groups; service: 36 examples/three groups
-  (300 Inbox, 1000 failure-model and 1000 causal service programs with joined tails).
-- Final gate: 379 source files/39 source controls; 17 rejected type clients,
-  two valid assemblies and 73 unchanged CMIs in both modes. Codec: 67 fixtures
-  and 42 validator controls. Pinned Elixir 1.19.5/OTP 28: 302 tests, no failures,
-  six skips; formatting/lint/coverage/Dialyzer pass.
-- Runner regressions failed before correction, including accepted suffixes at
-  initialization/input/continuation handoffs, preparation interruption, reader
-  join identity, typed input cleanup and bounded replay across turns. Receipts:
-  runner-turn-boundary-{red,green}.log, runner-turn-boundary-full-check.log and
-  runner-receipt-reference.log. Earlier receipts remain in Git history.
-- Capacity samples measure the service/runtime with held fake scopes, not real
-  Codex processes. RSS has four checkpoints, not a peak; raw latency arrays are
-  not retained. Reported quantiles are not independently recomputable from a
-  manifest. Binary/runtime digests are declarations, not build attestation.
+- [PR #12](https://github.com/ethan-wickstrom/symphony/pull/12) merged as
+  40d6b63 on 2026-10-05. Reviewed 2b58097 and merged main have identical trees.
+  Fifteen checks completed; Sourcery skipped the oversized diff. All review
+  threads resolved; fresh Codex review found no major issues.
+- Independent Linux/macOS push and PR audits passed 200 executable cases,
+  120 peer acquisitions, 224 lifecycle checks and 16 capacity manifests.
+  Receipts: ocaml/_build/live-dispatch-hosted-audit.json and
+  live-dispatch-merge-receipt.json. Native manifests match 252 source hashes.
+- Local configured coverage passed through combined native/full-check,
+  corrected 25-case normal/optimized CLI and remaining-check logs. Formatting,
+  391 source files/39 controls, 17 rejected clients, two assemblies, 73 CMIs
+  per mode and codec67/42 pass. Pinned Elixir: 302 tests, zero failures, six skips;
+  formatting/lint/coverage/Dialyzer pass.
+- Controlled FD exhaustion and incomplete issue/session context failed before
+  correction. Early reporting is bounded after closure and preserves the first
+  failure. Canonical issue_identifier and exact previous generation supply
+  closure context. The corrected continuation oracle follows turn session IDs.
+- Fake provider fixtures verify protocol/lifecycle behavior. Binary digests are
+  execution context, not attestation. Capacity RSS is sampled; raw latency arrays
+  are not retained. Archived PID/inode metadata cannot independently prove
+  historical physical identity or reap.
 
 ## Current focus and next action
 
-Branch ethan/live-dispatch composes the existing owner, tracker, workspace host
-and closed runner into `symphony [WORKFLOW]`, defaulting to ./WORKFLOW.md.
-Admitted attempts retain frozen authority through joined shutdown.
+Branch ethan/status-api adds fresh owner queries, checked immutable snapshots,
+JSON/HTML routes and an optional scoped loopback HTTP server. Status reads must
+not reload configuration, mutate scheduling state or reconnect to another run.
+Each new run has a single-use scoped source. Request cancellation retires only
+its own waiter; shutdown closes sources before physical drainage.
 
-Hosted review found missing early signal-setup reporting and incomplete issue/session
-log context. Actual failures are retained in
-_build/live-dispatch-{startup-fd-red,context-red}.log. Corrections pass the targeted
-startup-FD, active-context and no-session shell-closure controls:
-_build/live-dispatch-review-green.log and
-_build/live-dispatch-review-green-xurkg4d2. All 25 cases now pass in both modes;
-exact replacement-head hosted evidence remains pending.
+- [x] Merge the reviewed live-dispatch checkpoint and verify tree identity.
+- [x] Audit reference routes and the missing owner-query boundary.
+- [x] Implement checked snapshots and one-sample owner projection.
+- [x] Implement bounded per-run query/refresh lifecycle and migrate callers.
+- [x] Implement pure JSON/HTML routes and joined native HTTP transport.
+- [x] Compose optional port/configuration into the actual CLI.
+- [x] Verify lifecycle, real HTTP behavior, formatting and configured gates.
+- [ ] Review, publish, audit exact-head hosted evidence and merge.
 
-The replacement run then exposed an oracle error: continuation turn notices
-change the thread/turn session ID. The last-session check now consumes every
-same-issue/run session/turn notice, not only session_started. Production closure
-was correct; retained failure: _build/service-cli-Uqfwqm/normal. The corrected
-suite passes in _build/service-cli-JWgykX/{normal,optimized}; independent audit:
-_build/service-cli-JWgykX/independent-verification.json. All 50 logs, 30 peer-mode
-receipts, five input hashes and the current binary match. Both controlled FD
-cases prove doctor0 then service123 with limit64/headroom3 and fixed early output.
+The complete configured gate passes in status-review-full-check.log:
+47 service/83 orchestration/272 boundary cases, 58 native lifecycle cases, 417 sources/39
+controls, 17 rejected clients/80 CMIs per mode, codec67/42, capacity1/10/100/1000,
+release checks. Parser10000 passed before the review fixes. Both modes pass
+service25 and status23 scenarios; native source inventory274. Fresh pinned
+Elixir302/0/6 passes in status-review-elixir-all.log. Status CLI receipts
+are in _build/status-cli-AE0HA4. Bounded regressions failed before owner cancellation,
+unsolicited cancellation, failure precedence, diagnostic UTF-8 and malformed-body
+authority fixes. Review regressions first failed for browser authority and
+valid/invalid listener reloads. The corrected executable dispatches through
+listener-only edits while preserving the original listener; rejected browser
+requests grant zero handler authority. Native framing corpus256 passes.
+PR13 is published; corrected-head review and Linux/macOS push/PR audit are next.
 
-Issue records use issue_identifier. Closure context comes from the exact previous
-issue/run/session projection, or explicit not_started; hooks use the checked
-reference identifier. Paired secondary context requires the exact generation.
-An unknown Worker/Retry generation retains its checked opaque issue ID and
-generation with context=unavailable, without invented identifier/session fields;
-this exceptional host-port path is not a full-conformance claim.
-Ordered acknowledged runner notices remain
-the causal boundary; a projection session guard alone does not prove sequence
-acceptance. Early setup reporting is bounded, occurs after full closure and
-preserves the original failure. It never retries after output callback entry or
-a failed sink.
-
-- [x] Audit reference CLI behavior and existing composition contracts.
-- [x] Reproduce/fix configuration validation before adding dispatch.
-- [x] Add runnable native assembly and direct/default workflow command syntax.
-- [x] Verify native signal/output boundaries; 28 native cases pass.
-- [x] Complete the earlier 24 executable cases and local gates (historical evidence).
-- [x] Reproduce hosted-review defects and pass targeted corrections.
-- [x] Run/audit all 25 cases in both modes and complete configured local coverage.
-- [x] Complete the fresh pinned Elixir reference gate.
-- [ ] Publish/audit hosted evidence and merge the reviewed green checkpoint.
-
-Historical pre-review evidence: 24 cases passed in both modes, with unchanged
-inputs and propagated child modes (_build/service-cli-Q5fOU0/{normal,optimized}).
-The earlier full gate passed 391 source files/39 controls, 17 rejected clients,
-two valid assemblies, 73 unchanged CMIs, 28 native lifecycle cases and 11 watchdog
-controls per mode. Parser, capacity and release-tool gates passed; pinned Elixir
-passed 302 tests/zero failures/six skips. Hosted review supersedes that checkpoint's
-no-blocker assessment. Historical receipts include live-dispatch-{host-green,
-full-check,reference,watchdog-green,watchdog-green-optimized}.log.
-
-Configured local coverage passes through combined logs: the dependency/native/
-inspection/HTTPS run passed before the old oracle stopped full-check; the corrected
-25-case run and remaining check body then passed, plus formatting. Receipts:
-live-dispatch-review-{full-check,service-cli,remaining-check}.log. Counts remain
-391 source files/39 controls, 17 rejected clients, two assemblies, 73 unchanged
-CMIs per mode and codec67/42. Passed native gates were not repeated.
-Fresh pinned Elixir also passes 302 tests/zero failures/six skips plus
-formatting/lint/coverage/Dialyzer (_build/live-dispatch-review-reference.log).
-
-Next: publish and verify the exact new head before merge. Local executable
-evidence uses fake providers; binary digests are
-context, not build attestation.
+Root owns Core projection/composition and serializes executable gates. Independent
+agents own pure rendering, owner queries and native HTTP transport. Native Codex
+acceptance and release qualification remain separate boundaries. In-app Browser
+control restoration was rejected by automatic approval review under the browser
+restriction; browser inspection remains unverified pending authorization.
 
 ## Remaining boundaries
 
-Authenticated Codex acceptance, HTTP API, portable conformance harness, regression
+Authenticated Codex acceptance, hosted HTTP acceptance, portable conformance harness, regression
 budgets, Linux musl and clean-host macOS deployment remain pending. Fake completion
 witnesses cannot prove native closure; sampled laws/models are not proofs.
 
@@ -143,10 +114,12 @@ service-retrospective,release-evidence,static-release-plan}.md.
 ## Steering and open questions
 
 Repeated acceptance authorizes recommendations, signatures, implementation,
-publication and green merges. The latest steer continues with runnable live
-dispatch after the service, capacity and runner checkpoints. Architectural debt,
+publication and green merges. The latest steer accepts all recommendations and continues with the status API
+after the merged live-dispatch checkpoint. Architectural debt,
 module boundaries and risky failure modes remain ahead of polish. No decision is
-pending for this checkpoint; real provider trials require their own fixture scope.
+pending for implementation. Devin's hidden security finding requires its text or
+authorized in-app Browser inspection before merge; real provider trials require
+their own fixture scope.
 
 Only origin ethan-wickstrom/symphony is configured. Upstream links retain spec
 provenance. In-app Browser supersedes Chrome use. Release-host qualification is a
