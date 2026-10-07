@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 
-from .capture import Capture, SignalScope
+from .capture import Capture, OutputLimit, SignalScope
 from .sentinel import GUARD_PREFIX
 
 POLL_INTERVAL = 0.01
@@ -136,7 +136,9 @@ class Process:
 
     def _record(self, kind, fields):
         value = {"kind": kind, "time_ns": time.monotonic_ns(), **copy.deepcopy(fields)}
-        self._lifecycle.append(value)
+        # Stream buffers own raw bytes; lifecycle retains ownership phases only.
+        if kind not in {"capture.stdout", "capture.stderr"}:
+            self._lifecycle.append(value)
         if self._emit is None or self._recorder_error is not None:
             return
         try:
@@ -239,7 +241,7 @@ class Process:
         return self._join(end, timeout, self._check)
 
     def recover(self):
-        """Join under cleanup bounds, forcing canonical closure if TERM expires."""
+        """Join under cleanup bounds, forcing closure on expiry or overflow."""
         if self._closed:
             raise ValueError("cannot recover a closed process")
         self._health()
@@ -255,9 +257,9 @@ class Process:
         # Runtime expiry cannot prevent cleanup, but cancellation and recorder errors can.
         try:
             return self._join(end, TERM_GRACE, self._health)
-        except subprocess.TimeoutExpired:
+        except (subprocess.TimeoutExpired, OutputLimit) as error:
             self._health()
-            if time.monotonic() < end:
+            if isinstance(error, subprocess.TimeoutExpired) and time.monotonic() < end:
                 raise
             # Force the existing owner cleanup once, independently of the active verdict.
             self._close(None, Cleanup.KILL)

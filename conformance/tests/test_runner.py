@@ -56,6 +56,122 @@ class Ignored(Enum):
 
 
 class RunnerTest(unittest.TestCase):
+    def test_recovery_stdout_overflow(self):
+        self._recovery_overflow(Output.STDOUT)
+
+    def test_recovery_stderr_overflow(self):
+        self._recovery_overflow(Output.STDERR)
+
+    def _recovery_overflow(self, output):
+        processes = []
+        corpus = load("corpus/lifecycle.json")
+        stream = output.value[0]
+        marker = b'{"event":"recovery_handler"}\n'
+        script = """
+import os
+from pathlib import Path
+import signal
+import sys
+import threading
+from symphony_conformance.assets import decode
+from symphony_conformance.control import Control
+
+class OverflowControl(Control):
+    def _idle(self, child):
+        def overflow(_number, _frame):
+            descriptor = getattr(sys, sys.argv[2]).fileno()
+            payload = b"X" * int(sys.argv[3])
+            while payload:
+                payload = payload[os.write(descriptor, payload):]
+        signal.signal(signal.SIGTERM, overflow)
+        os.write(sys.stdout.fileno(), sys.argv[4].encode())
+        threading.Event().wait()
+
+path = Path(sys.argv[1])
+OverflowControl(decode(path.read_bytes()), path).run()
+"""
+
+        def launch(_profile, _candidate, _workflow, _ca, plan):
+            optimization = ["-" + "O" * sys.flags.optimize] if sys.flags.optimize else []
+            return [sys.executable, *optimization, "-c", script, str(plan), stream,
+                    str(runner.OUTPUT_LIMIT + 1), marker.decode()]
+
+        class RecoveryOverflow(Process):
+            def __init__(self, *args, **kwargs):
+                self._waits = 0
+                self._expires = time.monotonic() + EXECUTION_TEST_BUDGET
+                kwargs["deadline"] = self._expires
+                super().__init__(*args, **kwargs)
+                processes.append(self)
+
+            def wait_for(self, predicate, timeout):
+                result = super().wait_for(predicate, timeout)
+                self._waits += 1
+                if self._waits != 3:
+                    return result
+                # Recovery output begins only after the installed handler and real expiry.
+                super().wait_for(lambda: marker in self.snapshot()["stdout"], timeout)
+                threading.Event().wait(max(0, self._expires - time.monotonic()))
+                return result
+
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory) / "evidence"
+            with patch.object(runner.profiles, "launch", side_effect=launch), patch.object(runner, "Process", RecoveryOverflow):
+                runner.run(bundle, "scripted")
+
+            snapshot = processes[0].snapshot()
+            manifest = json.loads((bundle / "manifest.json").read_text())
+            receipt = json.loads((bundle / "process.json").read_text())
+            rows = [json.loads(line) for line in (bundle / "events.jsonl").read_text().splitlines()]
+            self.assertEqual(processes[0]._waits, 3)
+            self.assertIn(marker, snapshot["stdout"])
+            self.assertTrue(any(row["kind"] == "candidate.observation"
+                                and row["data"].get("event") == "turn_started"
+                                and row["data"].get("turn_id") == corpus["turn_ids"][1] for row in rows))
+            self.assertEqual(sum(row["kind"] == "workspace.removed" for row in rows), 1)
+            failures = [row for row in rows if row["kind"] == "candidate.execution_failure"]
+            self.assertEqual([row["data"]["error_type"] for row in failures], ["TimeoutExpired"])
+            overflows = [row for row in rows if row["kind"] == "capture.overflow"]
+            self.assertEqual([row["data"]["stream"] for row in overflows], [stream])
+            self.assertEqual(overflows[0]["data"]["limit"], runner.OUTPUT_LIMIT)
+            self.assertLess(failures[0]["seq"], overflows[0]["seq"])
+            self.assertEqual(len(snapshot[stream]), runner.OUTPUT_LIMIT)
+            self.assertEqual(snapshot["returncode"], -signal.SIGKILL)
+            self.assertTrue(snapshot["closed"])
+            self.assertTrue(snapshot["reaped"])
+            self.assertTrue(receipt["closed"])
+            self.assertTrue(receipt["reaped"])
+            self.assertEqual(snapshot["eof"], ("stderr", "stdout"))
+            self.assertEqual(snapshot["failures"], ())
+            for pid in (snapshot["pid"], snapshot["guard_pid"]):
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(pid, 0)
+            for name in ("stdout", "stderr"):
+                retained = (bundle / (name + ".bin")).read_bytes()
+                self.assertEqual(retained, snapshot[name])
+                self.assertEqual(manifest["files"][name + ".bin"],
+                                 {"bytes": len(retained), "sha256": hashlib.sha256(retained).hexdigest()})
+                chunks = [base64.b64decode(row["data"]["data_b64"], validate=True)
+                          for row in rows if row["kind"] == "capture." + name]
+                self.assertEqual(b"".join(chunks), retained)
+            self.assertTrue(manifest["completed"])
+            self.assertEqual(manifest["harness_errors"], [])
+            joins = [row for row in rows if row["kind"] == "candidate.wait"
+                     and row["data"].get("operation") == "join"]
+            self.assertEqual(len(joins), 1)
+            self.assertTrue(joins[0]["data"]["forced"])
+            self.assertTrue(joins[0]["data"]["reaped"])
+            self.assertEqual(joins[0]["data"]["status"], -signal.SIGKILL)
+            terms = [row for row in rows if row["data"].get("signal") == signal.SIGTERM
+                     and row["kind"] in {"candidate.signal", "group.cleanup"}]
+            self.assertEqual(len(terms), 1)
+            self.assertLess(terms[0]["seq"], overflows[0]["seq"])
+            report = judge(bundle)
+            self.assertEqual(report["harness"], {"status": "pass", "errors": []})
+            self.assertEqual(report["case"]["status"], "fail")
+            shutdown = next(value for value in report["case"]["assertions"] if value["id"] == "shutdown.joined")
+            self.assertEqual(shutdown["status"], "fail")
+
     def test_ignored_term_timeout(self):
         self._ignored_term(Ignored.TIMEOUT)
 

@@ -8,6 +8,10 @@ from importlib.resources import files
 MAX_JSON_DEPTH = 128
 
 
+def encode(value):
+    return json.dumps(value, separators=(",", ":"), allow_nan=False).encode() + b"\n"
+
+
 def pairs(values):
     result = {}
     for key, value in values:

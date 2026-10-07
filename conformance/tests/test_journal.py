@@ -10,6 +10,7 @@ import time
 import unittest
 from unittest.mock import patch
 
+from symphony_conformance.assets import MAX_JSON_DEPTH, decode
 from symphony_conformance.driver.journal import Journal, seal
 from symphony_conformance.driver.process import Process
 
@@ -33,6 +34,43 @@ class Action(Enum):
 
 
 class JournalTest(unittest.TestCase):
+    def test_payload_rejection_atomic(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            journal = Journal(root)
+            try:
+                for data in ([], {"passed": True}, {"verdict": "pass"}, {"requirement_id": "fixture"}):
+                    with self.subTest(data=data):
+                        with self.assertRaises(ValueError):
+                            journal.emit("candidate.observation", data)
+                        self.assertEqual((root / "events.jsonl").read_bytes(), b"")
+                        self.assertEqual(journal.rows(), [])
+                self.assertEqual(journal.emit("candidate.observation", {"event": "ready"}), 1)
+            finally:
+                journal.close()
+
+    def test_envelope_atomic(self):
+        value = {}
+        for _ in range(MAX_JSON_DEPTH - 1):
+            value = {"nested": value}
+        self.assertEqual(decode(json.dumps(value).encode()), value)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            journal = Journal(root)
+            try:
+                # Rejected envelope depth must leave bytes and sequence unchanged.
+                with self.assertRaises(ValueError):
+                    journal.emit("candidate.observation", value)
+                self.assertEqual((root / "events.jsonl").read_bytes(), b"")
+                self.assertEqual(journal.rows("candidate.observation"), [])
+                self.assertEqual(journal.emit("candidate.observation", {"event": "valid"}), 1)
+                retained = (root / "events.jsonl").read_bytes().splitlines()
+                self.assertEqual(len(retained), 1)
+                self.assertEqual(decode(retained[0])["data"], {"event": "valid"})
+            finally:
+                journal.close()
+
     def _child_note(self, error, phase, snapshot):
         try:
             value = snapshot()

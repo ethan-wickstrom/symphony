@@ -210,6 +210,8 @@ The [installed conformance package](../conformance/README.md) owns shared captur
 process custody, fake TLS and generated schemas. `just conformance` runs normal
 and optimized controls, the public CLI lifecycle and a scripted calibration
 profile from an external cwd, retaining sealed evidence and independent reports.
+Native watchdog evidence retains each raw stream with its exact length and hash.
+Combined logs use stdout then stderr; signal custody lasts through all writes.
 
 The fixed catalog retains all 106 requirements and 12 supplemental clauses.
 The first lifecycle is partial evidence. Numeric usage is unobservable in the

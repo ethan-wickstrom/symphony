@@ -10,7 +10,8 @@ import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 
-from ..assets import decode
+from ..assets import decode, encode
+from ..records import check_data
 from .errors import Failures
 from .server import Server
 
@@ -43,18 +44,21 @@ class Journal:
         with self._lock:
             if self._closed:
                 raise ValueError("Journal admission is closed")
+            check_data(data)
             row = {"seq": len(self._rows) + 1,
                    "at_ns": time.monotonic_ns() - self._start,
                    "origin": origin, "kind": kind, "data": data}
-            raw = json.dumps(row, separators=(",", ":"), allow_nan=False).encode() + b"\n"
+            raw = encode(row)
             if len(raw) > MAX_EVENT_BYTES or len(self._rows) >= MAX_EVENTS:
                 raise ValueError("Evidence event budget exceeded")
             if len(raw) > MAX_JOURNAL_BYTES - self._bytes:
                 raise ValueError("Evidence journal budget exceeded")
+            # Reject the complete envelope before mutating file or sequence.
+            prepared = decode(raw)
             self._file.write(raw)
             self._file.flush()
             self._bytes += len(raw)
-            self._rows.append(decode(raw))
+            self._rows.append(prepared)
             self._lock.notify_all()
             return row["seq"]
 

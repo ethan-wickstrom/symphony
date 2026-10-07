@@ -1,7 +1,6 @@
 """Watchdog and retained evidence for actual native workspace boundaries."""
 
 import argparse
-import base64
 import hashlib
 import json
 import os
@@ -26,6 +25,7 @@ SERVER_ENV = "SYMPHONY_TEST_AGENT_SERVER"
 TLS_ENV = "SYMPHONY_TEST_TLS_DIRECTORY"
 TLS_DIRECTORY = str(assets.resource("tls"))
 TLS_FILES = ("manifest.json", "ca.pem", "server.pem", "server.key")
+STREAMS = ("stdout", "stderr")
 
 
 class Terminated(SystemExit):
@@ -36,8 +36,11 @@ def _persist_receipt(log, receipt):
     if receipt is None:
         raise RuntimeError("native watchdog lacks a terminal ownership receipt")
     retained = {key: value for key, value in receipt.items() if key not in ("stdout", "stderr")}
-    retained.update({name + "_sha256": hashlib.sha256(receipt[name]).hexdigest()
-                     for name in ("stdout", "stderr")})
+    for name in STREAMS:
+        data = receipt[name]
+        retained.update({name + "_file": log.with_suffix(f".{name}.bin").name,
+                         name + "_bytes": len(data),
+                         name + "_sha256": hashlib.sha256(data).hexdigest()})
     path = log.with_suffix(".ownership.json")
     rendered = (json.dumps(retained, indent=2, allow_nan=False) + "\n").encode()
     if path.write_bytes(rendered) != len(rendered):
@@ -46,19 +49,77 @@ def _persist_receipt(log, receipt):
             "reaped": receipt["reaped"], "failure_count": len(receipt["failures"])}
 
 
+def _write_bytes(path, data):
+    if path.write_bytes(data) != len(data):
+        raise OSError("native capture file write was incomplete")
+
+
 def execute(binary, log, timeout, *, env=None):
+    scope = capture.SignalScope()
+    primary = None
+    receipt = None
+    notes = []
+    result = None
+
+    def retain(stage, error):
+        nonlocal primary
+        if primary is None:
+            primary = (stage, error, error.__traceback__)
+            return
+        if not isinstance(error, Exception) and isinstance(primary[1], Exception):
+            previous, primary = primary, (stage, error, error.__traceback__)
+            notes.append(f"Native finalization failed: stage={previous[0]} class={type(previous[1]).__name__}")
+            return
+        if error is not primary[1]:
+            notes.append(f"Native finalization failed: stage={stage} class={type(error).__name__}")
+
+    try:
+        scope.open()
+        scope.check()
+        result, receipt = _execute(binary, log, timeout, env=env)
+    except BaseException as error:
+        receipt = getattr(error, "_process_snapshot", None)
+        retain("execution", error)
+
+    # Finish evidence retention before releasing cancellation custody.
+    try:
+        scope.check()
+    except BaseException as error:
+        retain("host-cancellation", error)
+    try:
+        for stage, _, error, _ in scope.close():
+            retain(stage, error)
+    except BaseException as error:
+        retain("signal-close", error)
+    if primary is None or isinstance(primary[1], Exception):
+        try:
+            scope.check()
+        except BaseException as error:
+            retain("host-cancellation", error)
+    if primary is None:
+        return result
+
+    _, error, trace = primary
+    if receipt is not None:
+        error._process_snapshot = receipt
+    for message in notes:
+        BaseException.add_note(error, message)
+    if (isinstance(error, SystemExit) and not isinstance(error, Terminated)
+            and error.code == SIGNAL_EXIT_BASE + signal.SIGTERM):
+        terminated = Terminated(error.code)
+        for note in getattr(error, "__notes__", ()):
+            BaseException.add_note(terminated, note)
+        terminated._process_snapshot = receipt
+        raise terminated.with_traceback(trace) from error
+    raise error.with_traceback(trace)
+
+
+def _execute(binary, log, timeout, *, env=None):
     binary = binary.resolve()
     started = time.monotonic()
     owner = None
     receipt = None
     errors = []
-    output = log.open("wb")
-
-    def record(kind, fields):
-        if kind in ("capture.stdout", "capture.stderr"):
-            data = base64.b64decode(fields["data_b64"], validate=True)
-            if output.write(data) != len(data):
-                raise OSError("native capture file write was incomplete")
 
     def attempt(stage, action):
         try:
@@ -70,19 +131,11 @@ def execute(binary, log, timeout, *, env=None):
     try:
         with Process([str(binary), "--color=never"], binary.parent,
                      {**os.environ, TLS_ENV: TLS_DIRECTORY, **(env or {})}, OUTPUT_LIMIT,
-                     started + timeout, record) as owner:
+                     started + timeout, None) as owner:
             status = owner.join(timeout)
     except subprocess.TimeoutExpired as error:
         receipt = error._process_snapshot
         status = "timeout"
-    except SystemExit as error:
-        if error.code != SIGNAL_EXIT_BASE + signal.SIGTERM:
-            raise
-        terminated = Terminated(error.code)
-        for note in getattr(error, "__notes__", ()):
-            terminated.add_note(note)
-        terminated._process_snapshot = getattr(error, "_process_snapshot", None)
-        raise terminated from error
     finally:
         primary = sys.exc_info()[1]
         receipt = receipt or getattr(primary, "_process_snapshot", None)
@@ -90,20 +143,34 @@ def execute(binary, log, timeout, *, env=None):
             current = attempt("ownership-snapshot", owner.snapshot)
             if current is not None:
                 receipt = current
-        # Persist after owner and log closure, including failed admission receipts.
-        attempt("capture-log-close", output.close)
+        # Terminal streams retain exact bytes; the combined log has fixed order.
+        if receipt is not None:
+            for stream in STREAMS:
+                attempt("capture-" + stream, lambda stream=stream: _write_bytes(
+                    log.with_suffix(f".{stream}.bin"), receipt[stream]))
+            attempt("capture-log", lambda: _write_bytes(
+                log, receipt["stdout"] + receipt["stderr"]))
         ownership = attempt("ownership-receipt", lambda: _persist_receipt(log, receipt))
-        failure = primary or (errors[0][1] if errors else None)
+        pending = next((item for item in errors if not isinstance(item[1], Exception)),
+                       errors[0] if errors else None)
+        if primary is not None and not isinstance(primary, Exception):
+            failure = primary
+        elif pending is not None and not isinstance(pending[1], Exception):
+            failure = pending[1]
+        else:
+            failure = primary or (pending[1] if pending is not None else None)
         if failure is not None:
             if receipt is not None:
                 failure._process_snapshot = receipt
+            if primary is not None and failure is not primary:
+                failure.add_note(f"Native execution failed: class={type(primary).__name__}")
             for stage, error, _ in errors:
                 failure.add_note(f"Native evidence failed: stage={stage} class={type(error).__name__}")
-            if primary is None:
-                raise failure.with_traceback(errors[0][2])
+            if failure is not primary:
+                raise failure.with_traceback(pending[2])
 
-    return {"status": status, "seconds": time.monotonic() - started,
-            "ownership": ownership}
+    return ({"status": status, "seconds": time.monotonic() - started,
+             "ownership": ownership}, receipt)
 
 
 def main():

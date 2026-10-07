@@ -168,6 +168,27 @@ the fixed corpus and independent judge own expected behavior.
   Seeded 10,000-input boundaries pass. Pinned Elixir: 302 tests, zero failures,
   six skips; formatting/lint/coverage/Dialyzer and PR body validation pass.
 - [ ] Publish, audit exact-head Linux/macOS evidence and merge.
+  Fresh review on 4857854 requires bounding malformed diagnostic count and encoded
+  normalized views, plus preserving candidate overflow during recovery TERM grace.
+  Accept before edits and reproduce all three before correction. Current hosted
+  evidence is superseded for merge; numeric implementation still waits.
+  All three regressions and atomic envelope rejection fail in both modes.
+  Shared bounded admission, exact omissions, raw framing and atomic validation
+  pass focused controls in both modes, including fragmented real pipe reads.
+  Snapshots retain ownership phases with separate verified native stream files; the new
+  native control fails before correction and passes after it in both modes.
+  Source review found reserved answer fields could still poison offline replay.
+  Shared admission/replay rejects them atomically; real controls pass both modes.
+  Actual SIGTERM during native stream persistence reproduced incomplete evidence;
+  outer signal custody preserves all writes and exit 143 in both modes.
+  Independent source review has no remaining blocker. Fresh full gauntlet passes:
+  142 portable controls and eleven cases per mode, native/service/status/capacity,
+  codec 67/46, source/lifecycle/verification/release, external wheel and 103
+  receipt-reader controls per mode. Serial seeded 10,000-input boundaries pass;
+  pinned Elixir has 302 tests, zero failures and six skips, with all other gates.
+  Logs: `ocaml/_build/conformance-admission-final-full-check.log`, external and
+  reader receipts, and `conformance-admission-final-fuzz-serial.log`.
+  Current focus: publish, exact-head CI/review and merge. Numeric implementation waits.
 
 Missing or unobservable evidence blocks complete core conformance. The public
 OCaml event log omits numeric usage totals; the baseline cannot require the

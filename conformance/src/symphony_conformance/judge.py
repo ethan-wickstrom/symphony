@@ -12,6 +12,7 @@ from signal import SIGKILL
 from graphql import GraphQLError
 
 from .assets import decode, digest, load, resource
+from .records import check_data
 from .report import build
 from .schema import Schema
 from .linear import select
@@ -238,10 +239,7 @@ def _events(raw):
             raise ValueError("collector ingestion clock is not nondecreasing")
         if any(not isinstance(event[field], str) or not event[field] for field in ("origin", "kind")):
             raise ValueError("invalid observation origin or kind")
-        if not isinstance(event["data"], dict):
-            raise ValueError("invalid observation payload")
-        if "requirement_id" in event["data"] or "verdict" in event["data"] or "passed" in event["data"]:
-            raise ValueError("observations cannot supply requirement answers")
+        check_data(event["data"])
         previous = time
         events.append(event)
     return events
@@ -654,10 +652,11 @@ def _shutdown_check(events):
     peer = _of(events, "peer.closed")
     descendants = _of(events, "descendant.observed")
     admitted = _of(events, "control.descendant.started")
-    violations = _of(events, "candidate.execution_failure") + _of(events, "capture.overflow")
+    violations = (_of(events, "candidate.execution_failure") + _of(events, "capture.overflow")
+                  + _of(events, "candidate.observation_limit"))
     wrong = []
     if violations:
-        wrong.append("candidate execution failed or exceeded an output bound")
+        wrong.append("candidate execution failed or exceeded an output or observation bound")
     if any(event["data"].get("status") != 0 for event in waits + reaped):
         wrong.append("candidate did not exit successfully")
     for collection in (capture, owner, provider, group):

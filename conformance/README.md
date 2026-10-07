@@ -19,8 +19,17 @@ the bounded prefix, drains to EOF and grades owned cleanup separately.
 An execution deadline leaves bounded recovery available. Premature observed exits
 fail the candidate; joined exit and capture receipts still determine cleanup health.
 Ignored SIGTERM uses bounded forced cleanup and records a join after actual reap
-and both capture EOFs. Malformed observation diagnostics retain finite metadata;
-the raw capture retains the complete bounded record.
+and both capture EOFs. Overflow during recovery also uses forced cleanup.
+Normalized observations share limits of 2,048 records and 4 MiB encoded data,
+with 256 KiB per data envelope and 16 malformed diagnostics. Admission checks the
+journal's encoding and envelope depth before writing. Omission emits one limit
+receipt and exact final counts, and prevents a candidate pass.
+Admission and replay share the rule that observations cannot supply requirement
+answers through `passed`, `verdict` or `requirement_id` fields.
+
+Raw capture frames coalesce physical reads to 64 KiB, flushing before derived
+observations and process lifecycle receipts. Exact stream bytes remain retained;
+process lifecycle snapshots contain ownership phases rather than duplicate reads.
 Peer environment receipts replace embedded fixture credentials with a canonical
 fake marker and redact unrelated credentials.
 

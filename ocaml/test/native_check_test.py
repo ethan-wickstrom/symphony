@@ -390,6 +390,129 @@ class NativeWatchdogTest(unittest.TestCase):
             outcome = native_check.execute(helper, base / "run.log", READY_TIMEOUT)
             self.assertEqual(0, outcome["status"])
 
+    def test_retained_streams(self):
+        with tempfile.TemporaryDirectory(prefix="symphony-watchdog-streams-") as base:
+            base = Path(base)
+            helper = base / "helper"
+            first = b"stdout-first\x00\xff\n"
+            last = b"stdout-last\x00\xfe\n"
+            stderr = b"stderr-middle\x00\xfd\n"
+            stdout = first + last
+            helper.write_text(
+                f"#!{sys.executable}\n"
+                "import sys\n"
+                f"sys.stdout.buffer.write({first!r})\n"
+                "sys.stdout.buffer.flush()\n"
+                f"sys.stderr.buffer.write({stderr!r})\n"
+                "sys.stderr.buffer.flush()\n"
+                f"sys.stdout.buffer.write({last!r})\n"
+                "sys.stdout.buffer.flush()\n"
+            )
+            helper.chmod(0o700)
+            log = base / "target.log"
+            outcome = native_check.execute(helper, log, READY_TIMEOUT)
+            self.assertEqual(0, outcome["status"])
+            path = log.with_suffix(".ownership.json")
+            ownership = json.loads(path.read_text())
+            self.assertTrue(ownership["reaped"])
+            self.assertTrue(ownership["closed"])
+            self.assertEqual([], ownership["failures"])
+            for stream, expected in (("stdout", stdout), ("stderr", stderr)):
+                with self.subTest(stream=stream):
+                    retained = log.with_suffix(f".{stream}.bin")
+                    self.assertEqual(retained.name, ownership[stream + "_file"])
+                    self.assertEqual(len(expected), ownership[stream + "_bytes"])
+                    self.assertEqual(hashlib.sha256(expected).hexdigest(),
+                                     ownership[stream + "_sha256"])
+                    self.assertEqual(expected, retained.read_bytes())
+            self.assertEqual(stdout + stderr, log.read_bytes(),
+                             "combined log must be deterministic stdout then stderr")
+            self.assertEqual(path.name, outcome["ownership"]["path"])
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
+                             outcome["ownership"]["sha256"])
+
+    def test_late_retention_signal(self):
+        with tempfile.TemporaryDirectory(prefix="symphony-watchdog-retention-") as base:
+            base = Path(base)
+            helper = base / "helper"
+            pid_file = base / "leader.pid"
+            stdout = b"retained-stdout\x00\xff\n"
+            stderr = b"retained-stderr\x00\xfe\n"
+            helper.write_text(
+                f"#!{sys.executable}\n"
+                "import os, sys\n"
+                "from pathlib import Path\n"
+                f"Path({str(pid_file)!r}).write_text(str(os.getpid()))\n"
+                f"sys.stdout.buffer.write({stdout!r})\n"
+                "sys.stdout.buffer.flush()\n"
+                f"sys.stderr.buffer.write({stderr!r})\n"
+                "sys.stderr.buffer.flush()\n"
+            )
+            helper.chmod(0o700)
+            log = base / "target.log"
+            runner_file = base / "runner.py"
+            runner_file.write_text(
+                "import os, signal, sys\n"
+                "from pathlib import Path\n"
+                "sys.dont_write_bytecode = True\n"
+                f"sys.path.insert(0, {str(Path(native_check.__file__).parent)!r})\n"
+                "import native_check\n"
+                "write = native_check._write_bytes\n"
+                "sent = False\n"
+                "def retain(path, data):\n"
+                "    global sent\n"
+                "    write(path, data)\n"
+                "    if path.name == 'target.stdout.bin' and not sent:\n"
+                "        sent = True\n"
+                "        print('retention-signal', flush=True)\n"
+                "        os.kill(os.getpid(), signal.SIGTERM)\n"
+                "native_check._write_bytes = retain\n"
+                "try:\n"
+                f"    native_check.execute(Path({str(helper)!r}), "
+                f"Path({str(log)!r}), {READY_TIMEOUT})\n"
+                "except SystemExit as error:\n"
+                "    print(f'retention-exit:{error.code}', flush=True)\n"
+                "    raise\n"
+            )
+            optimize = ["-" + "O" * sys.flags.optimize] if sys.flags.optimize else []
+            with native_check.Process(
+                    [sys.executable, *optimize, str(runner_file)], base, dict(os.environ),
+                    native_check.OUTPUT_LIMIT, time.monotonic() + INTERRUPT_TIMEOUT, None) as owner:
+                status = owner.join(INTERRUPT_TIMEOUT)
+            captured = owner.snapshot()
+            self.assertIn(b"retention-signal\n", captured["stdout"])
+            self.assertFalse(running(int(pid_file.read_text())), "native leader remains alive")
+            with self.subTest(phase="exit"):
+                exit_code = native_check.SIGNAL_EXIT_BASE + signal.SIGTERM
+                self.assertEqual(exit_code, status, captured["stderr"][-2048:])
+                self.assertIn(f"retention-exit:{exit_code}\n".encode(), captured["stdout"])
+                self.assertEqual(b"", captured["stderr"])
+            for stream, expected in (("stdout", stdout), ("stderr", stderr)):
+                with self.subTest(stream=stream):
+                    retained = log.with_suffix(f".{stream}.bin")
+                    self.assertTrue(retained.is_file(), "signal interrupted stream retention")
+                    self.assertEqual(expected, retained.read_bytes())
+            with self.subTest(phase="combined"):
+                self.assertTrue(log.is_file(), "signal interrupted combined log retention")
+                self.assertEqual(stdout + stderr, log.read_bytes())
+            with self.subTest(phase="ownership"):
+                path = log.with_suffix(".ownership.json")
+                self.assertTrue(path.is_file(), "signal interrupted ownership retention")
+                ownership = json.loads(path.read_text())
+                self.assertTrue(ownership["reaped"])
+                self.assertTrue(ownership["closed"])
+                self.assertEqual(["stderr", "stdout"], ownership["eof"])
+                self.assertEqual(0, ownership["returncode"])
+                self.assertEqual([], ownership["failures"])
+                self.assertFalse(running(ownership["pid"]))
+                self.assertFalse(running(ownership["guard_pid"]))
+                for stream, expected in (("stdout", stdout), ("stderr", stderr)):
+                    self.assertEqual(log.with_suffix(f".{stream}.bin").name,
+                                     ownership[stream + "_file"])
+                    self.assertEqual(len(expected), ownership[stream + "_bytes"])
+                    self.assertEqual(hashlib.sha256(expected).hexdigest(),
+                                     ownership[stream + "_sha256"])
+
     def test_normal_closes_group(self):
         with tempfile.TemporaryDirectory(prefix="symphony-watchdog-normal-") as base:
             base = Path(base)
@@ -471,8 +594,13 @@ class NativeWatchdogTest(unittest.TestCase):
                 self.assertTrue(ownership["reaped"], "persisted receipt lacks leader reap")
                 self.assertTrue(ownership["closed"], "persisted receipt lacks owner closure")
                 for stream in ("stdout", "stderr"):
+                    retained = (base / "run.log").with_suffix(f".{stream}.bin")
+                    self.assertEqual(retained.name, ownership[stream + "_file"])
+                    self.assertEqual(0, ownership[stream + "_bytes"])
                     self.assertEqual(hashlib.sha256(b"").hexdigest(),
                                      ownership[stream + "_sha256"])
+                    self.assertEqual(b"", retained.read_bytes())
+                self.assertEqual(b"", (base / "run.log").read_bytes())
                 if stage is Stage.ADMISSION:
                     self.assertTrue(signals.is_file(), "pending signal skipped admitted cleanup")
                     trace = [json.loads(line) for line in signals.read_text().splitlines()]

@@ -15,6 +15,7 @@ from .driver.errors import Failures
 from .driver.journal import Journal, seal
 from .driver.process import Process
 from .driver.tracker import Tracker
+from .observations import Observations
 from . import profiles
 
 OUTPUT_LIMIT = 1024 * 1024
@@ -90,7 +91,6 @@ def _execute(output, profile_id, candidate, fault, scope):
     cancellation = None
     cleanup_errors = Failures()
     completed = False
-    pending = {"stdout": bytearray(), "stderr": bytearray()}
     seen_workspace = False
 
     def failure(label, error):
@@ -101,26 +101,8 @@ def _execute(output, profile_id, candidate, fault, scope):
         if not isinstance(error, Exception) and cancellation is None:
             cancellation = error
 
-    def observe(kind, data):
-        journal.emit(kind, data)
-        if kind not in {"capture.stdout", "capture.stderr"}:
-            return
-        stream = kind.split(".")[1]
-        if stream != profile["observation_stream"]:
-            return
-        pending[stream].extend(base64.b64decode(data["data_b64"], validate=True))
-        while b"\n" in pending[stream]:
-            line, _, rest = pending[stream].partition(b"\n")
-            pending[stream] = bytearray(rest)
-            try:
-                value = profiles.observation(profile, line)
-            except (UnicodeError, ValueError, TypeError) as error:
-                # Raw capture retains the record; keep its diagnostic bounded.
-                journal.emit("candidate.observation_error", {"stream": stream,
-                             "error_type": type(error).__name__})
-                continue
-            if value is not None:
-                journal.emit("candidate.observation", value, "profile:" + profile_id)
+    observe = Observations(journal, profile["observation_stream"], "profile:" + profile_id,
+                           lambda line: profiles.observation(profile, line))
 
     def rows(kind):
         return journal.rows(kind)
@@ -243,6 +225,7 @@ def _execute(output, profile_id, candidate, fault, scope):
             if close is None:
                 continue
             attempt(label, close)
+        attempt("observations", observe.close)
         snapshot = attempt("process snapshot", process.snapshot) if process is not None else failed_snapshot
         if snapshot is not None:
             for stream in ("stdout", "stderr"):
