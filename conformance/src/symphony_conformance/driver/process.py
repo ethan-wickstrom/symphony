@@ -430,12 +430,16 @@ class Process:
                 primary.add_note(f"Process cleanup failed: stage={stage} class={type(error).__name__}")
             primary._process_snapshot = self.snapshot()
             return
-        if errors:
-            _, _, error, traceback = errors[0]
-            error._process_snapshot = self.snapshot()
-            raise error.with_traceback(traceback)
         try:
             self._cancellation.check()
-        except BaseException as error:
+        except BaseException:
+            errors.append(("signal-check", *sys.exc_info()))
+        if errors:
+            # Without a caller primary, the first cancellation wins cleanup defects.
+            _, _, error, traceback = next(
+                (failure for failure in errors if not isinstance(failure[2], Exception)), errors[0])
+            for stage, _, secondary, _ in errors:
+                if secondary is not error:
+                    BaseException.add_note(error, f"Process cleanup failed: stage={stage} class={type(secondary).__name__}")
             error._process_snapshot = self.snapshot()
-            raise
+            raise error.with_traceback(traceback)

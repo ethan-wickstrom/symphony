@@ -119,9 +119,21 @@ the fixed corpus and independent judge own expected behavior.
   Failed child joins retain bounded capture and lifecycle notes before/after
   cleanup. Budgets remain unchanged.
   The affected installed package now passes all 102 controls in both modes.
-- [ ] Verify the fix against exact-head macOS fixture subprocess timeouts. Both initial hosted
-  runs passed Linux and all macOS native gates, then ten subprocess controls
-  exceeded their join budgets. Captured child diagnostics were omitted.
+- [x] Verify numeric binding against exact-head macOS fixture subprocess timeouts.
+  Both push/PR portable steps pass at e46928cf7318; the PR matrix is green.
+- [x] Correct the scenario's premature terminal transition. Push Linux recorded
+  the second request before its ACK, then canceled the pending start. A delayed
+  ACK regression reproduces that ordering in both modes. Wait for the matching
+  ACK and the candidate's accepted public turn observation; keep verdicts strict.
+  Both delayed barriers fail before the fix and pass after it in both modes.
+- [x] Retain host signal custody through final sealing. The fresh review found
+  default SIGTERM handling restored after child closure. Both regression modes
+  reproduce an absent manifest and OS exit -15 during sealing. Restoration
+  failures also reproduce lost cancellation in the runner and generic drivers.
+  The fixed paths return 143, retain bounded notes and preserve sealed evidence.
+  All 108 controls and eleven lifecycle/calibration cases pass in both modes.
+  Full configured checks, external-wheel cases and 97 receipt-reader corruption
+  controls per mode also pass on the final source.
 - [ ] Review, publish, audit exact-head Linux/macOS evidence and merge.
 
 Missing or unobservable evidence blocks complete core conformance. The public

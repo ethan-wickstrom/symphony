@@ -9,7 +9,8 @@ import subprocess
 import time
 from pathlib import Path
 
-from .assets import digest, load, resource
+from .assets import decode, digest, load, resource
+from .driver.capture import SignalScope
 from .driver.errors import Failures
 from .driver.journal import Journal, seal
 from .driver.process import Process
@@ -20,6 +21,54 @@ OUTPUT_LIMIT = 1024 * 1024
 
 
 def run(output, profile_id, candidate=None, fault=None):
+    scope = SignalScope()
+    primary = None
+    notes = Failures()
+    result = None
+
+    def retain(stage, error):
+        nonlocal primary
+        # Host cancellation survives later cleanup defects with its identity.
+        if primary is None:
+            primary = (stage, error, error.__traceback__)
+            return
+        if not isinstance(error, Exception) and isinstance(primary[1], Exception):
+            previous, primary = primary, (stage, error, error.__traceback__)
+            notes.record(previous[0] + ": " + type(previous[1]).__name__ + ": " + str(previous[1]))
+            return
+        if error is not primary[1]:
+            notes.record(stage + ": " + type(error).__name__ + ": " + str(error))
+
+    try:
+        scope.open()
+        result = _execute(output, profile_id, candidate, fault, scope)
+    except BaseException as error:
+        retain("execution", error)
+
+    # Evidence is sealed before the last cancellation collector is released.
+    try:
+        scope.check()
+    except BaseException as error:
+        retain("host cancellation", error)
+    try:
+        for stage, _, error, _ in scope.close():
+            retain(stage, error)
+    except BaseException as error:
+        retain("signal close", error)
+    if primary is None or isinstance(primary[1], Exception):
+        try:
+            scope.check()
+        except BaseException as error:
+            retain("host cancellation", error)
+    if primary is not None:
+        _, error, trace = primary
+        for message in notes.samples():
+            BaseException.add_note(error, message)
+        raise error.with_traceback(trace)
+    return result
+
+
+def _execute(output, profile_id, candidate, fault, scope):
     root = Path(output).absolute()
     root.mkdir(parents=True, exist_ok=False)
     root = root.resolve(strict=True)
@@ -83,9 +132,9 @@ def run(output, profile_id, candidate=None, fault=None):
         if seen_workspace and not workspace.exists() and not rows("workspace.removed"):
             journal.emit("workspace.removed", {"path": str(workspace)})
 
-    def turn_count():
-        frames = rows("peer.client")
-        return sum(json.loads(base64.b64decode(item["data"]["frame"])) .get("method") == "turn/start" for item in frames)
+    def frames(kind):
+        return [(row, decode(base64.b64decode(row["data"]["frame"], validate=True)))
+                for row in rows(kind)]
 
     try:
         collector = journal.start()
@@ -101,6 +150,7 @@ def run(output, profile_id, candidate=None, fault=None):
         argv = profiles.launch(profile, candidate, workflow_path, asset_root / "tls/ca.pem", plan_path)
         env = profiles.environment(profile, run_root, corpus)
         journal.emit("control.launch", {"argv": argv, "environment": env})
+        scope.check()
         process = Process(argv, cwd=run_root, env=env, output_limit=OUTPUT_LIMIT,
                           deadline=time.monotonic() + corpus["run_budget_seconds"], emit=observe)
         process.wait_for(lambda: any(item["data"].get("event") in {"service_ready", "ready"}
@@ -108,7 +158,24 @@ def run(output, profile_id, candidate=None, fault=None):
 
         def second_turn():
             workspace_state()
-            return turn_count() >= 2
+            starts = [(row, frame) for row, frame in frames("peer.client")
+                      if frame.get("method") == "turn/start"]
+            if len(starts) < 2:
+                return False
+            request, frame = starts[1]
+            turn = corpus["turn_ids"][1]
+            acknowledged = any(
+                row["data"]["peer_id"] == request["data"]["peer_id"]
+                and row["seq"] > request["seq"] and "method" not in reply
+                and type(reply.get("id")) is type(frame["id"]) and reply.get("id") == frame["id"]
+                and reply.get("result", {}).get("turn", {}).get("id") == turn
+                for row, reply in frames("peer.server"))
+            # A written reply does not prove the candidate accepted the turn.
+            accepted = any(row["data"].get("event") == "turn_started"
+                           and row["data"].get("turn_id") == turn
+                           and row["data"].get("session_id") == corpus["thread_id"] + "-" + turn
+                           for row in rows("candidate.observation"))
+            return acknowledged and accepted
 
         process.wait_for(second_turn, corpus["deadline_seconds"])
         tracker.terminal()

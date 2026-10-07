@@ -310,6 +310,7 @@ class Control:
             _require(refreshed["state"]["name"] == self._corpus["active_state"], "Issue stopped before continuation")
             continued_thread = thread + FAULT_THREAD_SUFFIX if self._fault is Fault.NEW_THREAD else thread
             turn = self._turn(peer, continued_thread, "Continue the same issue.")
+            _publish("turn_started", turn_id=turn, session_id=continued_thread + "-" + turn)
             self._wait_terminal(peer)
             peer.request("turn/interrupt", {"threadId": thread, "turnId": turn})
             if self._fault is not Fault.ACK_ONLY:

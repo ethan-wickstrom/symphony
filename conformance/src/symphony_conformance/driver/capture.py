@@ -33,6 +33,7 @@ class SignalScope:
 
     def __init__(self):
         self.pending = None
+        self._baseline = {}
 
     def open(self):
         if threading.current_thread() is not threading.main_thread():
@@ -41,9 +42,12 @@ class SignalScope:
             raise RuntimeError("cancellation scope is already open")
         first = not self._active
         self._active.append(self)
-        if first:
-            for number in HANDLED_SIGNALS:
-                self._previous[number] = signal.signal(number, self._collect)
+        try:
+            if first:
+                for number in HANDLED_SIGNALS:
+                    self._previous[number] = signal.signal(number, self._collect)
+        finally:
+            self._baseline = dict(self._previous)
 
     @classmethod
     def _collect(cls, number, _frame):
@@ -55,7 +59,10 @@ class SignalScope:
         number = self.pending
         if number is None:
             return
-        handler = self._previous.get(number, signal.getsignal(number))
+        if number in self._baseline:
+            handler = self._baseline[number]
+        else:
+            handler = self._previous.get(number, signal.getsignal(number))
         if handler == signal.SIG_IGN or (callable(handler) and handler is not signal.default_int_handler):
             # Deliver application cancellation only after process admission.
             # One shared delivery lets its collector govern every active owner.
@@ -71,17 +78,21 @@ class SignalScope:
 
     def close(self):
         failures = []
-        if self in self._active:
-            self._active.remove(self)
-        if self._active:
+        if self not in self._active:
             return failures
-        previous = dict(self._previous)
-        self._previous.clear()
-        for number, handler in previous.items():
-            try:
-                signal.signal(number, handler)
-            except BaseException:
-                failures.append(("signal-restore", *sys.exc_info()))
+        if len(self._active) > 1:
+            self._active.remove(self)
+            return failures
+        # The last owner receives cancellation until restoration finishes.
+        try:
+            for number, handler in dict(self._previous).items():
+                try:
+                    signal.signal(number, handler)
+                except BaseException:
+                    failures.append(("signal-restore", *sys.exc_info()))
+        finally:
+            self._active.remove(self)
+            self._previous.clear()
         return failures
 
 
@@ -254,9 +265,15 @@ def run(argv, *, timeout, stdout_limit, stderr_limit, cwd=None, env=None):
 
     failures.extend(_release(process, capture))
     failures.extend(cancellation.close())
+    try:
+        cancellation.check()
+    except BaseException:
+        failures.append(("signal-check", *sys.exc_info()))
     if failures:
-        _, _, error, traceback = failures[0]
-        _notes(error, failures, process.pid)
+        # Cancellation keeps its control-flow identity ahead of cleanup defects.
+        _, _, error, traceback = next(
+            (failure for failure in failures if not isinstance(failure[2], Exception)), failures[0])
+        _notes(error, [failure for failure in failures
+                       if failure[0] != "signal-check" or failure[2] is not error], process.pid)
         raise error.with_traceback(traceback)
-    cancellation.check()
     return result

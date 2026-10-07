@@ -6,6 +6,13 @@ two turns on one thread, opaque-ID terminal refresh, interruption, four hooks,
 workspace removal and joined observed resources. An independent scripted
 profile calibrates the same judge with deliberately faulty behavior.
 
+Terminal reconciliation starts only after the second turn ACK and the candidate's
+public `turn_started` observation establish active ownership. Profiles normalize
+that observation; wire evidence independently determines the verdict.
+
+Cancellation remains collected through evidence sealing. A late host signal
+returns its exit code while preserving an already completed candidate receipt.
+
 This is partial evidence. The catalog retains all 106 requirements from SPEC
 sections 17 and 18 plus 12 supplemental rows. One lifecycle never marks core
 conformance complete. The OCaml public log exposes no numeric usage totals;
