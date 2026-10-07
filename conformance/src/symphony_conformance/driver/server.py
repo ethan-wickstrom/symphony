@@ -2,6 +2,7 @@
 
 from enum import Enum
 from http.server import HTTPServer
+from socketserver import TCPServer
 import math
 import socket
 import sys
@@ -39,6 +40,11 @@ class Server(HTTPServer):
         self._active = None
         self._closing = False
         super().__init__(address, handler)
+
+    def server_bind(self):
+        # Fixture listeners use numeric addresses, so startup needs no DNS.
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
     def _abort(self, connection, reason):
         if connection.abort is None:

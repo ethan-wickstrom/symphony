@@ -105,6 +105,23 @@ the fixed corpus and independent judge own expected behavior.
   subsequently reproduced and corrected.
 - [x] Verify installed-wheel execution outside the checkout in both modes.
   All eleven lifecycle/calibration cases per mode pass from the external env.
+- [x] Publish PR #14 and address five Codex/Copilot findings. Full predicate
+  validation rejects malformed hidden branches as candidate requests; codec
+  evidence cannot replace the canonical manifest; release docs require the
+  locked installed harness; host cancellation survives cleanup and sealing.
+  Regressions failed before fixes, including actual CLI SIGTERM returning zero.
+  The corrected CLI returns 143. Local `just check` passed with 101 portable
+  controls and eleven cases in each Python mode, plus configured native,
+  capacity, codec, lifecycle, source, verification and release gates.
+- [x] Remove the inherited reverse-DNS lookup from numeric fixture binding.
+  A deterministic regression failed in normal/optimized Python before the fix;
+  real HTTP response, metadata and joined listener closure now pass in both.
+  Failed child joins retain bounded capture and lifecycle notes before/after
+  cleanup. Budgets remain unchanged.
+  The affected installed package now passes all 102 controls in both modes.
+- [ ] Verify the fix against exact-head macOS fixture subprocess timeouts. Both initial hosted
+  runs passed Linux and all macOS native gates, then ten subprocess controls
+  exceeded their join budgets. Captured child diagnostics were omitted.
 - [ ] Review, publish, audit exact-head Linux/macOS evidence and merge.
 
 Missing or unobservable evidence blocks complete core conformance. The public

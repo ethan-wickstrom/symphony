@@ -170,8 +170,10 @@ service with 1000 held fake scopes, native timings, sampled producer RSS and joi
 shutdown. It measures service/runtime overhead; real Codex processes remain
 outside this workload.
 `just release-tools` checks the immutable input materializer and physical binary
-verifier. Native verifier controls explicitly skip hosts without the selected
-macOS/SDK profile locally; macOS CI requires it and fails on missing coverage.
+verifier and installs their locked harness dependency. Direct invocations require
+the [release bootstrap](release/README.md). Native verifier controls explicitly
+skip hosts without the selected macOS/SDK profile locally; macOS CI requires it
+and fails on missing coverage.
 Portable controls still run on Linux. AFL has a separate bounded
 [Mach-O parser harness](fuzz/release_macho.py), with campaign limits in
 [release evidence](../docs/design/release-evidence.md).

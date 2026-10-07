@@ -17,6 +17,9 @@ CHILD_BUDGET = 6
 EXPIRY_BUDGET = 10
 FLOOD_REQUESTS = 64
 DIAGNOSTIC_LIMIT = 16 * 1024
+DIAGNOSTIC_TAIL = 2 * 1024
+DIAGNOSTIC_PHASES = 8
+DIAGNOSTIC_SCALAR = 128
 
 
 class Input(Enum):
@@ -30,6 +33,31 @@ class Action(Enum):
 
 
 class JournalTest(unittest.TestCase):
+    def _child_note(self, error, phase, snapshot):
+        try:
+            value = snapshot()
+            if not isinstance(value, dict):
+                return
+
+            def select(row, keys):
+                return {key: row[key][:DIAGNOSTIC_SCALAR] if isinstance(row[key], str) else row[key]
+                        for key in keys if key in row and type(row[key]) in (str, int, bool, type(None))}
+
+            note = {"phase": phase, **select(value, ("pid", "guard_pid", "returncode", "closed", "reaped"))}
+            note["eof"] = [name for name in ("stderr", "stdout") if name in value.get("eof", ())]
+            note["failures"] = [select(row, ("stage", "class"))
+                                for row in value.get("failures", ())[-DIAGNOSTIC_PHASES:]]
+            note["lifecycle"] = [select(row, ("kind", "operation", "stage", "status", "forced"))
+                                 for row in value.get("lifecycle", ())[-DIAGNOSTIC_PHASES:]]
+            for stream in ("stdout", "stderr"):
+                raw = value.get(stream, b"")
+                if type(raw) is bytes:
+                    note[stream + "_tail"] = raw[-DIAGNOSTIC_TAIL:].decode("utf-8", errors="replace")
+            BaseException.add_note(error, "Fixture child: " + json.dumps(note, ensure_ascii=False)[:DIAGNOSTIC_LIMIT])
+        except BaseException:
+            # Diagnostics must preserve the original join or cleanup failure.
+            pass
+
     def test_drip_close(self):
         self.drip_close(Input.BODY)
 
@@ -174,12 +202,20 @@ if not journal._file.closed or journal.rows('collector.closed')[0]['data']['erro
         budget = CHILD_BUDGET if action is Action.CLOSE else EXPIRY_BUDGET
         flags = ["-" + "O" * min(sys.flags.optimize, 2)] if sys.flags.optimize else []
         with tempfile.TemporaryDirectory() as directory:
-            with Process([sys.executable, *flags, "-c", script], cwd=Path(directory),
-                         env=dict(os.environ), output_limit=65536,
-                         deadline=time.monotonic() + budget) as child:
-                status = child.join(budget - 1)
-                self.assertEqual(status, 0, child.snapshot()["stderr"].decode("utf-8", errors="replace"))
-                self.assertEqual(child.snapshot()["stderr"], b"")
+            try:
+                with Process([sys.executable, *flags, "-c", script], cwd=Path(directory),
+                             env=dict(os.environ), output_limit=65536,
+                             deadline=time.monotonic() + budget) as child:
+                    try:
+                        status = child.join(budget - 1)
+                    except BaseException as error:
+                        self._child_note(error, "pre-cleanup", child.snapshot)
+                        raise
+                    self.assertEqual(status, 0, child.snapshot()["stderr"].decode("utf-8", errors="replace"))
+                    self.assertEqual(child.snapshot()["stderr"], b"")
+            except BaseException as error:
+                self._child_note(error, "post-cleanup", lambda: getattr(error, "_process_snapshot", None))
+                raise
 
     def test_bounded_rejections(self):
         with tempfile.TemporaryDirectory() as directory:

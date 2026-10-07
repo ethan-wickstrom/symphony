@@ -61,6 +61,8 @@ check: test check-format
     just release-tools
 
 protocol-codec: build
+    python3 test/protocol_codec_check_test.py -v
+    python3 -O test/protocol_codec_check_test.py -v
     opam exec --switch . -- dune exec test/protocol_fixtures.exe > _build/codec-fixtures.jsonl
     python3 tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir _build/codec-evidence/normal
     python3 -O tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir _build/codec-evidence/optimized

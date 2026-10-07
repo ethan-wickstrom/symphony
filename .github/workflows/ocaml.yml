@@ -82,6 +82,8 @@ jobs:
       - run: opam exec -- dune runtest
       - name: Validate actual Codex codec fixtures
         run: |
+          python3 test/protocol_codec_check_test.py -v
+          python3 -O test/protocol_codec_check_test.py -v
           opam exec -- dune exec test/protocol_fixtures.exe > _build/codec-fixtures.jsonl
           python3 tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir "$RUNNER_TEMP/symphony-codec/normal"
           python3 -O tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir "$RUNNER_TEMP/symphony-codec/optimized"

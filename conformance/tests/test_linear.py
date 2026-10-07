@@ -20,6 +20,18 @@ class LinearTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             matches({"id": "A"}, {"id": {"guess": "A"}})
 
+    def test_filter_selection(self):
+        # Parsing must reject bad predicates before any issue is evaluated.
+        filters = [
+            {"or": [{"id": {"eq": "A"}}, None]},
+            {"and": [{"id": {"eq": "missing"}}, {"id": {"guess": "A"}}]},
+            {"id": {"eq": None}}, {"state": {"name": {}}},
+        ]
+        for query in filters:
+            with self.subTest(filter=query), self.assertRaises(ValueError):
+                select({"query": "query Pick($filter: IssueFilter!) { issues(first: 1, filter: $filter) { nodes { id } } }",
+                        "variables": {"filter": query}})
+
     def test_non_query(self):
         with self.assertRaises(ValueError):
             select({"query": 'mutation { issues(first: 1, filter: {}) { nodes { id } } }'})

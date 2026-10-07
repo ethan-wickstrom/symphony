@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from .assets import digest, load, resource
+from .driver.errors import Failures
 from .driver.journal import Journal, seal
 from .driver.process import Process
 from .driver.tracker import Tracker
@@ -37,9 +38,19 @@ def run(output, profile_id, candidate=None, fault=None):
     failed_snapshot = None
     tracker = None
     errors = []
+    cancellation = None
+    cleanup_errors = Failures()
     completed = False
     pending = {"stdout": bytearray(), "stderr": bytearray()}
     seen_workspace = False
+
+    def failure(label, error):
+        nonlocal cancellation
+        message = label + ": " + type(error).__name__ + ": " + str(error)
+        errors.append(message)
+        cleanup_errors.record(message)
+        if not isinstance(error, Exception) and cancellation is None:
+            cancellation = error
 
     def observe(kind, data):
         journal.emit(kind, data)
@@ -116,6 +127,8 @@ def run(output, profile_id, candidate=None, fault=None):
         completed = True
     except BaseException as error:
         failed_snapshot = getattr(error, "_process_snapshot", None)
+        if not isinstance(error, Exception):
+            cancellation = error
         if process is not None and isinstance(error, (subprocess.CalledProcessError, subprocess.TimeoutExpired)):
             # A candidate verdict is separate from ownership and recorder health.
             try:
@@ -127,21 +140,22 @@ def run(output, profile_id, candidate=None, fault=None):
                     process.join(corpus["deadline_seconds"])
                 completed = True
             except BaseException as cleanup:
-                errors.append("candidate failure cleanup: " + type(cleanup).__name__ + ": " + str(cleanup))
+                failure("candidate failure cleanup", cleanup)
         else:
             errors.append(type(error).__name__ + ": " + str(error))
     finally:
         def attempt(label, action):
             try:
-                action()
+                return action()
             except BaseException as error:
-                errors.append(label + ": " + type(error).__name__ + ": " + str(error))
+                failure(label, error)
+                return None
 
-        if workspace.exists():
+        if attempt("workspace lookup", workspace.exists):
             attempt("retained workspace receipt", lambda: journal.emit("workspace.retained", {"path": str(workspace)}))
         if tracker is not None:
             attempt("provider", tracker.close)
-        for declaration in rows("control.descendant.started"):
+        for declaration in attempt("descendant declarations", lambda: rows("control.descendant.started")) or ():
             def probe(declaration=declaration):
                 pid = declaration["data"].get("pid")
                 if type(pid) is not int or pid <= 0 or process is None:
@@ -161,20 +175,32 @@ def run(output, profile_id, candidate=None, fault=None):
             if close is None:
                 continue
             attempt(label, close)
-        snapshot = process.snapshot() if process is not None else failed_snapshot
+        snapshot = attempt("process snapshot", process.snapshot) if process is not None else failed_snapshot
         if snapshot is not None:
             for stream in ("stdout", "stderr"):
                 attempt("capture " + stream, lambda stream=stream: (root / (stream + ".bin")).write_bytes(snapshot[stream]))
-            errors.extend("process: " + str(value) for value in snapshot["failures"])
-            receipt = {key: value for key, value in snapshot.items() if key not in {"stdout", "stderr"}}
+            failures = attempt("process failures", lambda: snapshot["failures"]) or ()
+            errors.extend("process: " + str(value) for value in failures)
+            receipt = attempt("process receipt fields", lambda: {
+                key: value for key, value in snapshot.items() if key not in {"stdout", "stderr"}})
             attempt("process receipt", lambda: (root / "process.json").write_text(json.dumps(receipt, indent=2) + "\n"))
         if tracker is not None:
-            errors.extend(tracker.errors())
+            errors.extend(attempt("provider errors", tracker.errors) or ())
         attempt("journal", journal.close)
-        errors.extend(journal.errors())
-        identities = {"catalog": digest("catalog.json"), "corpus": digest("corpus/lifecycle.json"),
-                      "protocol": digest("protocol/manifest.json"),
-                      "profile": digest("profiles/" + profile_id + ".json")}
-        seal(root, {"profile_id": profile_id, "corpus_id": corpus["id"],
-                    "completed": completed, "harness_errors": errors, "identities": identities})
+        errors.extend(attempt("journal errors", journal.errors) or ())
+        identities = attempt("asset identities", lambda: {
+            "catalog": digest("catalog.json"), "corpus": digest("corpus/lifecycle.json"),
+            "protocol": digest("protocol/manifest.json"), "profile": digest("profiles/" + profile_id + ".json")})
+        try:
+            seal(root, {"profile_id": profile_id, "corpus_id": corpus["id"],
+                        "completed": completed, "harness_errors": errors, "identities": identities})
+        except BaseException as error:
+            if cancellation is None:
+                raise
+            failure("seal", error)
+    # Host control flow resumes after custody release and evidence retention.
+    if cancellation is not None:
+        for message in cleanup_errors.samples():
+            BaseException.add_note(cancellation, message)
+        raise cancellation
     return root

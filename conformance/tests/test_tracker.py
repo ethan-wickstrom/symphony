@@ -20,6 +20,10 @@ CHILD_BUDGET = 6
 EXPIRY_BUDGET = 10
 FLOOD_REQUESTS = 64
 DIAGNOSTIC_LIMIT = 16 * 1024
+DIAGNOSTIC_TAIL = 2 * 1024
+DIAGNOSTIC_PHASES = 8
+DIAGNOSTIC_SCALAR = 128
+FILTER_QUERY = "query Pick($filter: IssueFilter!) { issues(first: 1, filter: $filter) { nodes { id } } }"
 
 
 class Input(Enum):
@@ -33,6 +37,94 @@ class Action(Enum):
 
 
 class TrackerTest(unittest.TestCase):
+    def test_bad_logical_values(self):
+        filters = [
+            {"or": [None]}, {"and": [[]]}, {"or": [5]}, {"and": ["bad"]},
+            {"and": [False]}, {"or": [{"and": [None]}]},
+            {"and": [{"or": [["bad"]]}]},
+        ]
+        self.filter_requests(filters, HTTPStatus.BAD_REQUEST)
+
+    def test_hidden_filter_errors(self):
+        corpus = load("corpus/lifecycle.json")
+        hit = {"id": {"eq": corpus["issue_id"]}}
+        missing_id = corpus["issue_id"] + "-missing"
+        miss = {"id": {"eq": missing_id}}
+        invalid = [
+            {"id": {"guess": "bad"}}, {"or": [None]},
+            {"project": {"name": None}}, {"state": {"name": {"eq": None}}},
+            {"project": {"guess": {"eq": "bad"}}},
+        ]
+        filters = [{"or": [hit, value]} for value in invalid]
+        filters.extend({"and": [miss, value]} for value in invalid)
+        filters.extend([
+            {"id": {"eq": missing_id, "guess": "bad"}},
+            {"id": {"eq": missing_id, "in": [None]}},
+            {"id": {"eq": missing_id, "eqIgnoreCase": None}},
+            {"id": {"eq": missing_id}, "guess": {}},
+            {"state": {"name": {"eq": "missing-state"}, "guess": {"eq": "bad"}}},
+        ])
+        self.filter_requests(filters, HTTPStatus.BAD_REQUEST)
+
+    def test_bad_comparison_values(self):
+        filters = [{"id": {operator: value}} for operator, value in (
+            ("eq", None), ("eq", 5), ("eq", False), ("eq", []), ("eq", {}),
+            ("eqIgnoreCase", None), ("eqIgnoreCase", 5),
+            ("in", None), ("in", "bad"), ("in", ["valid", None]),
+        )]
+        filters.extend([{"id": {}}, {"project": {"name": {}}}])
+        self.filter_requests(filters, HTTPStatus.BAD_REQUEST)
+
+    def test_valid_logical_filters(self):
+        corpus = load("corpus/lifecycle.json")
+        hit = {"id": {"eq": corpus["issue_id"]}}
+        miss = {"id": {"eq": corpus["issue_id"] + "-missing"}}
+        payloads = self.filter_requests([
+            {"or": [hit, miss]}, {"and": [miss, hit]},
+            {"and": [hit, {}]}, {"id": {"in": []}},
+            {}, {"project": {}}, {"state": {}},
+        ], HTTPStatus.OK)
+        self.assertEqual([[node["id"] for node in value["data"]["issues"]["nodes"]]
+                          for value in payloads], [[corpus["issue_id"]], [], [corpus["issue_id"]], [],
+                              [corpus["issue_id"]], [corpus["issue_id"]], [corpus["issue_id"]]])
+
+    def filter_requests(self, filters, status):
+        with tempfile.TemporaryDirectory() as directory:
+            corpus = load("corpus/lifecycle.json")
+            journal = Journal(Path(directory))
+            tracker = Tracker(corpus, journal, str(resource("tls/server.pem")),
+                              str(resource("tls/server.key")))
+            authority = tracker.endpoint.split("/")[2]
+            context = ssl.create_default_context(cafile=str(resource("tls/ca.pem")))
+            payloads = []
+            try:
+                # Reject malformed predicates even when issue evaluation could skip them.
+                for query in filters:
+                    with self.subTest(filter=query):
+                        client = http.client.HTTPSConnection(authority, timeout=2, context=context)
+                        try:
+                            body = json.dumps({"query": FILTER_QUERY, "variables": {"filter": query}})
+                            client.request("POST", "/graphql", body,
+                                           {"Authorization": corpus["fake_secret"], "Content-Type": "application/json"})
+                            response = client.getresponse()
+                            payload = json.loads(response.read())
+                            payloads.append(payload)
+                            self.assertEqual(response.status, status)
+                            if status == HTTPStatus.BAD_REQUEST:
+                                self.assertTrue(payload.get("errors"))
+                        finally:
+                            client.close()
+                with self.subTest(stage="fixture-health"):
+                    self.assertEqual(tracker.errors(), [])
+            finally:
+                tracker.close()
+                journal.close()
+            with self.subTest(stage="fixture-closure"):
+                self.assertEqual(journal.rows("provider.closed")[0]["data"]["status"], "ok")
+            self.assertEqual(len(journal.rows("provider.request")), len(filters))
+            self.assertEqual(len(journal.rows("provider.response")), len(filters))
+            return payloads
+
     def test_bounded_rejections(self):
         with tempfile.TemporaryDirectory() as directory:
             corpus = load("corpus/lifecycle.json")
@@ -101,15 +193,48 @@ class TrackerTest(unittest.TestCase):
                 journal.close()
             self.assertEqual(journal.rows("provider.closed")[0]["data"]["status"], "error")
 
+    def _child_note(self, error, phase, snapshot):
+        try:
+            value = snapshot()
+            if not isinstance(value, dict):
+                return
+
+            def select(row, keys):
+                return {key: row[key][:DIAGNOSTIC_SCALAR] if isinstance(row[key], str) else row[key]
+                        for key in keys if key in row and type(row[key]) in (str, int, bool, type(None))}
+
+            note = {"phase": phase, **select(value, ("pid", "guard_pid", "returncode", "closed", "reaped"))}
+            note["eof"] = [name for name in ("stderr", "stdout") if name in value.get("eof", ())]
+            note["failures"] = [select(row, ("stage", "class"))
+                                for row in value.get("failures", ())[-DIAGNOSTIC_PHASES:]]
+            note["lifecycle"] = [select(row, ("kind", "operation", "stage", "status", "forced"))
+                                 for row in value.get("lifecycle", ())[-DIAGNOSTIC_PHASES:]]
+            for stream in ("stdout", "stderr"):
+                raw = value.get(stream, b"")
+                if type(raw) is bytes:
+                    note[stream + "_tail"] = raw[-DIAGNOSTIC_TAIL:].decode("utf-8", errors="replace")
+            BaseException.add_note(error, "Fixture child: " + json.dumps(note, ensure_ascii=False)[:DIAGNOSTIC_LIMIT])
+        except BaseException:
+            # Diagnostics must preserve the original join or cleanup failure.
+            pass
+
     def child(self, body, budget=CHILD_BUDGET):
         flags = ["-" + "O" * min(sys.flags.optimize, 2)] if sys.flags.optimize else []
         with tempfile.TemporaryDirectory() as directory:
-            with Process([sys.executable, *flags, "-c", body], cwd=Path(directory),
-                         env=dict(os.environ), output_limit=65536,
-                         deadline=time.monotonic() + budget) as child:
-                status = child.join(budget - 1)
-                self.assertEqual(status, 0, child.snapshot()["stderr"].decode("utf-8", errors="replace"))
-                self.assertEqual(child.snapshot()["stderr"], b"")
+            try:
+                with Process([sys.executable, *flags, "-c", body], cwd=Path(directory),
+                             env=dict(os.environ), output_limit=65536,
+                             deadline=time.monotonic() + budget) as child:
+                    try:
+                        status = child.join(budget - 1)
+                    except BaseException as error:
+                        self._child_note(error, "pre-cleanup", child.snapshot)
+                        raise
+                    self.assertEqual(status, 0, child.snapshot()["stderr"].decode("utf-8", errors="replace"))
+                    self.assertEqual(child.snapshot()["stderr"], b"")
+            except BaseException as error:
+                self._child_note(error, "post-cleanup", lambda: getattr(error, "_process_snapshot", None))
+                raise
 
     def test_idle_tls_admission(self):
         self.child('''

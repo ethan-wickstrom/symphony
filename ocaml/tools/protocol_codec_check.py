@@ -60,6 +60,7 @@ def evidence_paths(arguments):
     paths = {key: directory / name for key, name in ARTIFACT_NAMES.items()}
     protected = {CHECKER, REQUIREMENTS, arguments.exporter.resolve()}
     protected.add(FIXTURE_MANIFEST)
+    protected.add(Path(str(resource("protocol/manifest.json"))).resolve())
     protected.update(Path(str(resource("protocol/schemas/" + name))).resolve()
                      for name in load("protocol/manifest.json")["files"])
     if arguments.fixtures != "-":
