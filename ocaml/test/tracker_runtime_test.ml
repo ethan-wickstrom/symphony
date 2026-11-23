@@ -7,18 +7,22 @@ let text_checked = function
   | Ok value -> value
   | Error message -> Alcotest.fail message
 
-let fixture cwd name =
-  let directory = Eio.Path.( / ) cwd "fixtures/tls" in
-  Eio.Path.load (Eio.Path.( / ) directory name)
+let tls_path name =
+  let directory = Sys.getenv "SYMPHONY_TEST_TLS_DIRECTORY" in
+  if Filename.is_relative directory then
+    Alcotest.fail "Shared TLS directory must be absolute";
+  Filename.concat directory name
 
-let tls_server cwd =
+let fixture fs name = Eio.Path.load (Eio.Path.( / ) fs (tls_path name))
+
+let tls_server fs =
   let chain =
-    match X509.Certificate.decode_pem_multiple (fixture cwd "server.pem") with
+    match X509.Certificate.decode_pem_multiple (fixture fs "server.pem") with
     | Ok value -> value
     | Error (`Msg message) -> Alcotest.fail message
   in
   let key =
-    match X509.Private_key.decode_pem (fixture cwd "server.key") with
+    match X509.Private_key.decode_pem (fixture fs "server.key") with
     | Ok value -> value
     | Error (`Msg message) -> Alcotest.fail message
   in
@@ -132,7 +136,6 @@ let configuration registry ~base ~endpoint =
 
 let overlapping () =
   Eio_posix.run (fun host ->
-      let cwd = Eio.Stdenv.cwd host in
       let base = text_checked (Absolute_path.parse (Sys.getcwd ())) in
       let net = Eio.Stdenv.net host in
       let runtime = Native_http.defer () in
@@ -153,7 +156,7 @@ let overlapping () =
               let registry =
                 tracker_checked
                   (Tracker_runtime.registry ~runtime ~fs:(Eio.Stdenv.fs host)
-                     ~net ~clock ~cwd:base ~ca_bundle:"fixtures/tls/ca.pem"
+                     ~net ~clock ~cwd:base ~ca_bundle:(tls_path "ca.pem")
                      ~warning:ignore)
               in
               let config = configuration registry ~base ~endpoint in
@@ -172,7 +175,9 @@ let overlapping () =
                     let ordinal = !calls in
                     Eio.Fiber.fork ~sw (fun () ->
                         let flow =
-                          Tls_eio.server_of_flow (tls_server cwd) socket
+                          Tls_eio.server_of_flow
+                            (tls_server (Eio.Stdenv.fs host))
+                            socket
                         in
                         receive flow;
                         if ordinal = 1 then (

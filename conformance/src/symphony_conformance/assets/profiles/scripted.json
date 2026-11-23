@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "scripted",
+  "revision": 1,
+  "adapter": "linear-fixture-v1",
+  "protocol": "codex-0.159.2-stable",
+  "policy": "never-workspace-v1",
+  "launch": "python -m symphony_conformance.control --plan PLAN.json",
+  "readiness": "JSON record event=ready",
+  "shutdown": "SIGTERM to candidate leader",
+  "observation": "JSON records with event field",
+  "observation_stream": "stdout",
+  "approval_policy": "never",
+  "sandbox": "workspace-write",
+  "extensions": {"http": false, "provider_native_tools": false},
+  "trust": "explicit loopback fixture CA",
+  "ambient_environment": ["PATH", "LANG", "LC_ALL", "USER", "LOGNAME"],
+  "scope": "Independent scripted calibration control, not a conforming port"
+}

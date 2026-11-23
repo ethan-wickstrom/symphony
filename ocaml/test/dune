@@ -216,4 +216,10 @@
 (alias
  (name native-http-inputs)
  (deps
-  (glob_files fixtures/tls/*)))
+  fixtures/tls/other-ca.pem
+  fixtures/tls/rsa-ca.pem
+  fixtures/tls/rsa-signature-0.pem
+  fixtures/tls/rsa-signature-1.pem
+  fixtures/tls/rsa-signed.pem
+  fixtures/tls/wrong-host.key
+  fixtures/tls/wrong-host.pem))

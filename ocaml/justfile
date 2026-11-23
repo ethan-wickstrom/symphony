@@ -1,4 +1,11 @@
-build:
+export PATH := justfile_directory() + "/../conformance/.venv/bin:" + env_var("PATH")
+
+conformance-env:
+    python3 -m venv ../conformance/.venv
+    ../conformance/.venv/bin/python -m pip install --require-hashes --only-binary=:all: --no-cache-dir --disable-pip-version-check -r ../conformance/requirements.lock
+    ../conformance/.venv/bin/python -m pip install --no-build-isolation --no-deps --disable-pip-version-check ../conformance
+
+build: conformance-env
     opam exec --switch . -- dune build @all @test/native-http-inputs
 
 test: build
@@ -18,6 +25,8 @@ service-cli: build
     #!/usr/bin/env bash
     set -euo pipefail
     evidence="$(mktemp -d "$PWD/_build/service-cli-XXXXXX")"
+    python3 test/service_process_test.py -v
+    python3 -O test/service_process_test.py -v
     python3 test/service_cli_check.py _build/default/bin/main.exe --out "$evidence/normal"
     PYTHONOPTIMIZE=1 python3 test/service_cli_check.py _build/default/bin/main.exe --out "$evidence/optimized"
     printf '%s\n' "$evidence"
@@ -37,6 +46,7 @@ check-format:
     opam exec --switch . -- dune build @fmt
 
 check: test check-format
+    just conformance
     just capacity
     just protocol-codec
     opam exec --switch . -- python3 test/lifecycle_types_test.py
@@ -51,11 +61,11 @@ check: test check-format
     just release-tools
 
 protocol-codec: build
-    python3 -m venv _build/codec-venv
-    _build/codec-venv/bin/python -m pip install --require-hashes --only-binary=:all: --no-cache-dir --disable-pip-version-check -r tools/protocol_codec_requirements.lock
+    python3 test/protocol_codec_check_test.py -v
+    python3 -O test/protocol_codec_check_test.py -v
     opam exec --switch . -- dune exec test/protocol_fixtures.exe > _build/codec-fixtures.jsonl
-    _build/codec-venv/bin/python tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir _build/codec-evidence/normal
-    _build/codec-venv/bin/python -O tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir _build/codec-evidence/optimized
+    python3 tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir _build/codec-evidence/normal
+    python3 -O tools/protocol_codec_check.py _build/codec-fixtures.jsonl --exporter _build/default/test/protocol_fixtures.exe --evidence-dir _build/codec-evidence/optimized
 
 capacity: build
     #!/usr/bin/env bash
@@ -68,7 +78,7 @@ capacity: build
     done
     printf '%s\n' "$evidence"
 
-release-tools:
+release-tools: conformance-env
     python3 test/release_process_test.py -v
     python3 -O test/release_process_test.py -v
     python3 test/release_materialize_test.py -v
@@ -80,3 +90,13 @@ release-tools:
 
 fuzz: build
     opam exec --switch . -- dune exec fuzz/boundaries.exe -- --repeat 10000 --seed 20260930
+
+conformance: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 -m unittest discover -s ../conformance/tests -v
+    python3 -O -m unittest discover -s ../conformance/tests -v
+    evidence="$(mktemp -d "$PWD/_build/conformance-XXXXXX")"
+    python3 ../conformance/tests/acceptance.py --candidate "$PWD/_build/default/bin/main.exe" --out "$evidence/normal"
+    python3 -O ../conformance/tests/acceptance.py --candidate "$PWD/_build/default/bin/main.exe" --out "$evidence/optimized"
+    printf '%s\n' "$evidence"

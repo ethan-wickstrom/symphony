@@ -2,7 +2,7 @@
     trust discovery, clock observations or crypto activation. Defects escape. *)
 
 val pem_sample : string
-(** Public CA fixture copied from [test/fixtures/tls/ca.pem]. *)
+(** Public CA bytes from the canonical conformance TLS fixture. *)
 
 val endpoint : string -> unit
 (** Repeated endpoint validation agrees; accepted credentials remain sealed. *)

@@ -1,12 +1,11 @@
 # OCaml conformance
 
-Status: workflow/workspace/Linear slices, pure scheduling, the scoped Eio service,
-physical fake-session capacity, the closed Codex runner and live executable are
-merged through [PR #12](https://github.com/ethan-wickstrom/symphony/pull/12)
-(`40d6b63`). Local and exact-head Linux/macOS PR/push gates passed; the 25-case
-executable acceptance and retained artifact audits are recorded in
-[the worklog](docs/worklog.md). The new status API checkpoint is implemented;
-its local verification gates pass; exact-head hosted review remains pending.
+Status: workflow/workspace/Linear slices, pure scheduling, scoped Eio service,
+physical fake-session capacity, the closed runner, live executable and optional
+status API are merged through [PR #13](https://github.com/ethan-wickstrom/symphony/pull/13)
+(`806bbc8`). Local and exact-head Linux/macOS push/PR gates passed. Reviewed
+c73a037 and merged main have identical trees; retained audits and review
+resolution are recorded in [the worklog](docs/worklog.md).
 The historical macOS release profile passed physical closure/link checks with
 Crypto1.2.0. Current2.4.1 requires fresh release qualification. Clean-host
 macOS deployment, Linux musl and authenticated Codex acceptance remain pending.
@@ -37,7 +36,7 @@ schema generation is not a passing client test. See [protocol audit](docs/protoc
 | Terminal/non-active reconciliation | 4, 5 | `orchestrator.ml`; binding-group reads, closed barrier, refreshed issue, stop disposition and stale completion cases in core/service models | Fenced service decisions, closed runner interruptions and executable preflight pass locally |
 | Terminal startup/transition cleanup | 2, 4 | `issue_lifecycle.ml`, `orchestrator.ml`; epoch-fenced startup, cleanup closure, original reference and absorbing Cleanup examples/models | Eio startup/cleanup barriers pass fake-port simulation; native service pending |
 | Required structured log context | 4, 6 | `Orchestrator.fault` retains checked current issue after release; `service_cli.ml` uses exact previous issue/run/session closure context and checked hook references; `service_cli_check.py` checks issue_identifier and started/not_started closure | Canonical records pass the 25-case local/hosted suite; unknown-generation host-port faults retain explicit partial context |
-| Operator-visible observability | 1–7 | `diagnostic.ml`, inspection CLIs, `snapshot.ml`, `status_surface.ml`, `service_query.ml`, `native_status.ml`; inspection, status/model/query and executable route tests | Fresh status/API passes local normal/optimized executable acceptance; hosted review pending |
+| Operator-visible observability | 1–7 | `diagnostic.ml`, inspection CLIs, `snapshot.ml`, `status_surface.ml`, `service_query.ml`, `native_status.ml`; inspection, status/model/query and executable route tests | Fresh status/API passed local and Linux/macOS hosted normal/optimized acceptance in PR #13 |
 
 ## Status API checkpoint
 
@@ -65,8 +64,10 @@ the review fixes. The status native corpus executes 256 public-loopback inputs.
 Receipts are in _build/status-cli-AE0HA4, service-cli-62XYqI,
 native-evidence{,-optimized} and capacity-S4lqUJ. Browser authority and listener
 reload regressions failed before their fixes, then passed the complete gate.
-Hosted review and browser inspection remain pending. Binary hashes are execution
-context, not attestation; fake peers do not prove authenticated Codex acceptance.
+Hosted gates and current-head browser inspection completed before PR #13 merged.
+The retry arithmetic suggestion was declined against SPEC and lifecycle evidence.
+Binary hashes are execution context, not attestation; fake peers do not prove
+authenticated Codex acceptance.
 
 ## Design evidence
 
@@ -275,3 +276,21 @@ Meaningful regressions reproduced false cancellation cleanup reports and recorde
 output failure being superseded by a later clock defect. See
 [live-dispatch contract](docs/design/live-dispatch.md) for arbitration, limits and
 fixture/provider evidence boundaries.
+
+## Portable harness checkpoint
+
+The [standalone package](conformance/README.md) owns process/capture mechanisms,
+shared TLS fixtures, all 314 generated stable schemas, the fixed corpus and an
+offline judge. Profiles translate public launch/workflow/log behavior. Sealed
+wire, lifecycle and capture evidence replays without executing a candidate.
+All 106 SPEC checklist rows and 12 supplemental clauses remain in each report.
+
+The first public OCaml lifecycle completed with twelve assertions passing and
+numeric usage unobservable in the public log. The independent scripted profile
+passed thirteen assertions. This is partial scope: complete core conformance
+remains incomplete. All 132 controls and nine fault calibrations pass in normal
+and optimized Python. The external wheel passes every case in both modes; 97
+receipt-reader corruption controls pass per mode. Hosted review remains before
+merge. Trusted fixture instrumentation
+and execution-account authority are explicit; hashes do not attest a malicious
+same-account candidate or inventory unknown quiet descendants.

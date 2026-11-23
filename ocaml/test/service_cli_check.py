@@ -16,26 +16,46 @@ import tempfile
 import threading
 import time
 
+from symphony_conformance.driver.process import Process as OwnedProcess
+from symphony_conformance.driver import capture as capture_driver, process as process_driver
+from symphony_conformance.assets import resource
+
 TOKEN = "service-fixture-linear-key-never-print"
 NEXT_TOKEN = "service-fixture-allowed-user"
 OUTPUT_LIMIT = 1_048_576
 REQUEST_LIMIT = 1_048_576
 WAIT_SECONDS = 15
 JOIN_SECONDS = 10
+SERVICE_BUDGET_SECONDS = 120
 FD_HEADROOM_MAX = 16
 SESSION_EVENTS = frozenset(("session_started", "turn_started", "turn_completed"))
 ISSUE_EVENTS = frozenset(("dispatch", "session_started", "turn_started", "turn_completed",
                           "hook", "worker_closed"))
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 PEER = FIXTURES / "agent" / "service_server.py"
-CA = FIXTURES / "tls" / "ca.pem"
-PYTHON = [str(Path(sys.executable).resolve()), "-B", "-I"]
+TLS = Path(str(resource("tls")))
+CA = TLS / "ca.pem"
+TLS_FILES = ("ca.pem", "server.pem", "server.key", "manifest.json")
+DRIVER_INPUTS = {
+    "package-code/driver/capture.py": Path(capture_driver.__file__).resolve(),
+    "package-code/driver/process.py": Path(process_driver.__file__).resolve(),
+    "package-code/driver/sentinel.py": process_driver.SENTINEL.resolve(),
+}
+PYTHON = [sys.executable, "-B", "-I"]
 if sys.flags.optimize:
     PYTHON.append("-OO" if sys.flags.optimize > 1 else "-O")
 
 
 class AcceptanceError(Exception):
     pass
+
+
+def input_path(relative):
+    if relative.startswith("package-code/"):
+        return DRIVER_INPUTS[relative]
+    if relative.startswith("package/"):
+        return Path(str(resource(relative.removeprefix("package/"))))
+    return Path(__file__).resolve().parents[1] / relative
 
 
 def require(condition, message):
@@ -170,7 +190,7 @@ def provider(evidence):
     server.daemon_threads = False
     import ssl
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    tls.load_cert_chain(FIXTURES / "tls" / "server.pem", FIXTURES / "tls" / "server.key")
+    tls.load_cert_chain(TLS / "server.pem", TLS / "server.key")
     server.socket = tls.wrap_socket(server.socket, server_side=True, do_handshake_on_connect=False)
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01})
     thread.start()
@@ -294,50 +314,25 @@ def field(value):
 class Process:
     def __init__(self, binary, root, arguments, fd_headroom=None):
         self.root = root
-        self.changed = threading.Condition()
-        self.output = {"stdout": bytearray(), "stderr": bytearray()}
-        self.defects = []
         command = [str(binary), *arguments]
         if fd_headroom is not None:
             command = [*PYTHON, str(PEER), "--fd-headroom", str(fd_headroom),
                        "--fd-receipt", str(root / "fd.json"), "--", *command]
-        self.child = subprocess.Popen(command, cwd=root, close_fds=True,
-                                      env=environment(root), stdin=subprocess.DEVNULL,
-                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        self.readers = []
-        for name in ("stdout", "stderr"):
-            thread = threading.Thread(target=self.read, args=(name, getattr(self.child, name)))
-            thread.start()
-            self.readers.append(thread)
+        self._owner = OwnedProcess(command, cwd=root, env=environment(root),
+                                   output_limit=OUTPUT_LIMIT,
+                                   deadline=time.monotonic() + SERVICE_BUDGET_SECONDS)
 
-    def read(self, name, stream):
-        try:
-            while True:
-                data = os.read(stream.fileno(), 4096)
-                if not data:
-                    return
-                with self.changed:
-                    if len(self.output[name]) + len(data) > OUTPUT_LIMIT:
-                        self.defects.append(name + " exceeds capture bound")
-                        self.child.kill()
-                        return
-                    self.output[name].extend(data)
-                    self.changed.notify_all()
-        except OSError as error:
-            with self.changed:
-                self.defects.append(name + ":" + type(error).__name__)
-                self.changed.notify_all()
-        finally:
-            stream.close()
+    @property
+    def output(self):
+        value = self._owner.snapshot()
+        return {name: value[name] for name in ("stdout", "stderr")}
 
     def logs(self):
-        with self.changed:
-            return bytes(self.output["stderr"]).decode("utf-8")
+        return self.output["stderr"].decode("utf-8")
 
     def events(self):
         result = []
-        with self.changed:
-            complete, _, _pending = bytes(self.output["stderr"]).rpartition(b"\n")
+        complete, _, _pending = self.output["stderr"].rpartition(b"\n")
         for line in complete.splitlines():
             if not line.startswith(b"event="):
                 continue
@@ -351,32 +346,27 @@ class Process:
         return result
 
     def wait(self, predicate, label):
-        deadline = time.monotonic() + WAIT_SECONDS
-        while not predicate():
-            with self.changed:
-                require(not self.defects, f"capture defect: {self.defects}")
-                require(self.child.poll() is None, f"service exited before {label}: {self.logs()}")
-                remaining = deadline - time.monotonic()
-                require(remaining > 0, f"service gate timed out: {label}; {self.logs()}")
-                self.changed.wait(min(remaining, 0.05))
+        try:
+            self._owner.wait_for(predicate, WAIT_SECONDS)
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as error:
+            raise AcceptanceError(f"service gate failed: {label}; {self.logs()}") from error
 
     def event(self, name):
         return [value for value in self.events() if value.get("event") == name]
 
     def joined(self):
-        status = self.child.wait(timeout=JOIN_SECONDS)
-        for reader in self.readers:
-            reader.join(JOIN_SECONDS)
-        require(all(not reader.is_alive() for reader in self.readers), "capture thread did not join")
-        require(not self.defects, f"capture defect: {self.defects}")
+        status = self._owner.join(JOIN_SECONDS)
         require(all(token not in self.logs() and token.encode() not in self.output["stdout"]
                     for token in (TOKEN, NEXT_TOKEN)),
                 "tracker credential leaked to CLI output")
         check_context(self.events())
         return status
 
+    def signal(self, selected):
+        self._owner.signal(selected)
+
     def stop(self, selected):
-        self.child.send_signal(selected)
+        self.signal(selected)
         self.stopped(selected)
 
     def stopped(self, selected):
@@ -388,17 +378,32 @@ class Process:
         require(not self.output["stdout"], "service wrote unexpected stdout")
 
     def cleanup(self):
-        (self.root / "control" / "abort").touch()
-        (self.root / "control" / "release-after-run").touch()
-        if self.child.poll() is None:
-            self.child.terminate()
+        primary = None
+        for action in ((self.root / "control" / "abort").touch,
+                       (self.root / "control" / "release-after-run").touch,
+                       self._owner.close):
             try:
-                self.child.wait(timeout=JOIN_SECONDS)
-            except subprocess.TimeoutExpired:
-                self.child.kill()
-                self.child.wait(timeout=JOIN_SECONDS)
-        for reader in self.readers:
-            reader.join(JOIN_SECONDS)
+                action()
+            except BaseException as error:
+                if primary is None:
+                    primary = error
+                else:
+                    primary.add_note("secondary cleanup failure: " + type(error).__name__)
+        value = self._owner.snapshot()
+        try:
+            (self.root / "ownership.json").write_text(json.dumps({
+                "pid": value["pid"], "guard_pid": value["guard_pid"],
+                "returncode": value["returncode"], "reaped": value["reaped"],
+                "closed": value["closed"], "lifecycle": value["lifecycle"],
+                "failures": value["failures"],
+            }, indent=2) + "\n")
+        except BaseException as error:
+            if primary is None:
+                primary = error
+            else:
+                primary.add_note("receipt failure: " + type(error).__name__)
+        if primary is not None:
+            raise primary
 
 
 @contextmanager
@@ -411,15 +416,23 @@ def running(binary, root, arguments, fd_headroom=None):
         primary = error
         raise
     finally:
-        try:
-            process.cleanup()
-            (root / "stdout.log").write_bytes(bytes(process.output["stdout"]))
-            (root / "stderr.log").write_bytes(bytes(process.output["stderr"]))
-            (root / "peer.json").write_text(json.dumps(records(root / "control"), indent=2) + "\n")
-        except BaseException as cleanup:
-            if primary is None:
-                raise
-            primary.add_note("owned process cleanup failed: " + type(cleanup).__name__)
+        cleanup_error = None
+        actions = [process.cleanup,
+                   lambda: (root / "stdout.log").write_bytes(process.output["stdout"]),
+                   lambda: (root / "stderr.log").write_bytes(process.output["stderr"]),
+                   lambda: (root / "peer.json").write_text(json.dumps(records(root / "control"), indent=2) + "\n")]
+        for action in actions:
+            try:
+                action()
+            except BaseException as cleanup:
+                if primary is not None:
+                    primary.add_note("owned process cleanup failed: " + type(cleanup).__name__)
+                elif cleanup_error is None:
+                    cleanup_error = cleanup
+                else:
+                    cleanup_error.add_note("secondary cleanup failure: " + type(cleanup).__name__)
+        if primary is None and cleanup_error is not None:
+            raise cleanup_error
 
 
 def arguments(workflow, style):
@@ -736,7 +749,7 @@ def check_burst(binary, base):
         replace(workflow, source(root, port, hook_gate="held"))
         with running(binary, root, arguments(workflow, "direct")) as process:
             process.wait(lambda: len(turns(control)) == 1, "active turn before first signal")
-            process.child.send_signal(signal.SIGTERM)
+            process.signal(signal.SIGTERM)
             marker = control / "hook-entered.json"
             process.wait(marker.is_file, "after_run entered after agent reap")
             process.wait(lambda: bool(process.event("shutdown_requested")), "first signal delivered")
@@ -745,7 +758,7 @@ def check_burst(binary, base):
             reaped(entered["pid"])
             burst = (signal.SIGINT, signal.SIGTERM, signal.SIGINT)
             for selected in burst:
-                process.child.send_signal(selected)
+                process.signal(selected)
             (control / "release-after-run").touch()
             process.stopped(signal.SIGTERM)
             assert_closed(root, process)
@@ -760,15 +773,22 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def source_hashes(paths):
+    root = Path(__file__).resolve().parents[1]
+    return {
+        **{str(path.relative_to(root)): digest(path) for path in paths},
+        **{"package/tls/" + name: digest(TLS / name) for name in TLS_FILES},
+        **{name: digest(path) for name, path in DRIVER_INPUTS.items()},
+    }
+
+
 def run(binary, base):
     cases = []
     observed = {
         "schema": 1, "binary": {"path": str(binary), "sha256": digest(binary)},
-        "python": {"executable": str(Path(sys.executable).resolve()),
+        "python": {"executable": sys.executable, "resolved": str(Path(sys.executable).resolve()),
                    "optimize": sys.flags.optimize, "peer_argv": PYTHON},
-        "sources": {str(path.relative_to(Path(__file__).resolve().parents[1])): digest(path)
-                    for path in (Path(__file__).resolve(), PEER, CA,
-                                 FIXTURES / "tls" / "server.pem", FIXTURES / "tls" / "server.key")},
+        "sources": source_hashes((Path(__file__).resolve(), PEER)),
         "cases": cases,
         "boundary": "local HTTPS/JSONL executable observations; binary hash is context, not build attestation",
     }
@@ -833,7 +853,7 @@ def run(binary, base):
         binary, base, "tracker-omission-visible", provider_case="omission"))
     require(digest(binary) == observed["binary"]["sha256"], "runtime binary changed during acceptance")
     for relative, before in observed["sources"].items():
-        require(digest(Path(__file__).resolve().parents[1] / relative) == before,
+        require(digest(input_path(relative)) == before,
                 "acceptance input changed during run: " + relative)
     observed["inputs_unchanged"] = True
     persist()

@@ -5,7 +5,6 @@ import argparse
 from datetime import date
 import gzip
 import hashlib
-import importlib.util
 import io
 import json
 import os
@@ -16,6 +15,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+from symphony_conformance.driver import capture as _PROCESS
 
 
 PROFILE = "macos-arm64-26.0.json"
@@ -33,10 +33,6 @@ MAX_TEMPLATE = 32 * 1024
 MAX_GIT_STDERR = 64 * 1024
 CPU_BASELINE = "Apple M1; GMP and pkgconf use generic Armv8-A"
 GENERIC_CPU = "generic Armv8-A"
-_PROCESS_PATH = Path(__file__).resolve().parent.parent / "tools/bounded_process.py"
-_PROCESS_SPEC = importlib.util.spec_from_file_location("release_bounded_process", _PROCESS_PATH)
-_PROCESS = importlib.util.module_from_spec(_PROCESS_SPEC)
-_PROCESS_SPEC.loader.exec_module(_PROCESS)
 RECIPES = frozenset([
     "compiler-pin/ocaml-compiler.opam", "compiler-pin/compiler-cloning.opam",
     "compiler-pin/ocaml-variants.opam", "compiler-pin/ocaml-option-no-compression.opam",
@@ -426,7 +422,7 @@ def prepare(release, output):
         "security_notice": ARCHIVAL_NOTICE,
         "profile_sha256": sha256(profile_bytes),
         "materializer_sha256": sha256(Path(__file__).read_bytes()),
-        "bounded_process_sha256": sha256(_PROCESS_PATH.read_bytes()),
+        "capture_sha256": sha256(Path(_PROCESS.__file__).read_bytes()),
         "source_commit": profile["source_commit"],
         "bindings": bindings,
         "recipes": recipe_hashes,

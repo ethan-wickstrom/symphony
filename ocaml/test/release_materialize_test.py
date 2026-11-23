@@ -15,6 +15,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
+from symphony_conformance.driver import capture
 
 
 RELEASE = Path(__file__).resolve().parent.parent / "release"
@@ -44,9 +45,6 @@ class Materialization(unittest.TestCase):
 
     def copy_release(self, destination):
         shutil.copytree(RELEASE, destination, dirs_exist_ok=True)
-        tools = destination.parent / "tools"
-        tools.mkdir(exist_ok=True)
-        shutil.copyfile(RELEASE.parent / "tools/bounded_process.py", tools / "bounded_process.py")
 
     def test_archival_intent_required(self):
         for purpose in ([], ["--purpose", "current-release"]):
@@ -82,8 +80,8 @@ class Materialization(unittest.TestCase):
         receipt = json.loads((self.output / "materialization.json").read_text())
         self.assertEqual(len(receipt["recipes"]), 13)
         self.assertEqual(len(receipt["vendor_archives"]), 4)
-        self.assertEqual(receipt["bounded_process_sha256"], hashlib.sha256(
-            (RELEASE.parent / "tools/bounded_process.py").read_bytes()).hexdigest())
+        self.assertEqual(receipt["capture_sha256"], hashlib.sha256(
+            Path(capture.__file__).read_bytes()).hexdigest())
         for name, digest in receipt["files"].items():
             actual = hashlib.sha256((self.output / name).read_bytes()).hexdigest()
             self.assertEqual(actual, digest, name)

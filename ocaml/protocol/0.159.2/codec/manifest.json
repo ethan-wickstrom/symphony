@@ -278,18 +278,19 @@
   },
   "native_word_bits": 64,
   "profile": "stable (no --experimental)",
+  "schema_owner": "symphony_conformance/assets/protocol",
   "schema_sources": {
-    "ApplyPatchApprovalResponse.json": "ApplyPatchApprovalResponse.json",
-    "ClientNotification.json": "ClientNotification.json",
-    "ClientRequest.json": "ClientRequest.json",
-    "CommandExecutionRequestApprovalResponse.json": "CommandExecutionRequestApprovalResponse.json",
-    "DynamicToolCallResponse.json": "DynamicToolCallResponse.json",
-    "ExecCommandApprovalResponse.json": "ExecCommandApprovalResponse.json",
-    "FileChangeRequestApprovalResponse.json": "FileChangeRequestApprovalResponse.json",
-    "JSONRPCError.json": "JSONRPCError.json",
-    "JSONRPCResponse.json": "JSONRPCResponse.json",
-    "McpServerElicitationRequestResponse.json": "McpServerElicitationRequestResponse.json",
-    "PermissionsRequestApprovalResponse.json": "PermissionsRequestApprovalResponse.json"
+    "ApplyPatchApprovalResponse.json": "protocol/schemas/ApplyPatchApprovalResponse.json",
+    "ClientNotification.json": "protocol/schemas/ClientNotification.json",
+    "ClientRequest.json": "protocol/schemas/ClientRequest.json",
+    "CommandExecutionRequestApprovalResponse.json": "protocol/schemas/CommandExecutionRequestApprovalResponse.json",
+    "DynamicToolCallResponse.json": "protocol/schemas/DynamicToolCallResponse.json",
+    "ExecCommandApprovalResponse.json": "protocol/schemas/ExecCommandApprovalResponse.json",
+    "FileChangeRequestApprovalResponse.json": "protocol/schemas/FileChangeRequestApprovalResponse.json",
+    "JSONRPCError.json": "protocol/schemas/JSONRPCError.json",
+    "JSONRPCResponse.json": "protocol/schemas/JSONRPCResponse.json",
+    "McpServerElicitationRequestResponse.json": "protocol/schemas/McpServerElicitationRequestResponse.json",
+    "PermissionsRequestApprovalResponse.json": "protocol/schemas/PermissionsRequestApprovalResponse.json"
   },
   "sha256": {
     "ApplyPatchApprovalResponse.json": "a5e145b4794ea91da6eb478626fac96bbbd4485c3399fabd1c9972d53d2d9010",
@@ -311,7 +312,7 @@
     "name": "jsonschema",
     "python": ">=3.11",
     "release": "https://pypi.org/project/jsonschema/4.26.0/",
-    "requirements": "../../../tools/protocol_codec_requirements.lock",
+    "requirements": "../../../../conformance/requirements.lock",
     "version": "4.26.0"
   },
   "version": "codex-cli 0.159.2"

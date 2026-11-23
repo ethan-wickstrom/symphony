@@ -1,6 +1,9 @@
 # Physical release evidence
 
-`ocaml/tools/check_release.py ARTIFACT --receipt RECEIPT.json` checks one profile:
+Install the locked harness environment from the repository root using the
+[release bootstrap](../../ocaml/release/README.md), then run
+`conformance/.venv/bin/python ocaml/tools/check_release.py ARTIFACT --receipt RECEIPT.json`.
+It checks one profile:
 `macos-arm64-26.0-sdk26.5`. Exit 0 means accepted, 1 means artifact/tool/receipt
 rejection, and 2 means invalid CLI arguments. Failures identify the failed gate
 and a remedy in JSON. `--help` prints usage. Linux verification is not implemented.
@@ -67,7 +70,7 @@ or concurrent same-user staging mutation claim is made.
 
 ## Native controls
 
-`python3 ocaml/test/release_check_test.py -v` and the same command with `-O`
+`conformance/.venv/bin/python ocaml/test/release_check_test.py -v` and the same command with `-O`
 compile physical fixtures with selected Appleclang and SDK 26.5. The system-only
 fixture must pass and execute successfully. Actual foreign and weak dylib
 imports, RPATH, a minimum-15.0 build, a `vtool`-changed SDK-26.4 executable, and
@@ -82,7 +85,7 @@ is not native release evidence.
 The macOS CI job sets `SYMPHONY_REQUIRE_NATIVE=1`, making missing SDK/tool
 availability a failure. Local unsupported hosts and Linux retain explicit skips.
 
-`ocaml/fuzz/release_macho.py INPUT` is a separate bounded AFL file harness.
+`conformance/.venv/bin/python ocaml/fuzz/release_macho.py INPUT` is a separate bounded AFL file harness.
 It accepts at most 64 KiB, parses only bytes, treats checked `Rejected` values as
 normal, and aborts on an unexpected parser exception. It never launches the
 candidate or an inspection tool. The input cap is narrower than the release

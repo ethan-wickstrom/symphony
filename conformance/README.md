@@ -1,0 +1,101 @@
+# Portable lifecycle harness
+
+The installed package launches the public Symphony CLI against a fake Linear
+HTTPS service and a schema-valid Codex stdio peer. The first fixed case covers
+two turns on one thread, opaque-ID terminal refresh, interruption, four hooks,
+workspace removal and joined observed resources. An independent scripted
+profile calibrates the same judge with deliberately faulty behavior.
+
+Terminal reconciliation starts only after the second turn ACK and the candidate's
+public `turn_started` observation establish active ownership. Profiles normalize
+that observation; wire evidence independently determines the verdict.
+
+Cancellation remains collected through evidence sealing. A late host signal
+returns its exit code while preserving an already completed candidate receipt.
+
+Output above either 1 MiB stream bound fails the candidate. The harness retains
+the bounded prefix, drains to EOF and grades owned cleanup separately.
+
+An execution deadline leaves bounded recovery available. Premature observed exits
+fail the candidate; joined exit and capture receipts still determine cleanup health.
+Ignored SIGTERM uses bounded forced cleanup and records a join after actual reap
+and both capture EOFs. Overflow during recovery also uses forced cleanup.
+Normalized observations share limits of 2,048 records and 4 MiB encoded data,
+with 256 KiB per data envelope and 16 malformed diagnostics. Admission checks the
+journal's encoding and envelope depth before writing. Omission emits one limit
+receipt and exact final counts, and prevents a candidate pass.
+Admission and replay share the rule that observations cannot supply requirement
+answers through `passed`, `verdict` or `requirement_id` fields.
+
+Raw capture frames coalesce physical reads to 64 KiB, flushing before derived
+observations and process lifecycle receipts. Exact stream bytes remain retained;
+process lifecycle snapshots contain ownership phases rather than duplicate reads.
+Peer environment receipts replace embedded fixture credentials with a canonical
+fake marker and redact unrelated credentials.
+
+The tracker validates its supported GraphQL schema and returns selected fields.
+This case requires effective `nodes.id`, `identifier`, `title` and `state.name`.
+Fragments, directives and aliases preserve GraphQL selection semantics.
+Required schema fields are checked per effective nodes branch; replay follows
+their original response aliases.
+Provider traffic reserves 4 MiB and 2,048 events, including 1 KiB of collector
+envelope space per record and 64 KiB for limit, summary and closure receipts.
+Admission checks encoded headers, target and body, then reserves a maximal
+response before reading. Overbudget requests stop body admission and receive a
+bounded HTTP rejection. One limit receipt and exact final omission counts prevent
+a candidate pass; admitted wire bodies remain exact.
+Broken pipe, connection reset and TLS EOF during response writes retain a matched
+disconnect receipt. They leave fixture health intact and supply no response proof.
+Recorder failures and other socket errors still fail the harness.
+Queries beyond parser recursion limits receive a healthy fixture rejection.
+Supported type names follow [Linear's SDL](https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql).
+
+This is partial evidence. The catalog retains all 106 requirements from SPEC
+sections 17 and 18 plus 12 supplemental rows. One lifecycle never marks core
+conformance complete. The OCaml public log exposes no numeric usage totals;
+that assertion is `unobservable`. The baseline requires no HTTP status API.
+
+Linux and macOS are supported; macOS requires Python 3.13 or newer for `waitid`.
+Install the locked dependencies and package in a dedicated environment:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements.lock
+.venv/bin/python -m pip install --no-build-isolation --no-deps .
+. .venv/bin/activate
+.venv/bin/python -m symphony_conformance.cli --help
+```
+
+From any directory, execute the installed CLI and write reports outside the
+sealed evidence directory:
+
+```sh
+symphony-conformance run --profile ocaml --candidate /absolute/path/symphony --output /absolute/new/evidence
+symphony-conformance judge /absolute/new/evidence --report /absolute/report.json
+```
+
+`run` and `judge` exit status describes command execution. Read `harness.status`,
+the case assertions and `core_summary.complete` before treating a report as
+acceptance. Missing, failed or unobservable mandatory evidence blocks completion.
+`tests/acceptance.py` checks the exact expected scope and fault assertions.
+
+The bundle retains raw request/response bodies and ordered headers, both protocol
+directions, hooks, control actions, capture bytes and process lifecycle stages.
+Every event receives one collector sequence and ingestion clock. Final inventory
+hashes cover exact retained files; replay verifies those bytes and canonical
+package assets before evaluating behavior. Reports never modify evidence.
+
+The canonical protocol asset contains all 314 stable files regenerated by
+Codex CLI 0.159.2. Its bundle digest is
+`9dec03ab74e2e8a8e3b2948594c7183ee0565c3df33c792ea78d387e6824e093`.
+The fixture uses no authenticated provider execution. Test TLS keys are public
+fixture data, and tracker credentials are fixed fake values.
+
+The execution account and fixture instrumentation are trusted. Collector records
+and hashes do not authenticate observations against a malicious executable with
+the same filesystem/process authority. PID metadata is context, not historical
+identity or build attestation. Natural leader exit and pipe EOF do not inventory
+quiet descendants; declared fixture children receive separate observations.
+Final group KILL releases custody even after a natural candidate join. These
+checks establish observed fixture closure, not complete descendant enumeration,
+provider authentication, native sandbox enforcement or release qualification.

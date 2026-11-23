@@ -9,9 +9,16 @@ This profile preserves the locally qualified macOS arm64 recipes: minimum OS
 pkgconf use the generic Armv8-A subset. It is separate from the development
 switch and from the pending Linux musl profile.
 
+Release tools require the installed [portable harness](../../conformance/README.md).
+From the repository root, bootstrap a dedicated environment (Python 3.13 or newer
+on macOS):
+
 ```sh
-python3 ocaml/release/materialize.py --help
-python3 ocaml/release/materialize.py --purpose historical-replay --output /private/tmp/symphony-release-fresh
+python3 -m venv conformance/.venv
+conformance/.venv/bin/python -m pip install --require-hashes --only-binary=:all: -r conformance/requirements.lock
+conformance/.venv/bin/python -m pip install --no-build-isolation --no-deps ./conformance
+conformance/.venv/bin/python ocaml/release/materialize.py --help
+conformance/.venv/bin/python ocaml/release/materialize.py --purpose historical-replay --output /private/tmp/symphony-release-fresh
 ```
 
 The output must be absent and its parent must exist. Paths are canonical absolute
@@ -72,8 +79,8 @@ in [the release plan](../../docs/design/static-release-plan.md).
 Run the bounded materialization controls with:
 
 ```sh
-python3 ocaml/test/release_materialize_test.py
-PYTHONOPTIMIZE=1 python3 ocaml/test/release_materialize_test.py
+conformance/.venv/bin/python ocaml/test/release_materialize_test.py
+conformance/.venv/bin/python -O ocaml/test/release_materialize_test.py
 ```
 
 The content laws are checked against independent hash/inventory oracles:

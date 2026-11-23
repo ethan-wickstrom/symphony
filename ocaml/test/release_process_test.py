@@ -2,7 +2,6 @@
 """Exercise bounded capture with live producers and observable direct-child reap."""
 
 import contextlib
-import importlib.util
 import os
 from pathlib import Path
 import selectors
@@ -15,10 +14,7 @@ from unittest import mock
 
 
 sys.dont_write_bytecode = True
-SOURCE = Path(__file__).resolve().parent.parent / "tools/bounded_process.py"
-SPEC = importlib.util.spec_from_file_location("bounded_process", SOURCE)
-RUNNER = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(RUNNER)
+from symphony_conformance.driver import capture as RUNNER
 STREAM_BOUND = 128 * 1024
 DEADLINE = 0.2
 PRODUCER_LIFETIME = 3

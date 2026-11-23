@@ -1,0 +1,9 @@
+{
+  "boundary": "Public test fixtures with no production authority",
+  "files": {
+    "ca.pem": "bc7a7ab67af450a03e340f9a425030bc0699ff17d421742237dfb44c8baba86a",
+    "server.key": "556407e2a5d0254f3dc64b737f411e7bf72221dea573ee9a8a22150a005f6c90",
+    "server.pem": "fc5c6f08db4743e66b8a7c8d7173274fa9659c0941291cf393e070b47708f02e"
+  },
+  "schema_version": 1
+}

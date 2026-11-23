@@ -1,0 +1,5576 @@
+{
+  "schema_version": 1,
+  "kind": "portable_requirement_catalog",
+  "state": "data_preparation_only",
+  "prepared_on": "2026-10-06",
+  "spec": {
+    "repository": "https://github.com/openai/symphony",
+    "revision": "be10a1b79df723d6d7612b5651c8522704dafb2e",
+    "path": "SPEC.md",
+    "sha256": "c6638056502ecd2e60eb04e1f1a627a4964506fcdf4d39873e78aa5834de85d5",
+    "encoding": "utf-8",
+    "newline": "LF",
+    "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md"
+  },
+  "provenance": {
+    "planning_inputs": [
+      {
+        "path": "ocaml/_build/conformance-requirement-catalog.md",
+        "sha256": "4b403c3fa2e4171ecd0e8d187e9de2fe6e47d80ec59342f2a5fd4a41818178c8"
+      },
+      {
+        "path": "ocaml/_build/conformance-harness-patterns.md",
+        "sha256": "f35e5f1a0875ba08d0eda6d7d08d1a8d5111f6bec5c06a13e8a28313bba8dc0a"
+      },
+      {
+        "path": "ocaml/_build/conformance-boundary-review.md",
+        "sha256": "fbc2325ce6ef348c29e8dc42f485eaf9aedfe0afa3732c6f9f7cc0810feca80e"
+      }
+    ],
+    "verification": "Local SPEC bytes match the planning pin; no candidate or fixture was executed."
+  },
+  "source_contexts": {
+    "test_recommendation": {
+      "section": "17",
+      "line_start": 2051,
+      "line_end": 2052,
+      "text": "A conforming implementation SHOULD include tests that cover the behaviors defined in this\nspecification.\n",
+      "text_sha256": "33c398d8c0c57476e8bd2edc55f4bc934d7ebeb677458813a7275c1b3356ea0d",
+      "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2051-L2052"
+    },
+    "core_required": {
+      "section": "17",
+      "line_start": 2056,
+      "line_end": 2056,
+      "text": "- `Core Conformance`: deterministic tests REQUIRED for all conforming implementations.\n",
+      "text_sha256": "a275ca14cff67c1c1e47ef0ef801a3cd0d8f207997369032cf6b476403657a26",
+      "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2056"
+    },
+    "extension_required": {
+      "section": "17",
+      "line_start": 2057,
+      "line_end": 2058,
+      "text": "- `Extension Conformance`: REQUIRED only for OPTIONAL features that an implementation chooses to\n  ship.\n",
+      "text_sha256": "e2600db67b368e699a871c0abec1e59ea36fa3f0ae3a9877a4e5f087b9bd957a",
+      "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2057-L2058"
+    },
+    "real_integration_recommended": {
+      "section": "17",
+      "line_start": 2059,
+      "line_end": 2060,
+      "text": "- `Real Integration Profile`: environment-dependent smoke/integration checks RECOMMENDED before\n  production use.\n",
+      "text_sha256": "1d09db09bcd122aa95d7ff11e38016be4ac016ef17ada9646c8e3482f5853771",
+      "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2059-L2060"
+    },
+    "section17_profile": {
+      "section": "17",
+      "line_start": 2062,
+      "line_end": 2063,
+      "text": "Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bullets that begin with\n`If ... is implemented` are `Extension Conformance`.\n",
+      "text_sha256": "c69b22ecfd67ff081e2ccc909861822fd8ff7393aa93180d89ca22010fcbc971",
+      "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2062-L2063"
+    },
+    "section18_profile": {
+      "section": "18",
+      "line_start": 2206,
+      "line_end": 2210,
+      "text": "Use the same validation profiles as Section 17:\n\n- Section 18.1 = `Core Conformance`\n- Section 18.2 = `Extension Conformance`\n- Section 18.3 = `Real Integration Profile`\n",
+      "text_sha256": "ddfc7aeb82503053a6bd19318c543b1066f2e265ff9c9e9230c272c1483515e2",
+      "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2206-L2210"
+    },
+    "workflow_path_parent": {
+      "section": "17.1",
+      "line_start": 2067,
+      "line_end": 2067,
+      "text": "- Workflow file path precedence:\n",
+      "text_sha256": "c8bb43663e871ea3e9442718335339601910b70f15d65c46ef7c7ffd0f7d6fa8",
+      "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2067"
+    },
+    "provider_tools_parent": {
+      "section": "17.5",
+      "line_start": 2163,
+      "line_end": 2163,
+      "text": "- If provider-native agent tools are implemented:\n",
+      "text_sha256": "63f970bf8e206e0bdb2af3c951834c0b522b87c83f8ba81570b0e9ee6ed99cff",
+      "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2163"
+    },
+    "real_integration_skipping": {
+      "section": "17.8",
+      "line_start": 2193,
+      "line_end": 2194,
+      "text": "These checks are RECOMMENDED for production readiness and MAY be skipped in CI when credentials,\nnetwork access, or external service permissions are unavailable.\n",
+      "text_sha256": "54d384fd7165484a0407c838e1f2ff068099a282643f39d905032c1d70fecd58",
+      "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2193-L2194"
+    }
+  },
+  "counts": {
+    "approved_requirements": 106,
+    "section17_core": 76,
+    "section17_conditional": 12,
+    "section18_core": 18,
+    "by_profile": {
+      "core": 94,
+      "extension": 12
+    },
+    "by_section": {
+      "17.1": 16,
+      "17.2": 12,
+      "17.3": 12,
+      "17.4": 15,
+      "17.5": 21,
+      "17.6": 6,
+      "17.7": 6,
+      "18.1": 18
+    },
+    "by_planning_status": {
+      "unimplemented": 54,
+      "unimplemented_unobservable": 40,
+      "unimplemented_conditional": 12
+    },
+    "supplemental_inventory": 12,
+    "portable_pass": 0
+  },
+  "report_contract": {
+    "state": "proposed_taxonomy_requires_review",
+    "required_fields": [
+      "requirement_id",
+      "applicability",
+      "verdict",
+      "reasons",
+      "case_ids",
+      "evidence_refs"
+    ],
+    "verdicts": [
+      "pass",
+      "fail",
+      "not_applicable",
+      "unobservable",
+      "incomplete",
+      "harness_error",
+      "skipped"
+    ],
+    "rules": [
+      "Every approved requirement ID appears exactly once in each candidate/profile report.",
+      "Case deletion, renaming, overlap, or related_requirement_ids cannot remove a requirement obligation.",
+      "Unimplemented cases produce incomplete with reason unimplemented, never pass.",
+      "Only pass satisfies an applicable requirement; harness health and cleanup must also be complete.",
+      "Core unsupported, unobservable, incomplete, skipped, or harness_error cannot earn complete core conformance.",
+      "Conditional feature presence makes its checks required; unknown presence is incomplete.",
+      "Conditional not_applicable requires a checked absence declaration; missing traffic is not absence.",
+      "Real-integration skipping is explicit and requires no fabricated passing claim.",
+      "Profiles translate operations and documented raw observations, never verdicts or normative expectations."
+    ],
+    "terminology_resolution": {
+      "research_Unsupported": "not_applicable only for checked conditional absence; otherwise incomplete with reason unsupported.",
+      "approved_docs_not_applicable": "Represented as not_applicable.",
+      "Unimplemented": "Case implementation state and incomplete reason, not a passing run verdict.",
+      "unobservable": "An observation boundary, not evidence of correct candidate behavior."
+    },
+    "harness_health": "Separate setup, capture, fixture, process ownership, cleanup, and report integrity results invalidate earlier passes on failure."
+  },
+  "observation_vocabulary": {
+    "direct": "Externally observable behavior.",
+    "partial": "Behavior is partially external; an exact category, value, or internal fact needs a declared observation.",
+    "unobservable": "Mandatory service contract alone exposes neither the fact nor the necessary invocation."
+  },
+  "existing_documentation_families": {
+    "state": "documentation_only_not_portable_evidence",
+    "families": {
+      "WF": "CONFORMANCE.md §18.1 table: workflow_document/config_value + workflow_parser examples/models passed locally; explicit/default CLI cases pass.",
+      "CFG": "Same table: config_test defaults/env/path/numeric/state cases passed locally; strict template tests passed under the documented Jinja profile.",
+      "RELOAD": "Same table and Live executable assembly: last-good reload/epoch/preflight model cases and invalid reload executable regressions pass.",
+      "WS": "Same table: key/hash/owner models and native directory/store descriptor/lock/replacement/rollback cases passed locally and hosted.",
+      "HOOK": "Same table: four hooks, configurable timeouts, fake and native hook/lifecycle cases passed locally and hosted.",
+      "TRACK": "Same table plus docs/adapters/linear.md: ordered states/atomic ID reads, normalization/binding/paging models, native HTTPS and tracker CLI gates documented passed. The profile publishes bounds/routing/errors.",
+      "CORE": "Same table and Additional requested gates: pure list/event model, exact command comparisons, service simulation and executable dispatch/preflight cases documented passed.",
+      "RETRY": "Same table: pure backoff/cap and Eio mock timers passed; native-service retry-cap and startup-cleanup cells explicitly remain pending.",
+      "PROTO": "Same table and closed-runner paragraphs: schema codec67/42, native byte-framing/three-turn/usage/timeout/interruption/drain cases documented passed. This is fake-peer evidence, not real Codex/auth/sandbox acceptance.",
+      "LOG": "Required-log table and Live executable assembly: canonical issue_identifier/session closure, escaped records, early reporting and native output failure regressions documented passed.",
+      "STATUS": "Status API checkpoint: local immutable projection, route/query/availability and normal/optimized status CLI gates documented passed; PR13 hosted review is still pending.",
+      "CLI": "Workflow/CLI table and Live executable assembly: positional/default/startup/signal/exit behavior documented passed locally and through PR12 hosted gates.",
+      "—": "No row-specific passing evidence established by these text reads; a plan or a broad suite count is not a passing case."
+    }
+  },
+  "evidence_boundaries": [
+    "No approved requirement has an implemented portable case or portable pass in this catalog.",
+    "Existing local/model/native/hosted results are documentation context, not newly verified or portable evidence.",
+    "Optional HTTP, clock control, adapter probes, and test surfaces are declared capabilities rather than new baseline production requirements.",
+    "Single-authority and internal type representations require separately audited design/model evidence; finite black-box behavior does not prove them.",
+    "Workspace containment tests have finite host/race bounds; black-box samples do not prove safety under arbitrary host races.",
+    "PID markers and ESRCH probes are point-in-time observations, not historical reap attestation.",
+    "Acknowledged requests or signals are not completed reconciliation, child closure, or owned-process join.",
+    "Candidate-authored logs or saved manifest flags cannot substitute for missing raw observations.",
+    "Fixture fake-peer evidence does not establish real Codex auth, sandbox enforcement, real-provider acceptance, or clean-host release qualification.",
+    "Real provider/Codex trials are opt-in and remain unauthorized for this checkpoint."
+  ],
+  "first_case": {
+    "id": "core-lifecycle-001",
+    "state": "unimplemented",
+    "coverage": "subset_only",
+    "coverage_requirement_ids": [],
+    "coverage_note": "Set coverage only after fixed assertions and replayable raw observations exist; a combined happy trace cannot satisfy timeout/failure variants.",
+    "lifecycle": [
+      "isolated_fake_https_provider",
+      "candidate_readiness",
+      "schema_checked_agent_startup",
+      "two_turns_same_thread",
+      "opaque_id_terminal_refresh",
+      "interruption_and_joined_peer_closure",
+      "four_hook_lifecycle",
+      "workspace_removal",
+      "joined_candidate_readers_and_fixtures",
+      "independent_replay"
+    ],
+    "not_established": [
+      "normal_worker_exit_continuation_retry",
+      "retry_backoff_and_cap",
+      "adapter_edge_reads",
+      "hook_failure_timeout_defaults",
+      "typed_errors",
+      "sink_failures",
+      "all_extensions",
+      "full_core_conformance"
+    ]
+  },
+  "requirements": [
+    {
+      "id": "C17.1.explicit-path",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2067,
+          "line_end": 2068,
+          "text": "- Workflow file path precedence:\n  - explicit runtime path is used when provided\n",
+          "text_sha256": "b56a5aea14ce970342185f1f5b338e70ee7c174e91cfc0ad888a71faa8fc5da2",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2067-L2068"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Explicit runtime workflow takes precedence.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Put different valid files at explicit path/cwd; observe chosen prompt/settings.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WF, CLI",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.cwd-default",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2069,
+          "line_end": 2069,
+          "text": "  - cwd default is `WORKFLOW.md` when no explicit runtime path is provided\n",
+          "text_sha256": "65d03e2f3949979ff39c2a37640e71a2807fa4906472d72583bfd8f90d382a2d",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2069"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile",
+        "workflow_path_parent"
+      ],
+      "summary": "Without explicit path, use cwd WORKFLOW.md.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Candidate cwd and positional-path omission; inspect actual prompt/root.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WF, CLI",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.reload-detected",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2070,
+          "line_end": 2070,
+          "text": "- Workflow file changes are detected and trigger re-read/re-apply without restart\n",
+          "text_sha256": "66b409a7ab56464af26c68824e17c47471fa5b81df356279cb19dcd382b49114",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2070"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Changed file is reread/reapplied without restart.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Atomic replacement plus semantic prompt/config witness; same candidate process.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "RELOAD",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.invalid-reload",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2071,
+          "line_end": 2072,
+          "text": "- Invalid workflow reload keeps last known good effective configuration and emits an\n  operator-visible error\n",
+          "text_sha256": "c86752cc8c1782ff1e789ba979945e12de550f7561c618a6928aa886cda48657",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2071-L2072"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Invalid reload retains last good effective settings and visible error.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Held run, invalid edit, error record and last-good behavior; distinguish validity from retained values.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "RELOAD",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.missing-file",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2073,
+          "line_end": 2073,
+          "text": "- Missing `WORKFLOW.md` returns typed error\n",
+          "text_sha256": "5f218df4ac7e015ab4e151fddf13f9993d6eb84cb484c75ac8ba854fb2ef9579",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2073"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Missing workflow returns typed error.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Public classified workflow error mapping plus exit; nonzero exit alone is insufficient.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WF, CLI",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.invalid-yaml",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2074,
+          "line_end": 2074,
+          "text": "- Invalid YAML front matter returns typed error\n",
+          "text_sha256": "7b976e93f74fee5c76d40ddf1a3d9306b611721022835895f51d2ea10a25290a",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2074"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Invalid YAML returns typed error.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Fixed malformed YAML; declared public error category/phase.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WF, CLI",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.nonmap",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2075,
+          "line_end": 2075,
+          "text": "- Front matter non-map returns typed error\n",
+          "text_sha256": "1a9389028d9886b1344c0703ae36546b3cc2a755fb22ad06f75a5153961f36c5",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2075"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Non-map front matter returns typed error.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Valid YAML sequence/scalar; classified front-matter error before launch.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WF, CLI",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.defaults",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2076,
+          "line_end": 2076,
+          "text": "- Config defaults apply when OPTIONAL values are missing\n",
+          "text_sha256": "1e3bfa87b10d225612b7dbebcb5f737c7380cad0c8e8b8ca6e6e778e6cbc24e9",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2076"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Defaults apply to missing optional values.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Checked effective-settings observation or independently visible behavior per default.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CFG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.tracker-kind",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2077,
+          "line_end": 2077,
+          "text": "- `tracker.kind` validation enforces an implementation-supported adapter\n",
+          "text_sha256": "81088abce7c32ac2166caac5a802c16d38029773bff9d3024508d0757ce6f1b2",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2077"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Validate an implementation-supported adapter kind.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Supported/unknown kind inputs; classification and no provider/agent effects on rejection.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CFG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.provider-owned",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2078,
+          "line_end": 2078,
+          "text": "- `tracker.provider` preserves adapter-owned keys and validates them through the selected adapter\n",
+          "text_sha256": "74f75880d8bb957ba70fd9a0ea181426a21b8940529ed4419b08520a9ff86eae",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2078"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Preserve/validate adapter-owned provider keys through selected adapter.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Profile's adapter keys, provider request receipts and adapter-config errors; no generic schema rewrite.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.env-resolution",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2079,
+          "line_end": 2079,
+          "text": "- `$VAR` resolution works for documented adapter secret keys and path values\n",
+          "text_sha256": "0b9d232d6596c8dc8ca55a5f3772cf93a0b5c85043ce4872ce2b4e78d719d164",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2079"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Resolve documented secret and path $VAR references.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Constructed fake env; authorized HTTPS header and actual cwd/path; alias/leak negative controls.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CFG, TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.tilde",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2080,
+          "line_end": 2080,
+          "text": "- `~` path expansion works\n",
+          "text_sha256": "0876b5b2740d8b8d0a5307168c1abd6d47fcebf28add01114321c3108f133982",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2080"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Expand ~ paths.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Controlled HOME and workspace cwd/effects; no ambient operator home.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CFG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.shell-command",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2081,
+          "line_end": 2081,
+          "text": "- `codex.command` is preserved as a shell command string\n",
+          "text_sha256": "cf2036e24db2a0c4e5fe6b649c364abf3947d0fb7dda48fca7bd1f4b59772ff7",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2081"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Preserve codex.command as a shell command string.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Trusted shell expression with observable expansion; reject a runner that splits it as executable argv.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CFG, PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.state-overrides",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2082,
+          "line_end": 2082,
+          "text": "- Per-state concurrency override map normalizes state names and ignores invalid values\n",
+          "text_sha256": "1583a0194a13ef313f7c00ae04f352880e2fb3eabffb18c80b835ee989ac1559",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2082"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Normalize state override names; ignore invalid values.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Controlled mixed-case states and valid/invalid limits; exact effective setting or launch/admission receipts.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CFG, CORE",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.prompt-inputs",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2083,
+          "line_end": 2083,
+          "text": "- Prompt template renders `issue` and `attempt`\n",
+          "text_sha256": "09df95d13eac9c34604bca51f24d8603f6ee8a798c6d8baba63a9f7955765da8",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2083"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Render issue and attempt.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Fixed strict-language profile fixture; record actual turn prompt for first/follow-up attempts.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CFG, PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.1.strict-prompt",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.1",
+          "line_start": 2084,
+          "line_end": 2084,
+          "text": "- Prompt rendering fails on unknown variables (strict mode)\n",
+          "text_sha256": "e444cedcfd85d310ae7b6ecaaa8f52c489ef0d9798930b3d2a174d91f53a20a9",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2084"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Unknown variables fail rendering.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Deliberate unknown name; error at rendering/validation phase and no invalid turn launch.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CFG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.2.deterministic-path",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.2",
+          "line_start": 2088,
+          "line_end": 2088,
+          "text": "- Deterministic workspace path per issue identifier\n",
+          "text_sha256": "905ef52101983066450195d91172019a1143c36b4a7f44757950163870b2e3e5",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2088"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Same identifier has deterministic workspace path.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Two attempts/restart with same identifier/root; record actual agent cwd, not guessed path.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.2.create",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.2",
+          "line_start": 2089,
+          "line_end": 2089,
+          "text": "- Missing workspace directory is created\n",
+          "text_sha256": "4a8076a27647e0b8c51b35d6bec3265d123b89a1268c4ce1ed63d08da8c2d842",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2089"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Create missing workspace.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Fresh root; agent/hook cwd and directory witness.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.2.reuse",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.2",
+          "line_start": 2090,
+          "line_end": 2090,
+          "text": "- Existing workspace directory is reused\n",
+          "text_sha256": "415d5fbb5787926c61f8f5382b307269dfd11d99b729151dbd6f5afda1ef7635",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2090"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Reuse existing workspace.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Retained sentinel file/identity across attempts; no second after_create.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WS, HOOK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.2.nondirectory",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.2",
+          "line_start": 2091,
+          "line_end": 2092,
+          "text": "- Existing non-directory path at workspace location is handled safely (replace or fail per\n  implementation policy)\n",
+          "text_sha256": "39dce2fc3472f22d2aac0bf3aa2271a8e51c41c531aed49a0ac61e905be1e158",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2091-L2092"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Handle non-directory workspace safely under documented policy.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Place file/symlink at actual expected key; assert documented fail/replace and no outside mutation.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "E17.2.population-error",
+      "validation_profile": "extension",
+      "normative_level": "conditional_required",
+      "source": [
+        {
+          "section": "17.2",
+          "line_start": 2093,
+          "line_end": 2093,
+          "text": "- OPTIONAL workspace population/synchronization errors are surfaced\n",
+          "text_sha256": "de01bd930350cb73cd2e8076ccab52b358ba91f2a50f0a695700f54d53136273",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2093"
+        }
+      ],
+      "source_context_ids": [
+        "extension_required",
+        "section17_profile"
+      ],
+      "summary": "Surface optional population/synchronization errors.",
+      "applicability": {
+        "kind": "feature",
+        "feature": "workspace_population",
+        "declaration": "unknown",
+        "required_when": "present",
+        "absence_requires_checked_declaration": true,
+        "ambiguity": {
+          "source": "The bullet says OPTIONAL without the normal If ... is implemented form.",
+          "catalog_interpretation": "Conditional on shipping workspace population or synchronization.",
+          "error_obligation": "A shipped feature must surface its errors; absence cannot waive a shipped failure path.",
+          "review_state": "explicit interpretation retained from approved planning catalog"
+        }
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Declare whether feature is shipped; inject its public failure path.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented_conditional",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "—",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.2.after-create",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.2",
+          "line_start": 2094,
+          "line_end": 2094,
+          "text": "- `after_create` hook runs only on new workspace creation\n",
+          "text_sha256": "caefcf82b3fbf922cd723751c5574b210dddeb95379fb7999e7f2a715d2f0ed3",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2094"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "after_create runs only for new workspace.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Retained hook trace across new/reused attempts.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "HOOK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.2.before-run",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.2",
+          "line_start": 2095,
+          "line_end": 2095,
+          "text": "- `before_run` hook runs before each attempt and failure/timeouts abort the current attempt\n",
+          "text_sha256": "5cac6c54c960c89067726e12534faa02b56df1d2ddcb0d07fd662a3bfc85d549",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2095"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "before_run precedes each attempt; failure/timeout aborts attempt.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Hook barriers, fail/hang fixtures and zero agent entry on failure.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "HOOK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.2.after-run",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.2",
+          "line_start": 2096,
+          "line_end": 2096,
+          "text": "- `after_run` hook runs after each attempt and failure/timeouts are logged and ignored\n",
+          "text_sha256": "81246baa1704581cb24184fe520933356f3f481bda8fac532198d0a36a8da96b",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2096"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "after_run follows every attempt; failure/timeout logged and ignored.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Complete/fail/cancel attempts; retained outside-workspace hook/error receipts; future work still proceeds.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "HOOK, LOG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.2.before-remove",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.2",
+          "line_start": 2097,
+          "line_end": 2097,
+          "text": "- `before_remove` hook runs on cleanup and failures/timeouts are ignored\n",
+          "text_sha256": "0c99af28773de03fdcb69f85b3b57e747aeaefcb15521d73634c4a1736dc2d70",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2097"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "before_remove runs on cleanup; failure/timeout ignored.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Terminal cleanup hook barrier/fail/hang, followed by actual workspace absence.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "HOOK, CORE",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.2.path-safety",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.2",
+          "line_start": 2098,
+          "line_end": 2099,
+          "text": "- Workspace path sanitization, stable original-identifier-hash collision resistance, and root\n  containment invariants are enforced before agent launch\n",
+          "text_sha256": "0b01611b2bbd64ad2a300426e08215d34f5ac80ffdc359978e795e353fed9c91",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2098-L2099"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Sanitize, use stable original-identifier hash for collisions, and enforce containment before launch.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Actual cwd/key receipts for hostile/colliding IDs; out-of-root/symlink setup. Black-box samples do not prove containment under arbitrary host races.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.2.key-stability",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.2",
+          "line_start": 2100,
+          "line_end": 2101,
+          "text": "- Identifiers unchanged by sanitization keep their deterministic workspace key; conformance tests\n  include distinct identifiers that sanitize to the same text and verify distinct keys\n",
+          "text_sha256": "836aee161fe1a34913ced33553990d12d88753bf7b7e2f0ead099220eb3b3d46",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2100-L2101"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Unchanged identifiers keep key; same sanitized text from distinct identifiers yields distinct keys.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Declared key profile and two colliding identifier fixtures; separate actual cwd/effects.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.2.agent-cwd",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.2",
+          "line_start": 2102,
+          "line_end": 2102,
+          "text": "- Agent launch uses the per-issue workspace path as cwd and rejects out-of-root paths\n",
+          "text_sha256": "813241a1ca915debecf97f26c20ddd2946746662feeb2164f9af586dfc073b3a",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2102"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Launch in per-issue cwd and reject out-of-root launch paths.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Peer cwd plus malicious workspace setup; direct rejected launch requires declared test operation if unreachable via normal flow.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WS, PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.3.candidate-filter",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.3",
+          "line_start": 2106,
+          "line_end": 2106,
+          "text": "- Candidate issue fetch applies configured active states and adapter-owned scope selection\n",
+          "text_sha256": "f1b2ec5b01157b9154e59cef657722867fd20e5294d7f599749ec3d99812842d",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2106"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Apply active states and adapter-owned scope.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Profile's fake-provider encoding; inspect requested scope/states and resulting candidate behavior under the published adapter contract.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.3.empty-states",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.3",
+          "line_start": 2107,
+          "line_end": 2107,
+          "text": "- Empty `fetch_issues_by_states([])` returns empty without a provider call\n",
+          "text_sha256": "4776afb32a486776d108e22f3b34d35b6b5458d990d9d35b965e532d889e0e89",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2107"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Empty state read returns empty with zero provider calls.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "unobservable",
+        "needed": "External adapter-read test operation accepting [] and returning checked result; ordinary idle service cannot prove method invocation.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.3.empty-ids",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.3",
+          "line_start": 2108,
+          "line_end": 2108,
+          "text": "- Empty `fetch_issues_by_ids([])` returns empty without a provider call\n",
+          "text_sha256": "d2c79a80ecc221f45db99f3f58399b4b609cab7b300826e30b11b8556b7ba6b4",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2108"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Empty ID read returns empty with zero provider calls.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "unobservable",
+        "needed": "Same declared adapter probe for [] IDs. No-running reconciliation alone is not this method test.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.3.page-order",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.3",
+          "line_start": 2109,
+          "line_end": 2109,
+          "text": "- Pagination preserves order across multiple pages\n",
+          "text_sha256": "bb9a1471b21ce151167fbcca8ae36d59519b04cf00eeafca223ec02b257e9eef",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2109"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Preserve order across pages.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Ordered normalized adapter-read observation; dispatch sort is not an ordering oracle.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.3.lowercase-labels",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.3",
+          "line_start": 2110,
+          "line_end": 2110,
+          "text": "- Labels are normalized to lowercase\n",
+          "text_sha256": "a9a3524cf638ed56e1bf982d7dbb898bf76568b0e1481591f700980f55c65e9b",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2110"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Normalize labels to lowercase.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Full normalized issue observation or actual prompt field; include non-ASCII fixtures under documented normalization.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK, CFG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.3.optional-metadata",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.3",
+          "line_start": 2111,
+          "line_end": 2111,
+          "text": "- Unusable optional provider metadata normalizes to null/empty without hiding valid required fields\n",
+          "text_sha256": "cb2b973257b67c52c5e05f1e76388cf6229a6f9d3f966225963c2c7674ab6d9c",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2111"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Bad optional metadata becomes null/empty without losing valid required fields.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Full normalized snapshots; malformed optional fields with valid required data.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.3.malformed-records",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.3",
+          "line_start": 2112,
+          "line_end": 2113,
+          "text": "- State-list reads log omitted malformed required records; ID refresh fails malformed requested\n  records instead of treating them as invisible\n",
+          "text_sha256": "f55fe545c7ae2b26a3f92f05f726b3017081e97d9e50458a791da45f1a459bce",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2112-L2113"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "State reads warn/omit malformed required records; requested-ID refresh fails atomically.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Omission error record plus requested-ID result/error; include valid+malformed mixed batch and no partial accepted refresh.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK, LOG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.3.opaque-refresh",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.3",
+          "line_start": 2114,
+          "line_end": 2114,
+          "text": "- Refresh by opaque dispatch ID returns full normalized issue snapshots\n",
+          "text_sha256": "5f232535e491e43491d7c558227e49cceb8ccf63869eb17d4394ef1d9daab1ed",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2114"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Refresh opaque dispatch ID to a full normalized snapshot.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Opaque ID distinct from identifier/provider ticket; full snapshot observation, not only resulting state.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.3.native-ref",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.3",
+          "line_start": 2115,
+          "line_end": 2115,
+          "text": "- A distinct provider ticket ID or project-item ID is preserved in `native_ref` when needed\n",
+          "text_sha256": "36f5d1ee7aabe780eef9f65924605325969f2a0d12f519b801833d5c273bbecf",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2115"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Preserve distinct provider ticket/project-item identity in native_ref when needed.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "unobservable",
+        "needed": "Adapter profile declares need/encoding and a bounded normalized test observation. Do not expose raw credentials/provider payloads through operator API.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.3.dispatchable",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.3",
+          "line_start": 2116,
+          "line_end": 2116,
+          "text": "- Provider-specific routing/blocker/assignment rules become explicit `dispatchable`\n",
+          "text_sha256": "c56aedd93c8f2e4b541746845f588a80d7de1ac2405a74ffa621a82f2cd857f9",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2116"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Routing/blocker/assignment rules yield explicit dispatchable.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Profile-specific provider cases plus checked dispatchable observation and actual no-dispatch/dispatch.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.3.profile",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.3",
+          "line_start": 2117,
+          "line_end": 2118,
+          "text": "- The adapter publishes the required compact profile for config, scope, normalization, tools, and\n  portable error mapping\n",
+          "text_sha256": "9e7fa682ed7b27fa60a0394c1d240be26bfabdf8b65dddd26078cd22cf7047a3",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2117-L2118"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Publish compact config/scope/normalization/tools/error profile.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Retained profile document/schema validated for all required fields; unsupported tools explicitly declared.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.3.errors",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.3",
+          "line_start": 2119,
+          "line_end": 2120,
+          "text": "- Error mapping covers config, request, non-success response, malformed payload, pagination, and\n  rate limiting, including documented category/message mappings for language-native errors\n",
+          "text_sha256": "0a82e828766f02ac47ade7728bc5c0c8a3a7ac795d223263071fa9f86d0b27bd",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2119-L2120"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Map config/request/status/payload/pagination/rate errors, including language-native category/message mappings.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Fixed failure fixtures and documented raw-public-error decoder; inject request failure, non-success, malformed envelopes/cursors and rate limits.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.dispatch-order",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2124,
+          "line_end": 2124,
+          "text": "- Dispatch sort order is priority then oldest creation time\n",
+          "text_sha256": "c79acb008a4258343845191985ac634cf19d65eb7c8d77bd68803c95264aed50",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2124"
+        },
+        {
+          "section": "8.2",
+          "line_start": 773,
+          "line_end": 775,
+          "text": "1. `priority` ascending for values `1..4`; all other integers and null sort after that bucket\n2. `created_at` oldest first; null sorts last\n3. `identifier` lexicographic tie-breaker\n",
+          "text_sha256": "4c9e435bd8e23a832bb53fe1e3d4f12b444d3982b7982bcd39e7997bf311fbbd",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L773-L775"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Sort priority then oldest creation time, with the specified buckets/nulls/identifier tie-breaker.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Single slot, shuffled candidates and controlled completion; compare launch order using an independent lexicographic oracle.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CORE",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.dispatchable-false",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2125,
+          "line_end": 2125,
+          "text": "- `dispatchable=false` issues are not eligible\n",
+          "text_sha256": "fa30e8cda0cfa524e880058fe2fece080a8f5bee19c3583c38fdef2717d4517e",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2125"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "dispatchable=false is ineligible.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Adapter profile fixture produces false; repeated polls with zero peer launches.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CORE, TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.required-labels",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2126,
+          "line_end": 2126,
+          "text": "- Required-label filtering is case-insensitive and applies after adapter normalization\n",
+          "text_sha256": "484064d02272f9d837e5655c4e5ebf4df65ffdd7c6a4b98bf35c06c30a5ba4e7",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2126"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Case-insensitive required-label filter after normalization.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Mixed-case/Unicode labels, required labels and launch receipts.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CORE",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.active-refresh",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2127,
+          "line_end": 2127,
+          "text": "- Active-state issue refresh updates running entry state\n",
+          "text_sha256": "1deecc8eb3becdc5dfae6bc370795ba14bd76816d415e7a9c63fed777799d169",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2127"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Active refresh updates running issue state.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Held session and state/title update; current owner snapshot or subsequent prompt/context receipt.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CORE, STATUS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.inactive-stop",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2128,
+          "line_end": 2128,
+          "text": "- Non-active state stops running agent without workspace cleanup\n",
+          "text_sha256": "ea97c4fdb85e44dce92559c57e6bb9a23cefb857c10a28e935180d26d85771ad",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2128"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Non-active state stops agent without workspace cleanup.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Held peer, inactive refresh, interruption/exit and retained workspace sentinel.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CORE",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.terminal-stop",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2129,
+          "line_end": 2129,
+          "text": "- Terminal state stops running agent and cleans workspace\n",
+          "text_sha256": "d3abc4f92884f2c83effcf217a4743ce1fec8432287cb4e99044132607fcbf5b",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2129"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Terminal state stops agent and cleans workspace.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Held peer, terminal refresh, after_run/before_remove barriers and workspace absence.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CORE, WS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.empty-reconcile",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2130,
+          "line_end": 2130,
+          "text": "- Reconciliation with no running issues is a no-op\n",
+          "text_sha256": "824995b77b30fdee0199a1891a3507cf8c9cb4bfd76e5dd09592d74e396cfa7b",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2130"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Reconciliation with no running issues is a no-op.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Isolate reconciliation control from candidate polling; zero ID request/launch/cleanup and unchanged observation.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CORE",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.continuation-retry",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2131,
+          "line_end": 2131,
+          "text": "- Normal worker exit schedules a short continuation retry (attempt 1)\n",
+          "text_sha256": "6f5e5115cbe158711bad6d4a5f6460779c37a5f4109bd3d692d1c2938effb87c",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2131"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Normal worker exit queues short retry at attempt1.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Actual closed worker, next launch/prompt attempt and retry observation; within-thread turn continuation is a different case.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "RETRY, PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.failure-backoff",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2132,
+          "line_end": 2132,
+          "text": "- Abnormal worker exit increments retries with 10s-based exponential backoff\n",
+          "text_sha256": "d30059c4591bed84ba3e9701ee025dd2974ae1102ce9238d8265c45a6617899a",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2132"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Abnormal exit increments attempts with 10s exponential backoff.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Peer failure sequence, monotonic receipts, attempt/due observation; optional clock control or real-time tolerance.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "RETRY",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.backoff-cap",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2133,
+          "line_end": 2133,
+          "text": "- Retry backoff cap uses configured `agent.max_retry_backoff_ms`\n",
+          "text_sha256": "11a180fd56d94236a75e6d05e5d1921184e867aa0791b67a49e046ee1a27f265",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2133"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Respect configured retry cap.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Multiple failed retries with configured cap and independent timing/attempt oracle; no exact wall scheduler assumptions.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "RETRY",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.retry-fields",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2134,
+          "line_end": 2134,
+          "text": "- Retry queue entries include attempt, due time, identifier, and error\n",
+          "text_sha256": "9cc8614268f092d6f7763af71104aea8b45c826dd3c22ea457d6c02beb003766",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2134"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Retry includes attempt, due time, identifier and error.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "unobservable",
+        "needed": "Declared retry-row/log observation. Relaunch alone cannot establish all stored fields.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "RETRY, STATUS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.stall",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2135,
+          "line_end": 2135,
+          "text": "- Stall detection kills stalled sessions and schedules retry\n",
+          "text_sha256": "29c97178a4a89c06458df29fb9702d67f497565577f5a01a632ff48affe720fd",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2135"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Kill stalled session and schedule retry.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Held silent peer with independently observed progress baseline; interruption/exit and subsequent retry.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO, CORE",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.4.slot-requeue",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2136,
+          "line_end": 2136,
+          "text": "- Slot exhaustion requeues retries with explicit error reason\n",
+          "text_sha256": "4c6086d0c5f6a0b06d5679e8864bf1d1a6d58ec5bed93ba31b0747e8e64d5387",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2136"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Full capacity requeues retry with explicit error.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Held competing worker, retry due, no over-admission, visible queue reason and later release/resume.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "RETRY, CORE",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "E17.4.snapshot-fields",
+      "validation_profile": "extension",
+      "normative_level": "conditional_required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2137,
+          "line_end": 2138,
+          "text": "- If a snapshot API is implemented, it returns running rows, retry rows, token totals, and rate\n  limits\n",
+          "text_sha256": "b5fe6865346d6576febcda5a795b82f3ca8dfc9c625391741b6a4febc8918c41",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2137-L2138"
+        }
+      ],
+      "source_context_ids": [
+        "extension_required",
+        "section17_profile"
+      ],
+      "summary": "Shipped snapshot returns running/retry rows, totals and rate limits.",
+      "applicability": {
+        "kind": "feature",
+        "feature": "snapshot_api",
+        "declaration": "unknown",
+        "required_when": "present",
+        "absence_requires_checked_declaration": true
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Declare snapshot support and decode public response; fixed current/retry/telemetry cases.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented_conditional",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "STATUS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "E17.4.snapshot-unavailable",
+      "validation_profile": "extension",
+      "normative_level": "conditional_required",
+      "source": [
+        {
+          "section": "17.4",
+          "line_start": 2139,
+          "line_end": 2139,
+          "text": "- If a snapshot API is implemented, timeout/unavailable cases are surfaced\n",
+          "text_sha256": "ae263794087884db7268aeb8eae799e81d4739d7734989af9e63acbab4992b91",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2139"
+        }
+      ],
+      "source_context_ids": [
+        "extension_required",
+        "section17_profile"
+      ],
+      "summary": "Shipped snapshot surfaces timeout/unavailable.",
+      "applicability": {
+        "kind": "feature",
+        "feature": "snapshot_api",
+        "declaration": "unknown",
+        "required_when": "present",
+        "absence_requires_checked_declaration": true
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Hold query dependency or close source; classified failure rather than stale/empty successful result.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented_conditional",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "STATUS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.launch",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2143,
+          "line_end": 2143,
+          "text": "- Launch command uses workspace cwd and invokes `bash -lc <codex.command>`\n",
+          "text_sha256": "f2895f57bd9aec9ac99c84f3ef30b2d8338e9109fb94e5e4126ad7e3f764c2a0",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2143"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Workspace cwd; bash -lc codex.command.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Actual peer cwd, trusted shell semantic witness, declared process-launch receipt for exact argv. Cwd alone does not prove bash argv.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO, WS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.startup",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2144,
+          "line_end": 2144,
+          "text": "- Session startup follows the targeted Codex app-server protocol.\n",
+          "text_sha256": "7b9b0b8bec14776f305c259eb69e2cf3c9034e22f36f534aee5bab52a4f89c83",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2144"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Follow targeted protocol startup.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Fixed JSONL peer/schema, initialize/initialized/thread/turn ordering; method-specific request IDs and replies.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.identity-capabilities",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2145,
+          "line_end": 2146,
+          "text": "- Client identity/capability payloads are valid when the targeted Codex app-server protocol requires\n  them.\n",
+          "text_sha256": "76d2924bb7d1d164774ed1f05c6bbdfba792494c3f240817d4b167e92c5e265a",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2145-L2146"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Valid required client identity/capabilities.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Retained initialization payload validated against pinned generated schema and profile capabilities.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.policy",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2147,
+          "line_end": 2147,
+          "text": "- Policy-related startup payloads use the implementation's documented approval/sandbox settings\n",
+          "text_sha256": "6da9da634f0804ab2bd669868d161c459476979409789daf339067f8b5c5869a",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2147"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Startup approval/sandbox matches documented policy.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Retained thread/turn params; exact schema-valid enum/object values, not reference README guesses.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.session-identities",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2148,
+          "line_end": 2149,
+          "text": "- Thread and turn identities exposed by the targeted protocol are extracted and used to emit\n  `session_started`\n",
+          "text_sha256": "8a3dc4a4c8a0547301ade4741721f887a0306d5aed219ce9ade665fa71be0fbc",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2148-L2149"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Extract supplied thread/turn identities; emit session_started.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Peer-chosen identities and declared structured-event decoder; follow turn changes rather than inventing IDs.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO, LOG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.read-timeout",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2150,
+          "line_end": 2150,
+          "text": "- Request/response read timeout is enforced\n",
+          "text_sha256": "b64d82479c4efaa6d22f0a6964c96ab0a0cad8fcce2a64eba9ea89d61b076b94",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2150"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Enforce request/response read timeout.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Hold a required reply; bounded elapsed/classified outcome and joined peer cleanup.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.turn-timeout",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2151,
+          "line_end": 2151,
+          "text": "- Turn timeout is enforced\n",
+          "text_sha256": "df58dfae1a408b50c61689812d29d04194dd6ff7db777cef7117dc09ba8fea59",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2151"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Enforce whole-turn timeout.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Active turn sends nonterminal progress but never completes; distinct timeout outcome and cleanup.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.framing",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2152,
+          "line_end": 2152,
+          "text": "- Transport framing required by the targeted protocol is handled correctly\n",
+          "text_sha256": "dfbe4a75be3ff337c29a6c2bba1ad9a5e8d5e55f77c6cfa21a3874e5738b1cd2",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2152"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Correct targeted transport framing.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Fixed valid fragmented/coalesced bytes, malformed/truncated negatives, exact output frames.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.stderr",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2153,
+          "line_end": 2153,
+          "text": "- For stdio-based transports, diagnostic stderr handling is kept separate from the protocol stream\n",
+          "text_sha256": "af6d4af987783f446b8b3cd6f6829abbb52b0b623ad838bf3910739f63073e2d",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2153"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Keep diagnostics separate from stdio protocol.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Noisy/hostile stderr, valid stdout frames; no frame corruption or stalled drain.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.approvals",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2154,
+          "line_end": 2154,
+          "text": "- Command/file-change approvals are handled according to the implementation's documented policy\n",
+          "text_sha256": "69d0e081a60a4ab7846c8552cdce18417bd7a5dd92f35e93ea24419deacebf29",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2154"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Command/file approval requests obey documented policy.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Server-initiated requests and exact responses/outcome; next valid protocol action proceeds.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO family; no row-specific receipt rechecked",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.unsupported-tool",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2155,
+          "line_end": 2155,
+          "text": "- Unsupported dynamic tool calls are rejected without stalling the session\n",
+          "text_sha256": "7d7f71c4175a64b59e0cc282dc9a9612ecd21e9daa3f0d523dbe8cde7ea49220",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2155"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Unsupported dynamic tool returns failure without stall.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Unknown server tool call; required structured reply and subsequent turn action.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO family; no row-specific receipt rechecked",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.user-input",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2156,
+          "line_end": 2157,
+          "text": "- User input requests are handled according to the implementation's documented policy and do not\n  stall indefinitely\n",
+          "text_sha256": "9af4b4c1b0e76c2ba2569de954ae3d48746c4325aa4cef0e5e435aa03402ae66",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2156-L2157"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "User input uses documented policy without indefinite stall.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Input-required request/event; fixed selected response/terminal outcome under deadline.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO family; no row-specific receipt rechecked",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.telemetry",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2158,
+          "line_end": 2158,
+          "text": "- Usage and rate-limit telemetry exposed by the targeted protocol is extracted\n",
+          "text_sha256": "986bc14bf02d0aac0ffedffe38e65a80583884a24d016ef55242890dd31c76f6",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2158"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Extract exposed usage/rate telemetry.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Repeated/large absolute counters and rate metadata; documented metrics/event observation.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO, STATUS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.5.signal-meaning",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2159,
+          "line_end": 2160,
+          "text": "- Approval, user-input-required, usage, and rate-limit signals are interpreted according to the\n  targeted protocol\n",
+          "text_sha256": "7efced2222b671a978254faeb06ccae67b8ce503b1e4de451404602395be60c5",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2159-L2160"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Interpret approval/input-required/usage/rate signals per targeted protocol.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Fixed event/request corpus and classified outcomes; extraction alone is not interpretation.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO family; no row-specific receipt rechecked",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "E17.5.client-tools",
+      "validation_profile": "extension",
+      "normative_level": "conditional_required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2161,
+          "line_end": 2162,
+          "text": "- If client-side tools are implemented, session startup advertises the supported tool specs\n  using the targeted app-server protocol\n",
+          "text_sha256": "4b242d133bcb99b37e5fec7dc6ca49bd377f742324215c194a126d6cffc7d917",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2161-L2162"
+        }
+      ],
+      "source_context_ids": [
+        "extension_required",
+        "section17_profile"
+      ],
+      "summary": "Shipped client tools advertise valid specs.",
+      "applicability": {
+        "kind": "feature",
+        "feature": "client_side_tools",
+        "declaration": "unknown",
+        "required_when": "present",
+        "absence_requires_checked_declaration": true
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Feature declaration, selected schema/capabilities and exact startup advertisement.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented_conditional",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "D12 defers tools; no shipped-tool pass",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "E17.5.provider-tools-selected",
+      "validation_profile": "extension",
+      "normative_level": "conditional_required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2163,
+          "line_end": 2164,
+          "text": "- If provider-native agent tools are implemented:\n  - only the selected adapter's tools are advertised to the session\n",
+          "text_sha256": "7db5d824c9ecf0245375c7f22a68557c6ea4117c1ca9dcf669d6dd769617c060",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2163-L2164"
+        }
+      ],
+      "source_context_ids": [
+        "extension_required",
+        "section17_profile",
+        "provider_tools_parent"
+      ],
+      "summary": "Advertise only selected adapter's provider tools.",
+      "applicability": {
+        "kind": "feature",
+        "feature": "provider_native_agent_tools",
+        "declaration": "unknown",
+        "required_when": "present",
+        "absence_requires_checked_declaration": true
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Two adapter declarations and retained tool specs; no generic unsupported tool substitution.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented_conditional",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "D12 deferred",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "E17.5.provider-tools-auth",
+      "validation_profile": "extension",
+      "normative_level": "conditional_required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2165,
+          "line_end": 2165,
+          "text": "  - valid inputs execute host-side with configured adapter auth\n",
+          "text_sha256": "acec39aa8042ac50c82bdeeb75235ca74652ff3b5b0f0bc17bcd1491bbfb1177",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2165"
+        }
+      ],
+      "source_context_ids": [
+        "extension_required",
+        "section17_profile",
+        "provider_tools_parent"
+      ],
+      "summary": "Valid provider-tool calls execute host-side with configured auth.",
+      "applicability": {
+        "kind": "feature",
+        "feature": "provider_native_agent_tools",
+        "declaration": "unknown",
+        "required_when": "present",
+        "absence_requires_checked_declaration": true
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Fixed tool arguments; fake provider receives authorized request; no child-side token requirement.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented_conditional",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "D12 deferred",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "E17.5.provider-tools-context",
+      "validation_profile": "extension",
+      "normative_level": "conditional_required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2166,
+          "line_end": 2166,
+          "text": "  - the current normalized issue and `native_ref` are available as internal tool context\n",
+          "text_sha256": "0cdfbb2edcdf1e0ef58f584ed718ae6fc6b06993abfc9fc637f34dc7103c2e62",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2166"
+        }
+      ],
+      "source_context_ids": [
+        "extension_required",
+        "section17_profile",
+        "provider_tools_parent"
+      ],
+      "summary": "Tool context includes current normalized issue and native_ref.",
+      "applicability": {
+        "kind": "feature",
+        "feature": "provider_native_agent_tools",
+        "declaration": "unknown",
+        "required_when": "present",
+        "absence_requires_checked_declaration": true
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Declared bounded test observation or provider action that distinguishes updated opaque/native identities.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented_conditional",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "D12 deferred",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "E17.5.provider-tools-secrets",
+      "validation_profile": "extension",
+      "normative_level": "conditional_required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2167,
+          "line_end": 2167,
+          "text": "  - tracker secrets are not inherited by the coding-agent child process\n",
+          "text_sha256": "1856ac0e21ade9ed92d34d8f040d8741858a1f61169d637f9d9e2db47edfded3",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2167"
+        }
+      ],
+      "source_context_ids": [
+        "extension_required",
+        "section17_profile",
+        "provider_tools_parent"
+      ],
+      "summary": "Tracker secrets excluded from agent child.",
+      "applicability": {
+        "kind": "feature",
+        "feature": "provider_native_agent_tools",
+        "declaration": "unknown",
+        "required_when": "present",
+        "absence_requires_checked_declaration": true
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Peer child-environment receipt with fake credential/source/aliases; no real operator environment.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented_conditional",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "General child-env confinement documented; provider-tool feature deferred",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "E17.5.provider-tools-errors",
+      "validation_profile": "extension",
+      "normative_level": "conditional_required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2168,
+          "line_end": 2168,
+          "text": "  - invalid arguments, missing auth, and transport failures return structured failure payloads\n",
+          "text_sha256": "2fd6216c165a2722ccc11dceb2851b915ab3686e77e1724f69753e29f2b9da66",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2168"
+        }
+      ],
+      "source_context_ids": [
+        "extension_required",
+        "section17_profile",
+        "provider_tools_parent"
+      ],
+      "summary": "Invalid args/auth/transport return structured failures.",
+      "applicability": {
+        "kind": "feature",
+        "feature": "provider_native_agent_tools",
+        "declaration": "unknown",
+        "required_when": "present",
+        "absence_requires_checked_declaration": true
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Fixed negative calls and exact schema-valid failure response; no session stall.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented_conditional",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "D12 deferred",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "E17.5.provider-tools-unknown",
+      "validation_profile": "extension",
+      "normative_level": "conditional_required",
+      "source": [
+        {
+          "section": "17.5",
+          "line_start": 2169,
+          "line_end": 2169,
+          "text": "  - unsupported tool names still fail without stalling the session\n",
+          "text_sha256": "9bce8086e3889b66f86a25981da24a792714de8e45df5a428251800401eb6175",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2169"
+        }
+      ],
+      "source_context_ids": [
+        "extension_required",
+        "section17_profile",
+        "provider_tools_parent"
+      ],
+      "summary": "Unknown tools fail without stalling even when tools shipped.",
+      "applicability": {
+        "kind": "feature",
+        "feature": "provider_native_agent_tools",
+        "declaration": "unknown",
+        "required_when": "present",
+        "absence_requires_checked_declaration": true
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Unknown call amid valid tool traffic and subsequent turn progress. Core unsupported-call row also remains required.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented_conditional",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "D12 deferred",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.6.validation-visible",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.6",
+          "line_start": 2173,
+          "line_end": 2173,
+          "text": "- Validation failures are operator-visible\n",
+          "text_sha256": "cd0ec27816f8dfa749f198a90e23651f20366eb516a830fa39735b9fae138f59",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2173"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Validation failures visible to operator.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Fixed invalid workflow/config/template; bounded named diagnostic channel.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "LOG, CLI",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.6.log-context",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.6",
+          "line_start": 2174,
+          "line_end": 2174,
+          "text": "- Structured logging includes issue/session context fields\n",
+          "text_sha256": "61cc60f3af4c2f660d786963f62b38c8d700cfb7eeffbfbc753c94769d223162",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2174"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Structured logs carry issue/session context.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Peer-chosen current IDs; declared parser for required checked issue_id/issue_identifier/session_id, including closure/not-started policy.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "LOG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.6.sink-failure",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.6",
+          "line_start": 2175,
+          "line_end": 2175,
+          "text": "- Logging sink failures do not crash orchestration\n",
+          "text_sha256": "cd376573c854cac182badfc218a6e5cea9fbb094165cd0605eaa90ea67d553c9",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2175"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Logging sink failure does not crash orchestration.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Controlled sink failure while independent provider/peer progress remains observable. Distinguish terminal host-I/O policy from owner correctness.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "Native output regressions documented; exact portable oracle unresolved",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.6.telemetry-aggregation",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.6",
+          "line_start": 2176,
+          "line_end": 2176,
+          "text": "- Token/rate-limit aggregation remains correct across repeated agent updates\n",
+          "text_sha256": "cbf547607bbb4e7396d0a6409ab18125c24ef18c8fe7f49f20b7b6881fe18d08",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2176"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Repeated token/rate updates aggregate correctly.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "unobservable",
+        "needed": "Numeric public observation; independent absolute high-water-mark model across turns/runs; logs without totals are inadequate.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO, STATUS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "E17.6.status-independent",
+      "validation_profile": "extension",
+      "normative_level": "conditional_required",
+      "source": [
+        {
+          "section": "17.6",
+          "line_start": 2177,
+          "line_end": 2178,
+          "text": "- If a human-readable status surface is implemented, it is driven from orchestrator state and does\n  not affect correctness\n",
+          "text_sha256": "5cd3f643495f3f284a1976f924761758178abc944f3d95e9dcefcbd219533686",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2177-L2178"
+        }
+      ],
+      "source_context_ids": [
+        "extension_required",
+        "section17_profile"
+      ],
+      "summary": "Shipped human surface derives owner state and does not affect correctness.",
+      "applicability": {
+        "kind": "feature",
+        "feature": "human_readable_status",
+        "declaration": "unknown",
+        "required_when": "present",
+        "absence_requires_checked_declaration": true
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Query burst while held run/read/retry; compare fresh state and subsequent scheduling against control.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented_conditional",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "STATUS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "E17.6.humanized-events",
+      "validation_profile": "extension",
+      "normative_level": "conditional_required",
+      "source": [
+        {
+          "section": "17.6",
+          "line_start": 2179,
+          "line_end": 2180,
+          "text": "- If humanized event summaries are implemented, they cover key wrapper/agent event classes without\n  changing orchestrator behavior\n",
+          "text_sha256": "4cadb8f4cf473b44559811f21105fdaea09c1b4ca99f4065056f95846591f3b8",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2179-L2180"
+        }
+      ],
+      "source_context_ids": [
+        "extension_required",
+        "section17_profile"
+      ],
+      "summary": "Shipped summaries cover key wrapper/agent classes without behavior changes.",
+      "applicability": {
+        "kind": "feature",
+        "feature": "humanized_event_summaries",
+        "declaration": "unknown",
+        "required_when": "present",
+        "absence_requires_checked_declaration": true
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Declare feature/classes and summaries; raw events/independent schedule remain authoritative.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented_conditional",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "—",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.7.positional-path",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.7",
+          "line_start": 2184,
+          "line_end": 2184,
+          "text": "- CLI accepts a positional workflow path argument (`path-to-WORKFLOW.md`)\n",
+          "text_sha256": "71eb34752738372e112d3b7c64fd98f170d2e9242270ba6990882e63e17a9a07",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2184"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Accept positional workflow path.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Launch argv with a path containing spaces; actual chosen workflow.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CLI",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.7.cwd-default",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.7",
+          "line_start": 2185,
+          "line_end": 2185,
+          "text": "- CLI uses `./WORKFLOW.md` when no workflow path argument is provided\n",
+          "text_sha256": "2430c5e45a3e802e23a467c8e898b3c4dbfc783cd881255f8c5a90703d197e35",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2185"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Use ./WORKFLOW.md by default.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Fresh controlled cwd; no path argument.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CLI",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.7.missing-path",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.7",
+          "line_start": 2186,
+          "line_end": 2186,
+          "text": "- CLI errors on nonexistent explicit workflow path or missing default `./WORKFLOW.md`\n",
+          "text_sha256": "dd1644d71e8de6d98501fe6c6ab793a021593091a29d6aebe929d0310256aeac",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2186"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Error on missing explicit/default file.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Both missing cases; error + non-success and no agent/provider acquisition.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CLI",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.7.startup-visible",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.7",
+          "line_start": 2187,
+          "line_end": 2187,
+          "text": "- CLI surfaces startup failure cleanly\n",
+          "text_sha256": "22ec4acbc7e8a0b8b7d6b2b775981e019bf0ad6ed5db977acd05ed06852eca22",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2187"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Surface startup failure cleanly.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Invalid config/setup fault; bounded operator diagnostic without uncontrolled traceback/token leakage.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CLI, LOG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.7.normal-exit",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.7",
+          "line_start": 2188,
+          "line_end": 2188,
+          "text": "- CLI exits with success when application starts and shuts down normally\n",
+          "text_sha256": "d418fecafa42235bf230f5f507969e952828127095ac6883969bd88fc634e85d",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2188"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Successful start/normal shutdown exits success.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Readiness then declared graceful signal/control; wait for owned candidate exit, not signal acknowledgment.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CLI",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "C17.7.abnormal-exit",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "17.7",
+          "line_start": 2189,
+          "line_end": 2189,
+          "text": "- CLI exits nonzero when startup fails or the host process exits abnormally\n",
+          "text_sha256": "fec3b6ca91de0ea3c04bb7f4116a0ea3b25107cca18946c359b979be8f1dec67",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2189"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section17_profile"
+      ],
+      "summary": "Startup/abnormal host failure exits nonzero.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Separate invalid-start and induced host-failure cases; retained original classified cause.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CLI",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "D18.1.workflow-path",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2214,
+          "line_end": 2214,
+          "text": "- Workflow path selection supports explicit runtime path and cwd default\n",
+          "text_sha256": "4c81363ac5f4a6d9f09bb9ad3f5e5725fc8c776069c5abcac86c152948840732",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2214"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Explicit/cwd path: C17.1.explicit-path/cwd-default, C17.7.positional-path/cwd-default.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Preserve both path variants in coverage.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WF, CLI",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.1.explicit-path",
+        "C17.1.cwd-default",
+        "C17.7.positional-path",
+        "C17.7.cwd-default"
+      ]
+    },
+    {
+      "id": "D18.1.workflow-loader",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2215,
+          "line_end": 2215,
+          "text": "- `WORKFLOW.md` loader with YAML front matter + prompt body split\n",
+          "text_sha256": "c57f9f3cf943acf848b82d9fadaf0a38d83c179e9f66ae3ff701668a7a1f015b",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2215"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "YAML front matter + prompt split: C17.1.invalid-yaml/nonmap/prompt-inputs.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Fixed boundary/delimiter fixtures showing actual prompt split; internal loader existence is not inferred from one prompt.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WF",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.1.invalid-yaml",
+        "C17.1.nonmap",
+        "C17.1.prompt-inputs"
+      ]
+    },
+    {
+      "id": "D18.1.typed-config",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2216,
+          "line_end": 2216,
+          "text": "- Typed config layer with defaults and `$` resolution\n",
+          "text_sha256": "b1c0aeeee5e5c1a8ab2e375b29ee5de27c1e93a0866aa8d8157a81ba559720cc",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2216"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Typed defaults/$ resolution: C17.1.defaults/env-resolution.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Behavior observes values/categories; checked internal type structure requires separate design evidence.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CFG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.1.defaults",
+        "C17.1.env-resolution"
+      ]
+    },
+    {
+      "id": "D18.1.dynamic-reload",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2217,
+          "line_end": 2217,
+          "text": "- Dynamic `WORKFLOW.md` watch/reload/re-apply for config and prompt\n",
+          "text_sha256": "8a628fff0f099245639e7f905cbba1424b0eb4ecc5ff02a08d033604ecdac11d",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2217"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Watch/reapply config AND prompt: C17.1.reload-detected/invalid-reload.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Distinct prompt/config edits, atomic replacement and same-size/mtime-preserved change.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "RELOAD",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.1.reload-detected",
+        "C17.1.invalid-reload"
+      ]
+    },
+    {
+      "id": "D18.1.single-authority",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2218,
+          "line_end": 2218,
+          "text": "- Polling orchestrator with single-authority mutable state\n",
+          "text_sha256": "fbb1334d98696a8df1c6074b7f69aae1fd873681bd468c11aa16eb6a1a044850",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2218"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Polling orchestrator with single-authority state.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "unobservable",
+        "needed": "Trace tests can falsify duplicate/racy dispatch, but cannot prove an internal single-authority representation. Separate audited design/model evidence; no invented debug getter as baseline.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CORE",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "D18.1.tracker-reads",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2219,
+          "line_end": 2219,
+          "text": "- Issue tracker adapter with state-list + ID-refresh reads\n",
+          "text_sha256": "67cba7d3000acf655e39b874e9c2b40f92f1152459b886a87d853105c1a335dc",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2219"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "State-list + ID-refresh read kernel: all C17.3 rows.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Driver must invoke/observe both operations, including empty inputs and full normalization.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "TRACK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.3.candidate-filter",
+        "C17.3.empty-states",
+        "C17.3.empty-ids",
+        "C17.3.page-order",
+        "C17.3.lowercase-labels",
+        "C17.3.optional-metadata",
+        "C17.3.malformed-records",
+        "C17.3.opaque-refresh",
+        "C17.3.native-ref",
+        "C17.3.dispatchable",
+        "C17.3.profile",
+        "C17.3.errors"
+      ]
+    },
+    {
+      "id": "D18.1.workspace",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2220,
+          "line_end": 2220,
+          "text": "- Workspace manager with sanitized, collision-resistant per-issue workspaces\n",
+          "text_sha256": "aa2f70e864c613d9eeab147aa39dfab7e63dcbb6319a0c4564760f6186254a6a",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2220"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Sanitized collision-resistant workspaces: C17.2.path-safety/key-stability/agent-cwd.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Public finite-host controls plus separately declared host trust boundary; no all-races containment proof claim.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "WS",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.2.path-safety",
+        "C17.2.key-stability",
+        "C17.2.agent-cwd"
+      ]
+    },
+    {
+      "id": "D18.1.hooks",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2221,
+          "line_end": 2221,
+          "text": "- Workspace lifecycle hooks (`after_create`, `before_run`, `after_run`, `before_remove`)\n",
+          "text_sha256": "811646b173ec7abbb98290646679d9585a21f22f787c62882ac9922761d37b29",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2221"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "All four hook lifecycles: C17.2.after-create/before-run/after-run/before-remove.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Each hook success/failure/timeout and ordering, not only one combined success trace.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "HOOK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.2.after-create",
+        "C17.2.before-run",
+        "C17.2.after-run",
+        "C17.2.before-remove"
+      ]
+    },
+    {
+      "id": "D18.1.hook-timeout",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2222,
+          "line_end": 2222,
+          "text": "- Hook timeout config (`hooks.timeout_ms`, default `60000`)\n",
+          "text_sha256": "e5d046026819273df14eda41301861c178b91a5888227515c3858240fc859211",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2222"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "hooks.timeout_ms configurable; default60000.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Checked default observation or real default deadline test; custom short timeout alone does not establish default.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CFG, HOOK",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": []
+    },
+    {
+      "id": "D18.1.app-server",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2223,
+          "line_end": 2223,
+          "text": "- Coding-agent app-server subprocess client with the targeted transport/framing protocol\n",
+          "text_sha256": "cb0b8fefc7f83f311cb01c8550a943df3659d9bc773b22eff68e1e2a3782665e",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2223"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Targeted subprocess transport/protocol: C17.5 core rows.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Exact schema/version/capability identities and actual byte peer process.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.5.launch",
+        "C17.5.startup",
+        "C17.5.identity-capabilities",
+        "C17.5.policy",
+        "C17.5.session-identities",
+        "C17.5.read-timeout",
+        "C17.5.turn-timeout",
+        "C17.5.framing",
+        "C17.5.stderr",
+        "C17.5.approvals",
+        "C17.5.unsupported-tool",
+        "C17.5.user-input",
+        "C17.5.telemetry",
+        "C17.5.signal-meaning"
+      ]
+    },
+    {
+      "id": "D18.1.codex-command",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2224,
+          "line_end": 2224,
+          "text": "- Codex launch command config (`codex.command`, default `codex app-server`)\n",
+          "text_sha256": "0c703334b97101254a18a9d5505b654d76c047dc179c7476d438ec9a78a5adc6",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2224"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Configurable command; default codex app-server.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Custom shell witness plus controlled PATH codex shim for default argv, with exact launch receipt if needed.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CFG, PROTO",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.1.shell-command"
+      ]
+    },
+    {
+      "id": "D18.1.strict-prompt",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2225,
+          "line_end": 2225,
+          "text": "- Strict prompt rendering with `issue` and `attempt` variables\n",
+          "text_sha256": "800e8075a194983f5eab9503f88aa008913579c7a7980fa8b652a1c3019b2a8e",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2225"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Strict issue/attempt template: C17.1.prompt-inputs/strict-prompt.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Profile's declared strict language; fixed portable common syntax cannot silently become permissive.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CFG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.1.prompt-inputs",
+        "C17.1.strict-prompt"
+      ]
+    },
+    {
+      "id": "D18.1.retry-queue",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2226,
+          "line_end": 2226,
+          "text": "- Exponential retry queue with continuation retries after normal exit\n",
+          "text_sha256": "0c0ec73ae1ac35e1af180539a8754153c315d6704b140985b52f1a1583b874e0",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2226"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Exponential/normal continuation retry: C17.4.continuation-retry/failure-backoff/retry-fields.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Closed-worker retry and independently timed due/attempt/error observations; not same-thread next-turn alone.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "RETRY",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.4.continuation-retry",
+        "C17.4.failure-backoff",
+        "C17.4.retry-fields"
+      ]
+    },
+    {
+      "id": "D18.1.retry-cap",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2227,
+          "line_end": 2227,
+          "text": "- Configurable retry backoff cap (`agent.max_retry_backoff_ms`, default 5m)\n",
+          "text_sha256": "747ebd8e513b55683069770af8f12f81a5b0874a7e9d2b8c219090b702b757ff",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2227"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Configurable cap; default5m: C17.4.backoff-cap.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "partial",
+        "needed": "Default checked value or bounded real-time default plateau campaign, plus configured cap behavior.",
+        "baseline_gap": "unobservable"
+      },
+      "planning_status": "unimplemented_unobservable",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented",
+          "missing_profile_observation_or_control"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "RETRY; native-service cell pending",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.4.backoff-cap"
+      ]
+    },
+    {
+      "id": "D18.1.reconcile",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2228,
+          "line_end": 2228,
+          "text": "- Reconciliation that stops runs on terminal/non-active tracker states\n",
+          "text_sha256": "25d5811ef3e96b88f0f4492e021c305ca439799cf29ec1cdd0859f53d17d7ec3",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2228"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Stop terminal/non-active runs: C17.4.active-refresh/inactive-stop/terminal-stop.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Distinct terminal vs inactive cleanup policy, current issue snapshot and held peer.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CORE",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.4.active-refresh",
+        "C17.4.inactive-stop",
+        "C17.4.terminal-stop"
+      ]
+    },
+    {
+      "id": "D18.1.terminal-cleanup",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2229,
+          "line_end": 2229,
+          "text": "- Workspace cleanup for terminal issues (startup sweep + active transition)\n",
+          "text_sha256": "c322ea26c5a6eafd624870e1fad2298f47bda64efa7279d939c101913ed1e4c5",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2229"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Terminal workspace cleanup at startup AND active transition.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Pre-existing terminal owned workspace startup sweep plus held active→terminal scenario; transition-only is insufficient.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "CORE, WS; native-service startup cell pending",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.4.terminal-stop"
+      ]
+    },
+    {
+      "id": "D18.1.structured-log",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2230,
+          "line_end": 2230,
+          "text": "- Structured logs with `issue_id`, `issue_identifier`, and `session_id`\n",
+          "text_sha256": "7cd4b26f8a07660c526d1db04932f0688a26bd08e3ba7cdd13405d288f1c4d30",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2230"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "issue_id, issue_identifier, session_id: C17.6.log-context.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Exact generated opaque/identifier/thread/turn values and declared absent-session phase; no guessed fields.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "LOG",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.6.log-context"
+      ]
+    },
+    {
+      "id": "D18.1.operator-observation",
+      "validation_profile": "core",
+      "normative_level": "required",
+      "source": [
+        {
+          "section": "18.1",
+          "line_start": 2231,
+          "line_end": 2231,
+          "text": "- Operator-visible observability (structured logs; OPTIONAL snapshot/status surface)\n",
+          "text_sha256": "d3a604ebf46d54b36c2a6b3e6e1127f4685443eb346f3218511a801fe8e2050c",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2231"
+        }
+      ],
+      "source_context_ids": [
+        "core_required",
+        "section18_profile"
+      ],
+      "summary": "Operator-visible logs; snapshot/status optional: C17.6.validation-visible/log-context.",
+      "applicability": {
+        "kind": "always"
+      },
+      "observation": {
+        "level": "direct",
+        "needed": "Baseline log observation; optional HTTP cannot become mandatory for another port.",
+        "baseline_gap": "not_established"
+      },
+      "planning_status": "unimplemented",
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      },
+      "existing_documentation": {
+        "description": "LOG, CLI; STATUS separate",
+        "portable_evidence": false
+      },
+      "related_requirement_ids": [
+        "C17.6.validation-visible",
+        "C17.6.log-context"
+      ]
+    }
+  ],
+  "supplemental_inventory": [
+    {
+      "id": "R17.8.tracker-smoke",
+      "id_status": "new_supplemental_proposal",
+      "validation_profile": "real_integration",
+      "normative_level": "recommended",
+      "source": [
+        {
+          "section": "17.8",
+          "line_start": 2196,
+          "line_end": 2197,
+          "text": "- A real tracker smoke test can be run with valid credentials supplied through the selected\n  adapter's documented secret mechanism.\n",
+          "text_sha256": "64397e1661cf8f6fec5972e87ef438fce949b55385a43b574ff089fb447a911a",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2196-L2197"
+        }
+      ],
+      "applicability": {
+        "kind": "conditional",
+        "condition": "environment_opt_in",
+        "declaration": "unknown"
+      },
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      }
+    },
+    {
+      "id": "R17.8.isolation-cleanup",
+      "id_status": "new_supplemental_proposal",
+      "validation_profile": "real_integration",
+      "normative_level": "should",
+      "source": [
+        {
+          "section": "17.8",
+          "line_start": 2198,
+          "line_end": 2199,
+          "text": "- Real integration tests SHOULD use isolated test identifiers/workspaces and clean up tracker\n  artifacts when practical.\n",
+          "text_sha256": "0be4ef3d21b86a3c78d50e7e47001a58f2eea0287f94bcf1185bf85e11152597",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2198-L2199"
+        }
+      ],
+      "applicability": {
+        "kind": "conditional",
+        "condition": "environment_opt_in",
+        "declaration": "unknown"
+      },
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      }
+    },
+    {
+      "id": "R17.8.skipped-visible",
+      "id_status": "new_supplemental_proposal",
+      "validation_profile": "real_integration",
+      "normative_level": "should",
+      "source": [
+        {
+          "section": "17.8",
+          "line_start": 2200,
+          "line_end": 2200,
+          "text": "- A skipped real-integration test SHOULD be reported as skipped, not silently treated as passed.\n",
+          "text_sha256": "485a95f365f33ba19cee9f33c6b6467845480be625d77a3796f19f3005f6af16",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2200"
+        }
+      ],
+      "applicability": {
+        "kind": "conditional",
+        "condition": "real_integration_skipped",
+        "declaration": "unknown"
+      },
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      }
+    },
+    {
+      "id": "R17.8.enabled-failure",
+      "id_status": "new_supplemental_proposal",
+      "validation_profile": "real_integration",
+      "normative_level": "should",
+      "source": [
+        {
+          "section": "17.8",
+          "line_start": 2201,
+          "line_end": 2202,
+          "text": "- If a real-integration profile is explicitly enabled in CI or release validation, failures SHOULD\n  fail that job.\n",
+          "text_sha256": "8e8d5a582809675d483f02042d4d947f275ede21994b032f475a6a50a6db92d8",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2201-L2202"
+        }
+      ],
+      "applicability": {
+        "kind": "conditional",
+        "condition": "real_integration_enabled",
+        "declaration": "unknown"
+      },
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      }
+    },
+    {
+      "id": "R18.2.http-contract",
+      "id_status": "new_supplemental_proposal",
+      "validation_profile": "extension",
+      "normative_level": "recommended",
+      "source": [
+        {
+          "section": "18.2",
+          "line_start": 2235,
+          "line_end": 2236,
+          "text": "- HTTP server extension honors CLI `--port` over `server.port`, uses a safe default bind host, and\n  exposes the baseline endpoints/error semantics in Section 13.7 if shipped.\n",
+          "text_sha256": "f714a1141e8ad6deb8e2c2352348926e0f6dc545934e91a0cd2d80ef516b4622",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2235-L2236"
+        }
+      ],
+      "applicability": {
+        "kind": "conditional",
+        "condition": "http_server",
+        "declaration": "unknown"
+      },
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      }
+    },
+    {
+      "id": "R18.2.provider-tools",
+      "id_status": "new_supplemental_proposal",
+      "validation_profile": "extension",
+      "normative_level": "recommended",
+      "source": [
+        {
+          "section": "18.2",
+          "line_start": 2237,
+          "line_end": 2238,
+          "text": "- Provider-native agent tools, when shipped, execute through the app-server session using\n  host-side configured adapter auth without passing tracker secrets to the child.\n",
+          "text_sha256": "236130befe004c84245cdf66c6b99718078d2076bd6061058e362cddf7b01b1b",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2237-L2238"
+        }
+      ],
+      "applicability": {
+        "kind": "conditional",
+        "condition": "provider_native_agent_tools",
+        "declaration": "unknown"
+      },
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      }
+    },
+    {
+      "id": "T18.2.persist-retry",
+      "id_status": "new_supplemental_proposal",
+      "validation_profile": "extension",
+      "normative_level": "todo",
+      "source": [
+        {
+          "section": "18.2",
+          "line_start": 2239,
+          "line_end": 2239,
+          "text": "- TODO: Persist retry queue and session metadata across process restarts.\n",
+          "text_sha256": "30f3fa1fea4b1e888f628f335ba8bdeb258eab3e8bff1bb8b59830bf8eb52f97",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2239"
+        }
+      ],
+      "applicability": {
+        "kind": "conditional",
+        "condition": "future_extension",
+        "declaration": "unknown"
+      },
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      }
+    },
+    {
+      "id": "T18.2.observation-config",
+      "id_status": "new_supplemental_proposal",
+      "validation_profile": "extension",
+      "normative_level": "todo",
+      "source": [
+        {
+          "section": "18.2",
+          "line_start": 2240,
+          "line_end": 2241,
+          "text": "- TODO: Make observability settings configurable in workflow front matter without prescribing UI\n  implementation details.\n",
+          "text_sha256": "219e0f8c2befe98d254359f9142f54f55c72761d1497b5692e0b2fae549877dd",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2240-L2241"
+        }
+      ],
+      "applicability": {
+        "kind": "conditional",
+        "condition": "future_extension",
+        "declaration": "unknown"
+      },
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      }
+    },
+    {
+      "id": "T18.2.semantic-tools",
+      "id_status": "new_supplemental_proposal",
+      "validation_profile": "extension",
+      "normative_level": "todo",
+      "source": [
+        {
+          "section": "18.2",
+          "line_start": 2242,
+          "line_end": 2243,
+          "text": "- TODO: Extract common semantic helper tools only after multiple adapters demonstrate real\n  duplication; do not preemptively replace provider-native tools with generic CRUD.\n",
+          "text_sha256": "9b11b870c59c24c6196db522a2e04e2d88be3861b9bedcef2b3f136a12f7602a",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2242-L2243"
+        }
+      ],
+      "applicability": {
+        "kind": "conditional",
+        "condition": "multiple_adapters_with_duplication",
+        "declaration": "unknown"
+      },
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      }
+    },
+    {
+      "id": "R18.3.real-integration",
+      "id_status": "new_supplemental_proposal",
+      "validation_profile": "real_integration",
+      "normative_level": "recommended",
+      "source": [
+        {
+          "section": "18.3",
+          "line_start": 2247,
+          "line_end": 2247,
+          "text": "- Run the `Real Integration Profile` from Section 17.8 with valid credentials and network access.\n",
+          "text_sha256": "4f47826ae933f9d7efec465863a0938af543d9a4f5bd1b8083a94dd7e0ed2c2b",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2247"
+        }
+      ],
+      "applicability": {
+        "kind": "conditional",
+        "condition": "environment_opt_in",
+        "declaration": "unknown"
+      },
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      }
+    },
+    {
+      "id": "R18.3.host-hooks-path",
+      "id_status": "new_supplemental_proposal",
+      "validation_profile": "real_integration",
+      "normative_level": "recommended",
+      "source": [
+        {
+          "section": "18.3",
+          "line_start": 2248,
+          "line_end": 2248,
+          "text": "- Verify hook execution and workflow path resolution on the target host OS/shell environment.\n",
+          "text_sha256": "273398df2762ac70b58f4e4d3c086b40ba4753cc3f67a9cc038b8ae1a20b8b22",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2248"
+        }
+      ],
+      "applicability": {
+        "kind": "conditional",
+        "condition": "target_host_validation",
+        "declaration": "unknown"
+      },
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      }
+    },
+    {
+      "id": "R18.3.http-host",
+      "id_status": "new_supplemental_proposal",
+      "validation_profile": "real_integration",
+      "normative_level": "recommended",
+      "source": [
+        {
+          "section": "18.3",
+          "line_start": 2249,
+          "line_end": 2250,
+          "text": "- If the OPTIONAL HTTP server is shipped, verify the configured port behavior and loopback/default\n  bind expectations on the target environment.\n",
+          "text_sha256": "f347ee067536e552f967e6783e2b9cbfe6d220321643a39bb99213d2bc0aff46",
+          "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L2249-L2250"
+        }
+      ],
+      "applicability": {
+        "kind": "conditional",
+        "condition": "http_server",
+        "declaration": "unknown"
+      },
+      "implementation": {
+        "state": "unimplemented",
+        "case_ids": []
+      },
+      "initial_result": {
+        "verdict": "incomplete",
+        "reasons": [
+          "unimplemented"
+        ],
+        "evidence_refs": []
+      }
+    }
+  ]
+}

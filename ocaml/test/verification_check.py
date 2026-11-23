@@ -47,16 +47,17 @@ def run(root: Path) -> None:
         manifest.write_text(json.dumps(hashes))
 
         changed_hash = snapshot("hash")
-        schema = changed_hash / SNAPSHOT / "ThreadStartParams.json"
-        schema.write_bytes(schema.read_bytes() + b"\n")
+        manifest = changed_hash / SNAPSHOT / "manifest.json"
+        hashes = json.loads(manifest.read_text())
+        hashes["sha256"]["ThreadStartParams.json"] = hashlib.sha256(
+            b"verification-corrupted-schema").hexdigest()
+        manifest.write_text(json.dumps(hashes))
 
         missing_hash = snapshot("missing-hash")
         manifest = missing_hash / SNAPSHOT / "manifest.json"
         hashes = json.loads(manifest.read_text())
         del hashes["sha256"]["ThreadStartParams.json"]
         manifest.write_text(json.dumps(hashes))
-        schema = manifest.with_name("ThreadStartParams.json")
-        schema.write_bytes(schema.read_bytes() + b"\n")
 
         extra_hash = snapshot("extra-hash")
         manifest = extra_hash / SNAPSHOT / "manifest.json"
